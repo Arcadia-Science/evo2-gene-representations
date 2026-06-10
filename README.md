@@ -1,87 +1,101 @@
-# TODO: Replace with the name of the repo
+# glm-latent-mapping
 
-[![run with conda](https://img.shields.io/badge/run%20with-conda-3EB049?labelColor=000000&logo=anaconda)](https://docs.conda.io/projects/miniconda/en/latest/)
+Investigates whether genome language models (GPN-Star, Evo2) encode gene family relationships in their latent spaces, using geodesic distance analysis as the primary metric.
 
-Note: Analysis repo names should be prefixed with the year (ie `2024-noveltree-analysis`)
+## Installation
 
-## Purpose
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
 
-TODO: Briefly describe the core analyses performed in the repository and the motivation behind them.
-
-## Installation and Setup
-
-This repository uses conda to manage software environments and installations. You can find operating system-specific instructions for installing miniconda [here](https://docs.conda.io/projects/miniconda/en/latest/). After installing conda and [mamba](https://mamba.readthedocs.io/en/latest/), run the following command to create the pipeline run environment.
-
-```{bash}
-TODO: Replace <NAME> with the name of your environment
-mamba env create -n <NAME> --file envs/dev.yml
-conda activate <NAME>
+```bash
+uv sync
 ```
 
-<details><summary>Developer Notes (click to expand/collapse)</summary>
+Pre-commit hooks (linting via `ruff`):
 
-1. Install your pre-commit hooks:
+```bash
+uv run pre-commit install
+```
 
-    ```{bash}
-    pre-commit install
-    ```
+## Models
 
-    This installs the pre-commit hooks defined in your config (`./.pre-commit-config.yaml`).
+Two GPN-Star 200M checkpoints are used. Both are downloaded automatically on first run and cached under `models/`.
 
-2. Export your conda environment before sharing:
+| Alignment | HuggingFace ID | Species |
+|-----------|----------------|---------|
+| Vertebrate | `songlab/gpn-star-hg38-v100-200m` | 100 |
+| Mammalian | `songlab/gpn-star-hg38-m447-200m` | 447 |
 
-    As your project develops, the number of dependencies in your environment may increase. Whenever you install new dependencies (using either `pip install` or `mamba install`), you should update the environment file using the following command.
+Each checkpoint includes:
+- `model.safetensors` — model weights (~812 MB)
+- `phylo_dist/` — pairwise and in-clade phylogenetic distance matrices
+- `calibration_table/` — pre-computed VEP calibration tables
 
-    ```{bash}
-    conda env export --no-builds > envs/dev.yml
-    ```
+### Compatibility note
 
-    `--no-builds` removes build specification from the exported packages to increase portability between different platforms.
-</details>
+Transformers ≥4.44 initialises models inside an `accelerate` `init_empty_weights()` context, which places all tensors on the meta device. GPN-Star's `GPNStarPhyloInfo.__init__` loads numpy arrays and calls `.item()` on them, which crashes on meta tensors. `load_model_compat()` in [scripts/test_gpn_star.py](scripts/test_gpn_star.py) works around this by instantiating the model directly and loading the safetensors weights manually.
 
-## Data
+## MSA alignment data
 
-TODO: Add details about the description of input / output data and links to Zenodo depositions, if applicable.
+Stage 2 of the GPN-Star verification (VEP benchmark) requires a zarr alignment file for each model variant. Both can be restricted to a single chromosome (~400 MB each) for quick testing.
 
-## Overview
+### Vertebrate 100-way (`data/multiz100way.zarr`)
 
-### Description of the folder structure
+```bash
+# Download (omit --include for full genome, ~42 GB)
+huggingface-cli download songlab/multiz100way-pigz \
+    --repo-type dataset \
+    --include "chr22*" \
+    --local-dir data/multiz100way-pigz
 
-### Methods
+python -m gpn.data decompress data/multiz100way-pigz data/multiz100way.zarr
+```
 
-TODO: Include a brief, step-wise overview of analyses performed.
+### Mammalian 447-way (`data/multiz447way.zarr`)
 
-> Example:
->
-> 1.  Download scripts using `download.ipynb`.
-> 2.  Preprocess using `./preprocessing.sh -a data/`
-> 3.  Run Snakemake pipeline `snakemake --snakefile Snakefile`
-> 4.  Generate figures using `pub/make_figures.ipynb`.
+```bash
+# Download (omit --include for full genome)
+huggingface-cli download songlab/hg38_cactus447way \
+    --repo-type dataset \
+    --include "chr22*" \
+    --local-dir data/multiz447way-pigz
 
-### Compute Specifications
+python -m gpn.data decompress data/multiz447way-pigz data/multiz447way.zarr
+```
 
-TODO: Describe what compute resources were used to run the analysis. For example, you could list the operating system, number of cores, RAM, and storage space.
+Alternatively, `scripts/download_msa.py` provides a `--synthetic` flag that generates fast random alignment data for testing without the full download:
+
+```bash
+uv run python scripts/download_msa.py --synthetic
+```
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| [scripts/test_gpn_star.py](scripts/test_gpn_star.py) | Two-stage GPN-Star verification: (1) synthetic forward-pass sanity check, (2) VEP benchmark on `songlab/clinvar_vs_benign` |
+| [scripts/test_evo2.py](scripts/test_evo2.py) | Evo2 verification: synthetic forward pass + optional VEP benchmark via log-likelihood ratio scoring |
+| [scripts/download_msa.py](scripts/download_msa.py) | Downloads or synthesizes multiz100way alignment data |
+
+### Running GPN-Star verification
+
+```bash
+# Stage 1 only — synthetic forward-pass check (no alignment data needed)
+uv run python scripts/test_gpn_star.py
+
+# Stage 1 + 2 — VEP benchmark (requires zarr alignment data)
+uv run python scripts/test_gpn_star.py --vep
+uv run python scripts/test_gpn_star.py --vep --alignments vertebrate
+uv run python scripts/test_gpn_star.py --vep --alignments vertebrate --chrom chr22
+```
+
+### Tests
+
+```bash
+uv run python -m pytest tests/
+```
+
+The test suite (`tests/test_load_model_compat.py`) verifies the weight-loading compatibility workaround: correct weights loaded, tied weights restored, no meta-device tensors, and deterministic forward pass.
 
 ## Contributing
 
 See how we recognize [feedback and contributions to our code](https://github.com/Arcadia-Science/arcadia-software-handbook/blob/main/guides-and-standards/guide--credit-for-contributions.md).
-
----
-## For Developers
-
-This section contains information for developers who are working off of this template. Please adjust or edit this section as appropriate when you're ready to share your repo.
-
-### GitHub templates
-This template uses GitHub templates to provide checklists when making new pull requests. These templates are stored in the [.github/](./.github/) directory.
-
-### VSCode
-This template includes recommendations to VSCode users for extensions, particularly the `ruff` linter. These recommendations are stored in `.vscode/extensions.json`. When you open the repository in VSCode, you should see a prompt to install the recommended extensions.
-
-### `.gitignore`
-This template uses a `.gitignore` file to prevent certain files from being committed to the repository.
-
-### `pyproject.toml`
-`pyproject.toml` is a configuration file to specify your project's metadata and to set the behavior of other tools such as linters, type checkers etc. You can learn more [here](https://packaging.python.org/en/latest/guides/writing-pyproject-toml/)
-
-### Linting
-This template automates linting and formatting using GitHub Actions and the `ruff` linter. When you push changes to your repository, GitHub will automatically run the linter and report any errors, blocking merges until they are resolved.
