@@ -82,3 +82,6 @@ venv/
 # Nextflow related folders and files
 .nextflow*
 work/
+
+# Data
+data/
