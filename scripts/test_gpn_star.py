@@ -359,34 +359,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MSA DATA DOWNLOAD NOTES
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# Stage 2 requires one zarr alignment file per alignment type. Both can be
-# restricted to a single chromosome (~400 MB each) for faster testing.
-#
-# ── vertebrate (100-way, saved to data/multiz100way.zarr) ────────────────────
-#
-#   huggingface-cli download songlab/multiz100way-pigz \
-#       --repo-type dataset \
-#       --include "chr22*" \           # omit for full genome (~42 GB)
-#       --local-dir data/multiz100way-pigz
-#
-#   python -m gpn.data decompress data/multiz100way-pigz data/multiz100way.zarr
-#
-# ── mammalian (447-way, saved to data/multiz447way.zarr) ─────────────────────
-#
-#   huggingface-cli download songlab/hg38_cactus447way \
-#       --repo-type dataset \
-#       --include "chr22*" \           # omit for full genome
-#       --local-dir data/multiz447way-pigz
-#
-#   python -m gpn.data decompress data/multiz447way-pigz data/multiz447way.zarr
-#
-# ── Running Stage 2 ──────────────────────────────────────────────────────────
-#
-#   uv run python scripts/test_gpn_star.py --vep                         # both
-#   uv run python scripts/test_gpn_star.py --vep --alignments vertebrate # one only
-#   uv run python scripts/test_gpn_star.py --vep --chrom chr22           # single chrom
