@@ -19,6 +19,7 @@ Usage:
 """
 
 import argparse
+import datetime
 import os
 import sys
 from pathlib import Path
@@ -260,9 +261,11 @@ def run_vep_benchmark(name: str, cfg: dict, msa_path: str, model_dir: Path, wind
     print(f"    (Published GPN-Star v100 AUROC on clinvar_vs_benign: ~0.89–0.91)")
 
     scores_df["label"] = labels
-    out_path = Path(f"data/clinvar_vep_scores_{name}.parquet")
-    out_path.parent.mkdir(exist_ok=True)
-    scores_df.to_parquet(out_path, index=False)
+    date_str = datetime.date.today().isoformat()
+    out_dir = Path("results") / f"{date_str}_gpnstar-{name}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "vep_scores.csv"
+    scores_df.to_csv(out_path, index=False)
     print(f"    Scores saved to {out_path}")
 
 
