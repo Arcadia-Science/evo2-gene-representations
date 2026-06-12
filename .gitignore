@@ -85,3 +85,10 @@ work/
 
 # Data
 data/
+# Model weights and large outputs
+models/
+vertebrate-200m/
+results/
+activations_debug.log
+project_overview.txt
+.claude/
