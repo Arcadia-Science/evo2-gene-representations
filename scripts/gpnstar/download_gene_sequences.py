@@ -13,24 +13,13 @@ from pathlib import Path
 
 from Bio import Entrez, SeqIO
 
+from families import GENE_FAMILIES  # sibling module: scripts/gpnstar/families.py
+
 # NCBI requires a contact email; set NCBI_EMAIL in your environment.
 Entrez.email = os.environ.get("NCBI_EMAIL", "")
 
 SLEEP = 0.34
 BATCH_SIZE = 50
-
-GENE_FAMILIES = {
-    "globins": ["HBB", "HBA1", "MB", "NGB"],
-    "hox": ["HOXA1", "HOXA2", "HOXB1", "HOXB2", "HOXC4", "HOXD4", "HOXD10"],
-    "ras_gtpases": ["KRAS", "HRAS", "NRAS", "RRAS"],
-    "cytochrome_p450": ["CYP1A1", "CYP1A2", "CYP2D6", "CYP3A4", "CYP3A5"],
-    "c2h2_zinc_fingers": ["SP1", "SP3", "KLF4", "KLF2", "WT1"],
-    "aquaporins": ["AQP1", "AQP2", "AQP3", "AQP4", "AQP5"],
-    "sirtuins": ["SIRT1", "SIRT2", "SIRT3", "SIRT4", "SIRT5", "SIRT6", "SIRT7"],
-    "toll_like_receptors": ["TLR1", "TLR2", "TLR3", "TLR4", "TLR5", "TLR7", "TLR9"],
-    "wnt_ligands": ["WNT1", "WNT2", "WNT3", "WNT4", "WNT5A", "WNT7A", "WNT10B"],
-    "kinesins": ["KIF1A", "KIF1B", "KIF2A", "KIF5B", "KIF5C", "KIF11"],
-}
 
 
 def check_mmseqs2():
