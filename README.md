@@ -1,6 +1,13 @@
 # glm-latent-mapping
 
-Investigates whether genome language models (GPN-Star, Evo2) encode gene family relationships in their latent spaces, using geodesic distance analysis as the primary metric.
+Investigates whether genome language models encode biologically meaningful structure in their latent spaces, using geodesic distance analysis as the primary metric. Two parallel analyses:
+
+1. **Gene family analysis** — do GPN-Star embeddings of human gene CDS sequences cluster by gene family (globins, HOX genes, kinases, etc.)? Ground truth: Pfam HMM-profile Jensen-Shannon divergence.
+2. **Species phylogeny analysis** — do Evo 2 embeddings of random bacterial genomic windows recapitulate the GTDB phylogenetic tree? Ground truth: GTDB patristic distances from 120 marker genes. Replicates [Goodfire (2025)](https://www.goodfire.ai/research/phylogeny-manifold) at 500-species scale.
+
+Both analyses share the same downstream pipeline: cosine → angular k-NN graph → Dijkstra geodesic distances → Spearman ρ + Mantel test against a biological ground truth.
+
+---
 
 ## Installation
 
@@ -16,85 +23,161 @@ Pre-commit hooks (linting via `ruff`):
 uv run pre-commit install
 ```
 
-## Models
+---
 
-Two GPN-Star 200M checkpoints are used. Both are downloaded automatically on first run and cached under `models/`.
+## Analysis 1 — Gene family geodesic (GPN-Star)
+
+### Models
+
+Two GPN-Star 200M checkpoints, downloaded automatically on first run into `models/`.
 
 | Alignment | HuggingFace ID | Species |
 |-----------|----------------|---------|
 | Vertebrate | `songlab/gpn-star-hg38-v100-200m` | 100 |
 | Mammalian | `songlab/gpn-star-hg38-m447-200m` | 447 |
 
-Each checkpoint includes:
-- `model.safetensors` — model weights (~812 MB)
-- `phylo_dist/` — pairwise and in-clade phylogenetic distance matrices
-- `calibration_table/` — pre-computed VEP calibration tables
+**Compatibility note:** Transformers ≥4.44 initialises models inside an `accelerate` `init_empty_weights()` context, placing all tensors on the meta device. GPN-Star's `GPNStarPhyloInfo.__init__` loads numpy arrays and calls `.item()` on them, which crashes on meta tensors. `load_model_compat()` in [scripts/test_gpn_star.py](scripts/test_gpn_star.py) works around this by direct instantiation + manual safetensors loading.
 
-### Compatibility note
+### MSA alignment data
 
-Transformers ≥4.44 initialises models inside an `accelerate` `init_empty_weights()` context, which places all tensors on the meta device. GPN-Star's `GPNStarPhyloInfo.__init__` loads numpy arrays and calls `.item()` on them, which crashes on meta tensors. `load_model_compat()` in [scripts/test_gpn_star.py](scripts/test_gpn_star.py) works around this by instantiating the model directly and loading the safetensors weights manually.
-
-## MSA alignment data
-
-Stage 2 of the GPN-Star verification (VEP benchmark) requires a zarr alignment file for each model variant. Both can be restricted to a single chromosome (~400 MB each) for quick testing.
-
-### Vertebrate 100-way (`data/multiz100way.zarr`)
+GPN-Star requires a zarr multiple-sequence alignment for each model variant.
 
 ```bash
-# Download (omit --include for full genome, ~42 GB)
-huggingface-cli download songlab/multiz100way-pigz \
-    --repo-type dataset \
-    --include "chr22*" \
-    --local-dir data/multiz100way-pigz
+# Vertebrate 100-way alignment (~42 GB download, ~72 GB extracted)
+uv run python scripts/download_msa.py vertebrate
+# → data/multiz100way.zarr
 
-python -m gpn.data decompress data/multiz100way-pigz data/multiz100way.zarr
+# Mammalian 447-way alignment (~121 GB download, ~200+ GB extracted)
+uv run python scripts/download_msa.py mammalian
+# → data/multiz447way.zarr
+
+# Synthetic random alignment for smoke-testing (no download)
+uv run python scripts/download_msa.py synthetic
 ```
 
-### Mammalian 447-way (`data/multiz447way.zarr`)
+**Disk requirements:** vertebrate only ~72 GB; both alignments ~280+ GB. The vertebrate alignment is already present at `data/multiz100way.zarr`.
+
+### Running
 
 ```bash
-# Download (omit --include for full genome)
-huggingface-cli download songlab/hg38_cactus447way \
-    --repo-type dataset \
-    --include "chr22*" \
-    --local-dir data/multiz447way-pigz
+# Verify model loads and runs a forward pass
+uv run python scripts/test_gpn_star.py
 
-python -m gpn.data decompress data/multiz447way-pigz data/multiz447way.zarr
+# VEP benchmark on songlab/clinvar_vs_benign (requires zarr data)
+uv run python scripts/test_gpn_star.py --vep --alignments vertebrate
+
+# Gene family embedding + geodesic analysis (main analysis)
+uv run python scripts/embed_and_geodesic.py
+uv run python scripts/embed_and_geodesic.py --model vertebrate --force-reembed
 ```
 
-Alternatively, `scripts/download_msa.py` provides a `--synthetic` flag that generates fast random alignment data for testing without the full download:
+Results written to `results/YYYY-MM-DD_gpnstar-vertebrate/`.
+
+---
+
+## Analysis 2 — Species phylogeny geodesic (Evo 2)
+
+Embeds 500 bacterial species sampled from [GTDB](https://gtdb.ecogenomic.org/) using Evo 2 7B (layer `blocks.24.mlp.l3`), then tests whether geodesic distances in that embedding space correlate with GTDB patristic distances.
+
+### Model
+
+Evo 2 7B is downloaded automatically on first run (~14 GB). No MSA data required — Evo 2 operates directly on raw DNA sequences.
+
+### Data requirements
+
+All data is fetched by the pipeline scripts; nothing needs to be pre-downloaded.
+
+| Data | Source | Size | Path |
+|------|--------|------|------|
+| GTDB metadata | `data.gtdb.ecogenomic.org` | ~30 MB | `data/species/bac120_metadata.tsv.gz` |
+| GTDB reference tree | `data.gtdb.ecogenomic.org` | ~5 MB | `data/species/bac120.tree` |
+| 500-species manifest | generated by script | <1 MB | `data/species/gtdb_500_manifest.csv` |
+| Genomic windows (500 species × 10 × 2000 bp) | NCBI via Entrez | ~10 MB | `data/species/sequences/` |
+| Evo 2 embeddings (500 × 4096) | computed | ~8 MB | `data/species/embeddings/` |
+
+### Pipeline
+
+The three scripts run sequentially. Each is fully resumable — it skips already-completed work.
+
+**Step 1 — Build species manifest** (~5 min)
+
+Downloads GTDB r232 metadata, stratified-samples 500 bacterial species proportionally across all phyla (seed 42), writes `data/species/gtdb_500_manifest.csv`.
 
 ```bash
-uv run python scripts/download_msa.py --synthetic
+uv run python scripts/download_species_manifest.py
 ```
+
+**Step 2 — Download genomic windows** (~30–60 min, rate-limited by NCBI)
+
+For each species, fetches 10 genomic windows of 4000 bp via NCBI Datasets API + Entrez, keeps the last 2000 bp of each (following Goodfire). Window positions are computed deterministically from `md5(ncbi_accession + window_idx)`.
+
+```bash
+export NCBI_EMAIL="you@example.com"        # required by NCBI as a contact
+uv run python scripts/download_species_sequences.py
+# Set NCBI_API_KEY env var for 10 req/s instead of 3 req/s
+```
+
+**Step 3 — Embed + geodesic** (~2–8 hours depending on GPU)
+
+Embeds each species as the mean of 10 window embeddings from Evo 2 layer 24, builds a cosine k-NN graph, computes Dijkstra geodesic distances, downloads and parses the GTDB tree (via `dendropy`), computes patristic distances, and runs Spearman ρ + Mantel test.
+
+```bash
+uv run python scripts/embed_and_geodesic_species.py
+uv run python scripts/embed_and_geodesic_species.py --force-reembed  # redo embeddings
+```
+
+Results written to `results/YYYY-MM-DD_evo2-species/`.
+
+### Running the full pipeline in the background
+
+```bash
+screen -dmS species_pipeline bash /home/ubuntu/Development/glm-latent-mapping/scripts/run_species_pipeline.sh
+# Detach from screen: Ctrl-A D
+# Reattach: screen -r species_pipeline
+# Watch log: tail -f logs/species_pipeline.log
+```
+
+---
 
 ## Scripts
 
 | Script | Purpose |
 |--------|---------|
-| [scripts/test_gpn_star.py](scripts/test_gpn_star.py) | Two-stage GPN-Star verification: (1) synthetic forward-pass sanity check, (2) VEP benchmark on `songlab/clinvar_vs_benign` |
-| [scripts/test_evo2.py](scripts/test_evo2.py) | Evo2 verification: synthetic forward pass + optional VEP benchmark via log-likelihood ratio scoring |
-| [scripts/download_msa.py](scripts/download_msa.py) | Downloads or synthesizes multiz100way alignment data |
+| [scripts/download_msa.py](scripts/download_msa.py) | Download vertebrate/mammalian MSA zarr for GPN-Star, or build a synthetic one for testing |
+| [scripts/download_sequences.py](scripts/download_sequences.py) | Download CDS sequences for gene families from NCBI RefSeq, deduplicate with MMseqs2 |
+| [scripts/test_gpn_star.py](scripts/test_gpn_star.py) | GPN-Star sanity check (synthetic forward pass) + VEP benchmark on `songlab/clinvar_vs_benign` |
+| [scripts/test_evo2.py](scripts/test_evo2.py) | Evo 2 sanity check (synthetic forward pass) + optional VEP benchmark |
+| [scripts/embed_and_geodesic.py](scripts/embed_and_geodesic.py) | **Analysis 1**: embed human gene CDS with GPN-Star, compute geodesic distances, compare to Pfam JSD ground truth |
+| [scripts/download_species_manifest.py](scripts/download_species_manifest.py) | **Analysis 2 step 1**: build 500-species GTDB manifest |
+| [scripts/download_species_sequences.py](scripts/download_species_sequences.py) | **Analysis 2 step 2**: fetch genomic windows per species from NCBI |
+| [scripts/embed_and_geodesic_species.py](scripts/embed_and_geodesic_species.py) | **Analysis 2 step 3**: embed species with Evo 2, geodesic distances, compare to GTDB patristic distances |
+| [scripts/gpnstar/figure2_pfam_cds.py](scripts/gpnstar/figure2_pfam_cds.py) | Figure: gene-family geodesic distances vs. Pfam JSD ground truth |
+| [scripts/gpnstar/figure_within_comparison.py](scripts/gpnstar/figure_within_comparison.py) | Figure: within-family geodesic distances vs. an evolutionary baseline (`--baseline paralog` or `seqid`) |
 
-### Running GPN-Star verification
+---
 
-```bash
-# Stage 1 only — synthetic forward-pass check (no alignment data needed)
-uv run python scripts/test_gpn_star.py
+## Data layout
 
-# Stage 1 + 2 — VEP benchmark (requires zarr alignment data)
-uv run python scripts/test_gpn_star.py --vep
-uv run python scripts/test_gpn_star.py --vep --alignments vertebrate
-uv run python scripts/test_gpn_star.py --vep --alignments vertebrate --chrom chr22
+```
+data/
+├── multiz100way.zarr/          # Vertebrate 100-way alignment (72 GB, hg38)
+├── multiz447way.zarr/          # Mammalian 447-way alignment (not yet downloaded)
+├── sequences/                  # CDS sequences for gene family analysis
+│   ├── globins.fasta
+│   ├── hox.fasta
+│   └── ...
+├── species/                    # Data for species phylogeny analysis
+│   ├── bac120_metadata.tsv.gz  # GTDB r232 bacterial metadata
+│   ├── bac120.tree             # GTDB reference tree (Newick)
+│   ├── gtdb_500_manifest.csv   # 500-species sample manifest
+│   ├── sequences/              # Per-species FASTA files (10 windows × 2000 bp each)
+│   └── embeddings/             # Evo 2 embeddings (.npy) + metadata.csv
+models/                         # HuggingFace model cache
+results/                        # Analysis outputs (one dir per run, dated)
+logs/                           # Background run logs
 ```
 
-### Tests
-
-```bash
-uv run python -m pytest tests/
-```
-
-The test suite (`tests/test_load_model_compat.py`) verifies the weight-loading compatibility workaround: correct weights loaded, tied weights restored, no meta-device tensors, and deterministic forward pass.
+---
 
 ## Contributing
 

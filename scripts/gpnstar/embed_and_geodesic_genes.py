@@ -31,17 +31,27 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import connected_components, shortest_path
 from scipy.spatial.distance import jensenshannon
 from scipy.stats import spearmanr
-from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
 
 import gpn.star.model  # noqa: F401 — registers GPNStar with AutoModel/AutoConfig
 from gpn.star.data import GenomeMSA
 from gpn.star.model import GPNStarModel
 from transformers import AutoConfig
+
+# Shared geodesic helpers live in scripts/geodesic_utils.py (one level up).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from geodesic_utils import (  # noqa: E402
+    compute_geodesic,
+    find_min_connected_k,
+    mantel_test,
+    upper_triangle,
+    within_between_analysis,
+)
+
+# Gene-family definitions live in scripts/gpnstar/families.py (sibling module).
+from families import FAMILY_ORDER, GENE_FAMILIES, PFAM_ACCESSIONS  # noqa: E402
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -53,54 +63,7 @@ MODELS = {
     },
 }
 
-GENE_FAMILIES: dict[str, list[str]] = {
-    "globins": ["HBB", "HBA1", "MB", "NGB"],
-    "hox": ["HOXA1", "HOXA2", "HOXB1", "HOXB2", "HOXC4", "HOXD4", "HOXD10"],
-    "ras_gtpases": ["KRAS", "HRAS", "NRAS", "RRAS"],
-    "cytochrome_p450": ["CYP1A1", "CYP1A2", "CYP2D6", "CYP3A4", "CYP3A5"],
-    "c2h2_zinc_fingers": ["SP1", "SP3", "KLF4", "KLF2", "WT1"],
-    "aquaporins": ["AQP1", "AQP2", "AQP3", "AQP4", "AQP5"],
-    "sirtuins": ["SIRT1", "SIRT2", "SIRT3", "SIRT4", "SIRT5", "SIRT6", "SIRT7"],
-    "toll_like_receptors": ["TLR1", "TLR2", "TLR3", "TLR4", "TLR5", "TLR7", "TLR9"],
-    "wnt_ligands": ["WNT1", "WNT2", "WNT3", "WNT4", "WNT5A", "WNT7A", "WNT10B"],
-    "kinesins": ["KIF1A", "KIF1B", "KIF2A", "KIF5B", "KIF5C", "KIF11"],
-}
-
-FAMILY_ORDER = [
-    "globins",
-    "hox",
-    "ras_gtpases",
-    "cytochrome_p450",
-    "c2h2_zinc_fingers",
-    "aquaporins",
-    "sirtuins",
-    "toll_like_receptors",
-    "wnt_ligands",
-    "kinesins",
-]
-
-PFAM_ACCESSIONS: dict[str, str] = {
-    "globins": "PF00042",
-    "hox": "PF00046",
-    "ras_gtpases": "PF00071",
-    "cytochrome_p450": "PF00067",
-    "c2h2_zinc_fingers": "PF00096",
-    "aquaporins": "PF00230",
-    "sirtuins": "PF02146",
-    "toll_like_receptors": "PF01582",
-    "wnt_ligands": "PF00110",
-    "kinesins": "PF00225",
-}
-
-OUT_DIR = Path("data/embeddings")
-COORD_CACHE = OUT_DIR / "gene_coords.json"
-EMBED_PATH = OUT_DIR / "gpnstar_vertebrate_embeddings.npy"
-META_PATH = OUT_DIR / "metadata.csv"
-GEODESIC_PATH = OUT_DIR / "gpnstar_vertebrate_geodesic.npy"
-CENTROID_PATH = OUT_DIR / "gpnstar_vertebrate_centroid_distances.npy"
-FAMILY_ORDER_PATH = OUT_DIR / "family_order.txt"
-JSD_PATH = OUT_DIR / "pfam_jsd_distances.npy"
-
+# All output/cache paths are derived per-run inside main(); see that function.
 ENSEMBL_BASE = "https://rest.ensembl.org"
 
 # ── Step 1: CDS coordinates ───────────────────────────────────────────────────
@@ -141,9 +104,9 @@ def fetch_cds_coords(gene_symbol: str) -> dict:
     raise ValueError(f"No canonical CDS found for {gene_symbol}")
 
 
-def load_or_fetch_coords(all_genes: list[str]) -> dict[str, dict]:
-    if COORD_CACHE.exists():
-        with open(COORD_CACHE) as f:
+def load_or_fetch_coords(all_genes: list[str], cache_path: Path) -> dict[str, dict]:
+    if cache_path.exists():
+        with open(cache_path) as f:
             cache = json.load(f)
     else:
         cache = {}
@@ -153,8 +116,8 @@ def load_or_fetch_coords(all_genes: list[str]) -> dict[str, dict]:
         print(f"Fetching CDS coordinates for {len(missing)} genes from Ensembl...")
         for gene in tqdm(missing, desc="Ensembl lookup"):
             cache[gene] = fetch_cds_coords(gene)
-        COORD_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        with open(COORD_CACHE, "w") as f:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(cache_path, "w") as f:
             json.dump(cache, f, indent=2)
 
     return {g: cache[g] for g in all_genes}
@@ -264,57 +227,6 @@ def compute_embeddings(
     return emb_array, meta_df
 
 
-# ── Step 4: k-NN graph with angular distances ─────────────────────────────────
-
-
-def cosine_to_angular(cosine_dist: np.ndarray) -> np.ndarray:
-    return np.arccos(np.clip(1.0 - cosine_dist, -1.0, 1.0))
-
-
-def build_knn_graph(embeddings: np.ndarray, k: int) -> np.ndarray:
-    N = len(embeddings)
-    nn = NearestNeighbors(n_neighbors=k, metric="cosine", algorithm="brute")
-    nn.fit(embeddings)
-    cosine_dists, indices = nn.kneighbors(embeddings)
-    angular_dists = cosine_to_angular(cosine_dists)
-
-    W = np.zeros((N, N))
-    for i in range(N):
-        for j_pos in range(k):
-            j = indices[i, j_pos]
-            w = angular_dists[i, j_pos]
-            if W[j, i] > 0:
-                sym_w = min(w, W[j, i])
-                W[i, j] = sym_w
-                W[j, i] = sym_w
-            else:
-                W[i, j] = w
-    return W
-
-
-def find_min_connected_k(embeddings: np.ndarray, k_min: int = 3) -> tuple[int, np.ndarray]:
-    N = len(embeddings)
-    for k in range(k_min, N):
-        W = build_knn_graph(embeddings, k)
-        n_components, _ = connected_components(
-            csgraph=csr_matrix(W), directed=False, return_labels=True
-        )
-        print(f"  k={k}: {n_components} component(s)")
-        if n_components == 1:
-            print(f"  => Fully connected at k={k}")
-            return k, W
-    raise ValueError(f"Graph not connected even at k={N - 1}")
-
-
-# ── Step 5: All-pairs geodesic distances ──────────────────────────────────────
-
-
-def compute_geodesic(W: np.ndarray) -> np.ndarray:
-    geo = shortest_path(csr_matrix(W), method="auto", directed=False)
-    assert not np.any(np.isinf(geo)), "Geodesic matrix has inf — graph is not fully connected"
-    return geo
-
-
 # ── Step 6: Family centroid distances ─────────────────────────────────────────
 
 
@@ -369,66 +281,6 @@ def compute_pfam_jsd(family_order: list[str]) -> np.ndarray:
             jsd = jensenshannon(vectors[family_order[i]], vectors[family_order[j]], base=2) ** 2
             D[i, j] = D[j, i] = jsd
     return D
-
-
-# ── Step 8: Spearman ρ + Mantel test ──────────────────────────────────────────
-
-
-def upper_triangle(matrix: np.ndarray) -> np.ndarray:
-    idx = np.triu_indices(matrix.shape[0], k=1)
-    return matrix[idx]
-
-
-def mantel_test(
-    mat_a: np.ndarray,
-    mat_b: np.ndarray,
-    n_perms: int = 9999,
-    seed: int = 42,
-) -> tuple[float, float]:
-    rng = np.random.default_rng(seed)
-    N = mat_a.shape[0]
-    b_flat = upper_triangle(mat_b)
-    obs_rho, _ = spearmanr(upper_triangle(mat_a), b_flat)
-    count_extreme = 0
-    for _ in range(n_perms):
-        perm = rng.permutation(N)
-        perm_flat = upper_triangle(mat_a[np.ix_(perm, perm)])
-        perm_rho, _ = spearmanr(perm_flat, b_flat)
-        if perm_rho >= obs_rho:
-            count_extreme += 1
-    p_value = (count_extreme + 1) / (n_perms + 1)
-    return float(obs_rho), float(p_value)
-
-
-# ── Step 6b: Within vs. between family analysis ───────────────────────────────
-
-
-def within_between_analysis(
-    geodesic: np.ndarray,
-    families: np.ndarray,
-    n_perms: int = 9999,
-    seed: int = 42,
-) -> tuple[np.ndarray, np.ndarray, float, float]:
-    """Compare within-family vs between-family geodesic distances via permutation test."""
-    N = len(families)
-    pairs_i, pairs_j = np.triu_indices(N, k=1)
-    pair_dists = geodesic[pairs_i, pairs_j]
-    same = families[pairs_i] == families[pairs_j]
-
-    within = pair_dists[same]
-    between = pair_dists[~same]
-    obs_ratio = between.mean() / within.mean()
-
-    rng = np.random.default_rng(seed)
-    count = 0
-    for _ in range(n_perms):
-        pf = rng.permutation(families)
-        ps = pf[pairs_i] == pf[pairs_j]
-        if ps.any() and (~ps).any():
-            if pair_dists[~ps].mean() / pair_dists[ps].mean() >= obs_ratio:
-                count += 1
-    p_val = (count + 1) / (n_perms + 1)
-    return within, between, float(obs_ratio), float(p_val)
 
 
 # ── Step 7b: CDS sequence identity baseline ───────────────────────────────────
@@ -751,7 +603,7 @@ def main() -> None:
 
     # ── 1. CDS coordinates ────────────────────────────────────────────────────
     print("\n[1] CDS coordinates")
-    coords = load_or_fetch_coords(gene_list)
+    coords = load_or_fetch_coords(gene_list, COORD_CACHE)
 
     # ── 2+3. Embeddings ───────────────────────────────────────────────────────
     print("\n[2+3] MSA extraction and embedding")
