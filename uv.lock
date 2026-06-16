@@ -1071,9 +1071,9 @@ requires-dist = [
     { name = "biopython", specifier = ">=1.87" },
     { name = "datasets", specifier = ">=2.20.0" },
     { name = "dendropy", specifier = ">=4.6.1" },
-    { name = "evo2" },
+    { name = "evo2", specifier = ">=0.5.5" },
     { name = "flash-attn", specifier = ">=2.0" },
-    { name = "gpn", git = "https://github.com/songlab-cal/gpn.git" },
+    { name = "gpn", git = "https://github.com/songlab-cal/gpn.git?rev=ce8954b6c1c13919001a896d83a58f3f024c4f6f" },
     { name = "huggingface-hub", specifier = ">=0.23.0" },
     { name = "matplotlib", specifier = ">=3.10.9" },
     { name = "networkx", specifier = ">=3.6.1" },
@@ -1099,7 +1099,7 @@ dev = [
 [[package]]
 name = "gpn"
 version = "0.7"
-source = { git = "https://github.com/songlab-cal/gpn.git#ce8954b6c1c13919001a896d83a58f3f024c4f6f" }
+source = { git = "https://github.com/songlab-cal/gpn.git?rev=ce8954b6c1c13919001a896d83a58f3f024c4f6f#ce8954b6c1c13919001a896d83a58f3f024c4f6f" }
 dependencies = [
     { name = "bioframe" },
     { name = "biopython" },

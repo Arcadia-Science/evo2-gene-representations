@@ -24,10 +24,9 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 import numpy as np
+from families import PFAM_ACCESSIONS  # sibling module: scripts/gpnstar/families.py
 from scipy.spatial.distance import jensenshannon
 from tqdm import tqdm
-
-from families import PFAM_ACCESSIONS  # sibling module: scripts/gpnstar/families.py
 
 ENSEMBL_BASE = "https://rest.ensembl.org"
 
@@ -71,8 +70,7 @@ def fetch_cds_sequence(gene_symbol: str) -> str:
     """Fetch canonical CDS nucleotide sequence from Ensembl REST API."""
     # Step 1: look up canonical transcript ID
     lookup_url = (
-        f"{ENSEMBL_BASE}/lookup/symbol/homo_sapiens/{gene_symbol}"
-        f"?content-type=application/json"
+        f"{ENSEMBL_BASE}/lookup/symbol/homo_sapiens/{gene_symbol}?content-type=application/json"
     )
     for attempt in range(5):
         try:
@@ -80,7 +78,7 @@ def fetch_cds_sequence(gene_symbol: str) -> str:
                 data = json.loads(r.read())
             break
         except Exception as e:
-            wait = 10 * 2 ** attempt
+            wait = 10 * 2**attempt
             print(f"  Lookup failed for {gene_symbol} ({e}), retrying in {wait}s...")
             time.sleep(wait)
     else:
@@ -89,18 +87,18 @@ def fetch_cds_sequence(gene_symbol: str) -> str:
     transcript_id = data["canonical_transcript"].split(".")[0]
 
     # Step 2: fetch CDS sequence for that transcript
-    seq_url = (
-        f"{ENSEMBL_BASE}/sequence/id/{transcript_id}"
-        f"?type=cds&content-type=text/plain"
-    )
+    seq_url = f"{ENSEMBL_BASE}/sequence/id/{transcript_id}?type=cds&content-type=text/plain"
     for attempt in range(5):
         try:
             req = urllib.request.Request(seq_url, headers={"Accept": "text/plain"})
             with urllib.request.urlopen(req, timeout=30) as r:
                 return r.read().decode("utf-8").strip().upper()
         except Exception as e:
-            wait = 10 * 2 ** attempt
-            print(f"  Seq fetch failed for {gene_symbol}/{transcript_id} ({e}), retrying in {wait}s...")
+            wait = 10 * 2**attempt
+            print(
+                f"  Seq fetch failed for {gene_symbol}/{transcript_id} ({e}), "
+                f"retrying in {wait}s..."
+            )
             time.sleep(wait)
     raise RuntimeError(f"Failed to fetch CDS sequence for {gene_symbol}")
 
@@ -175,7 +173,7 @@ def _fetch_ensg_id(gene_symbol: str) -> str:
             with urllib.request.urlopen(url, timeout=30) as r:
                 return json.loads(r.read())["id"]
         except Exception as e:
-            wait = 10 * 2 ** attempt
+            wait = 10 * 2**attempt
             print(f"  ENSG lookup failed for {gene_symbol} ({e}), retrying in {wait}s...")
             time.sleep(wait)
     raise RuntimeError(f"ENSG lookup failed for {gene_symbol}")
@@ -200,7 +198,7 @@ def _fetch_paralogs(gene_symbol: str) -> dict[str, float]:
                 data = json.loads(r.read())
             break
         except Exception as e:
-            wait = 15 * 2 ** attempt
+            wait = 15 * 2**attempt
             print(f"  Paralog fetch failed for {gene_symbol} ({e}), retrying in {wait}s...")
             time.sleep(wait)
     else:
@@ -293,7 +291,7 @@ def compute_ensembl_paralog_matrix(
 
     n_found = int((~np.isnan(gene_identity) & (np.arange(N)[:, None] != np.arange(N))).sum()) // 2
     n_total = N * (N - 1) // 2
-    print(f"  Gene-pair coverage: {n_found}/{n_total} pairs ({100*n_found/n_total:.1f}%)")
+    print(f"  Gene-pair coverage: {n_found}/{n_total} pairs ({100 * n_found / n_total:.1f}%)")
 
     # ── Aggregate to family level ──────────────────────────────────────────────
     F = len(family_order)

@@ -1,35 +1,35 @@
 """
-GPN-Star model verification script.
+GPN-Star zero-shot ClinVar VEP benchmark.
 
-Two-stage test:
-  1. Synthetic sanity check — loads both 200M models, runs a forward pass with
-     random MSA tokens, and validates output shapes/values. No alignment data needed.
-  2. Real VEP benchmark — runs variant effect prediction on songlab/clinvar_vs_benign,
-     scores variants, and reports AUROC against pathogenic/benign labels.
-     Requires multiz100way zarr alignment data (see --help for download instructions).
+Runs variant effect prediction on songlab/clinvar_vs_benign with GPN-Star, scores
+each variant (LLR), and reports AUROC against the pathogenic/benign labels.
+Adapted from gpn/star/vep.py (https://github.com/songlab-cal/gpn). Also home of
+`load_model_compat()`, the transformers >=4.44 meta-device workaround used by the
+embedding pipeline.
+
+Requires the multiz zarr alignment data (see download_msa.py / --help).
 
 Usage:
-    # Stage 1 only (synthetic check):
-    uv run python scripts/test_gpn_star.py
+    # Both alignments (default): vertebrate (100-way) + mammalian (447-way):
+    uv run python scripts/gpnstar/test_gpn_star.py
 
-    # Stage 1 + 2 (needs zarr data, see MSA DATA DOWNLOAD NOTES below):
-    uv run python scripts/test_gpn_star.py --vep
-    uv run python scripts/test_gpn_star.py --vep --alignments vertebrate
-    uv run python scripts/test_gpn_star.py --vep --alignments vertebrate mammalian
+    # A single alignment:
+    uv run python scripts/gpnstar/test_gpn_star.py --alignments vertebrate
+
+    # Restrict to one chromosome (quick check):
+    uv run python scripts/gpnstar/test_gpn_star.py --alignments vertebrate --chrom 22
 """
 
 import argparse
 import datetime
 import os
-import sys
 from pathlib import Path
 
+import gpn.star.model  # noqa: F401  (registers GPNStar with AutoModel/AutoConfig)
 import numpy as np
 import torch
 from huggingface_hub import snapshot_download
-
-import gpn.star.model  # registers GPNStar with AutoModel/AutoConfig
-from transformers import AutoConfig, AutoModelForMaskedLM
+from transformers import AutoConfig
 
 # ── Model registry ────────────────────────────────────────────────────────────
 
@@ -79,9 +79,8 @@ def load_model_compat(model_path: Path):
     """
     import os
 
-    from safetensors.torch import load_file
-
     from gpn.star.model import GPNStarForMaskedLM
+    from safetensors.torch import load_file
 
     config = AutoConfig.from_pretrained(str(model_path))
 
@@ -93,12 +92,11 @@ def load_model_compat(model_path: Path):
             config.phylo_dist_path = fallback
         else:
             raise FileNotFoundError(
-                f"phylo_dist not found at '{config.phylo_dist_path}' "
-                f"or fallback '{fallback}'"
+                f"phylo_dist not found at '{config.phylo_dist_path}' or fallback '{fallback}'"
             )
 
     # Direct instantiation avoids the meta-device context in from_pretrained
-    model = GPNStarForMaskedLM(config) 
+    model = GPNStarForMaskedLM(config)
 
     weights_path = os.path.join(str(model_path), "model.safetensors")
     state_dict = load_file(weights_path)
@@ -118,106 +116,36 @@ def load_model_compat(model_path: Path):
     return model
 
 
-# ── Stage 1: synthetic forward pass ──────────────────────────────────────────
+# ── ClinVar zero-shot VEP benchmark ───────────────────────────────────────────
 
 
-def run_synthetic_check(name: str, cfg: dict, model_dir: Path) -> bool:
-    """
-    Load the model, run a forward pass with random MSA tokens, and check outputs.
-    """
-    hf_id, n_species = cfg["hf_id"], cfg["n_species"]
-    print(f"  Synthetic check: {name}  ({hf_id})")
-    print(f"{'─'*60}")
-
-    local_path = download_model(hf_id, model_dir)
-
-    print("    Loading model weights...")
-    model = load_model_compat(local_path)
-    model.eval()
-
-    n_params = sum(p.numel() for p in model.parameters())
-    cfg_obj = model.config
-    # TODO: remove these print statements after checking
-    print(f"    Parameters : {n_params:,}")
-    print(
-        f"    Architecture: hidden={cfg_obj.hidden_size}, "
-        f"layers={cfg_obj.num_hidden_layers}, "
-        f"heads={cfg_obj.num_attention_heads}, "
-        f"max_pos={cfg_obj.max_position_embeddings}"
-    )
-
-    # Build synthetic batch.
-    # Vocab: -=0  A=1  C=2  G=3  T=4  ?=5
-    # batch size B, sequence length L, target species T, total species N
-    # input_ids  : (B, L, T)  — target species tokens (mask the variant position in real use)
-    # source_ids : (B, L, N)  — all-species MSA tokens
-    # target_species : (B, T) — which species index is the target (0 = hg38)
-    B, L, T = 2, 64, 1
-    N = n_species
-    rng = np.random.default_rng(42)
-    input_ids = torch.from_numpy(rng.integers(1, 5, size=(B, L, T))).long()
-    source_ids = torch.from_numpy(rng.integers(1, 5, size=(B, L, N))).long()
-    target_species = torch.zeros(B, T, dtype=torch.long) # target species index 0 = hg38 (human reference)
-
-    print(
-        f"    Batch shapes: input_ids={tuple(input_ids.shape)}, "
-        f"source_ids={tuple(source_ids.shape)}, "
-        f"target_species={tuple(target_species.shape)}"
-    )
-
-    with torch.no_grad():
-        out = model(
-            input_ids=input_ids,
-            source_ids=source_ids,
-            target_species=target_species,
-        )
-
-    logits = out.logits  # expected: (B, L, T, vocab_size)
-    vocab_size = cfg_obj.vocab_size
-
-    # Shape check
-    expected_shape = (B, L, T, vocab_size)
-    assert logits.shape == expected_shape, (
-        f"Unexpected logits shape: got {tuple(logits.shape)}, expected {expected_shape}"
-    )
-
-    # Numerical sanity
-    assert torch.isfinite(logits).all(), "Logits contain NaN or Inf — model may not have loaded correctly"
-
-    # Spot-check: nucleotide probabilities at the centre position of the first example
-    centre = L // 2
-    acgt_probs = logits[0, centre, 0, 1:5].softmax(dim=-1).numpy()
-    print(f"    Output shape : {tuple(logits.shape)}  ✓")
-    print(f"    ACGT probs at centre (example 0): {np.round(acgt_probs, 3)}")
-    print(f"    All finite   : {torch.isfinite(logits).all().item()}  ✓")
-    print(f"  PASSED")
-    return True
-
-
-# ── Stage 2: real VEP benchmark ───────────────────────────────────────────────
-
-
-def run_vep_benchmark(name: str, cfg: dict, msa_path: str, model_dir: Path, window_size: int = 512, chrom: str | None = None) -> None:
+def run_vep_benchmark(
+    name: str,
+    cfg: dict,
+    msa_path: str,
+    model_dir: Path,
+    window_size: int = 512,
+    chrom: str | None = None,
+) -> None:
     """Run VEP on songlab/clinvar_vs_benign and report AUROC.
 
-    Adapted from gpn/star/vep.py in the GPN-Star repository (https://github.com/songlab-cal/gpn), 
+    Adapted from gpn/star/vep.py in the GPN-Star repository (https://github.com/songlab-cal/gpn),
     originally by Gonzalo Benegas et al., MIT License.
     """
     from datasets import load_dataset
-    from sklearn.metrics import roc_auc_score
-
     from gpn.star.data import GenomeMSA
-    from gpn.star.vep import VEPInference
     from gpn.star.inference import run_inference
+    from gpn.star.vep import VEPInference
+    from sklearn.metrics import roc_auc_score
 
     hf_id = cfg["hf_id"]
 
-    print(f"\n{'─'*60}")
+    print(f"\n{'─' * 60}")
     print(f"  VEP benchmark: {name}")
-    print(f"  Dataset       : songlab/clinvar_vs_benign")
+    print("  Dataset       : songlab/clinvar_vs_benign")
     print(f"  MSA path      : {msa_path}")
     print(f"  Window size   : {window_size} bp")
-    print(f"{'─'*60}")
+    print(f"{'─' * 60}")
 
     print("    Loading alignment (zarr)...")
     genome_msa = GenomeMSA(msa_path, n_species=cfg["n_species"])
@@ -233,13 +161,13 @@ def run_vep_benchmark(name: str, cfg: dict, msa_path: str, model_dir: Path, wind
     vep_model.model.eval()
 
     inference = VEPInference.__new__(VEPInference)
-    from gpn.data import Tokenizer, ReverseComplementer
-    # TODO: is there some check we can do to verify that the model loading workaround is correct? 
+    from gpn.data import ReverseComplementer, Tokenizer
+    # TODO: is there some check we can do to verify that the model loading workaround is correct?
 
     inference.model = vep_model
     inference.genome_msa_list = [genome_msa]
     inference.window_size = window_size
-    inference.disable_aux_features = False   
+    inference.disable_aux_features = False
     inference.reverse_complementer = ReverseComplementer()
     inference.tokenizer = Tokenizer()
 
@@ -258,7 +186,7 @@ def run_vep_benchmark(name: str, cfg: dict, msa_path: str, model_dir: Path, wind
     # LLR convention is log P(alt) - log P(ref); negate so higher = more pathogenic
     auroc = roc_auc_score(labels, -scores_df["score"])
     print(f"\n    AUROC: {auroc:.4f}")
-    print(f"    (Published GPN-Star v100 AUROC on clinvar_vs_benign: ~0.89–0.91)")
+    print("    (Published GPN-Star v100 AUROC on clinvar_vs_benign: ~0.89–0.91)")
 
     scores_df["label"] = labels
     date_str = datetime.date.today().isoformat()
@@ -277,16 +205,11 @@ def parse_args():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument(
-        "--vep",
-        action="store_true",
-        help="Also run Stage 2: real VEP benchmark (requires --msa-path)",
-    )
-    p.add_argument(
         "--alignments",
         nargs="+",
         choices=list(MODELS),
         default=list(MODELS),
-        help="Which alignment(s) to benchmark in Stage 2: vertebrate, mammalian, or both (default: both).",
+        help="Which alignment(s) to benchmark: vertebrate, mammalian, or both (default: both).",
     )
     p.add_argument(
         "--models-dir",
@@ -296,15 +219,7 @@ def parse_args():
     p.add_argument(
         "--chrom",
         default=None,
-        help="Restrict VEP benchmark to a single chromosome (e.g. 22). ",
-    )
-    p.add_argument(
-        "--synthetic-only",
-        dest="synthetic_models",
-        nargs="+",
-        choices=list(MODELS),
-        default=list(MODELS),
-        help="Run synthetic check on a subset of models",
+        help="Restrict the VEP benchmark to a single chromosome (e.g. 22).",
     )
     return p.parse_args()
 
@@ -314,48 +229,30 @@ def main():
     model_dir = Path(args.models_dir)
     model_dir.mkdir(exist_ok=True)
 
-    print("\n== Testing GPN-Star model ==")
-
-    # Stage 1
-    print("\n[Stage 1] Synthetic forward-pass checks")
-    passed, failed = [], []
-    for name in args.synthetic_models:
+    print("\n== GPN-Star ClinVar zero-shot VEP benchmark ==")
+    vep_passed, vep_failed = [], []
+    for name in args.alignments:
+        cfg = MODELS[name]
+        msa_path = cfg["msa_path"]
+        if not Path(msa_path).exists():
+            print(
+                f"\n  SKIPPED {name}: MSA not found at {msa_path}\n"
+                f"  Download with: python scripts/gpnstar/download_msa.py {name}"
+            )
+            vep_failed.append(name)
+            continue
         try:
-            run_synthetic_check(name, MODELS[name], model_dir)
-            passed.append(name)
+            run_vep_benchmark(
+                name=name, cfg=cfg, msa_path=msa_path, model_dir=model_dir, chrom=args.chrom
+            )
+            vep_passed.append(name)
         except Exception as e:
-            print(f"  FAILED: {e}")
-            failed.append(name)
+            print(f"\n  FAILED {name}: {e}")
+            vep_failed.append(name)
 
-    print(f"\n  Stage 1 summary: {len(passed)} passed, {len(failed)} failed")
-    if failed:
-        print(f"  Failed models: {failed}")
-        sys.exit(1)
-
-    # ── Stage 2 ──
-    if args.vep:
-        print("\n[Stage 2] Real VEP benchmark")
-        vep_passed, vep_failed = [], []
-        for name in args.alignments:
-            cfg = MODELS[name]
-            msa_path = cfg["msa_path"]
-            if not Path(msa_path).exists():
-                print(
-                    f"\n  SKIPPED {name}: MSA not found at {msa_path}\n"
-                    f"  Download with: python scripts/download_msa.py --out {msa_path}"
-                )
-                vep_failed.append(name)
-                continue
-            try:
-                run_vep_benchmark(name=name, cfg=cfg, msa_path=msa_path, model_dir=model_dir, chrom=args.chrom)
-                vep_passed.append(name)
-            except Exception as e:
-                print(f"\n  FAILED {name}: {e}")
-                vep_failed.append(name)
-
-        print(f"\n  Stage 2 summary: {len(vep_passed)} passed, {len(vep_failed)} failed/skipped")
-        if vep_failed and not vep_passed:
-            raise RuntimeError(f"All Stage 2 benchmarks failed: {vep_failed}")
+    print(f"\n  Summary: {len(vep_passed)} passed, {len(vep_failed)} failed/skipped")
+    if vep_failed and not vep_passed:
+        raise RuntimeError(f"All VEP benchmarks failed/skipped: {vep_failed}")
 
     print("\n== Done ==\n")
 

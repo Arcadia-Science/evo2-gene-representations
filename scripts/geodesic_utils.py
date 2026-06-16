@@ -111,8 +111,9 @@ def k_sweep_correlations(
     some geodesics infinite). If ``present_mask`` is given, both matrices are restricted
     to those indices first (e.g. to drop species absent from the reference tree).
 
-    Single source of truth for both ``scripts/evo2/troubleshooting/k_sweep.py`` (sensitivity sweep) and
-    ``embed_and_geodesic_species.py`` (which picks the lowest connected k from the result).
+    Single source of truth for both ``scripts/evo2/troubleshooting/k_sweep.py``
+    (sensitivity sweep) and ``embed_and_geodesic_species.py`` (which picks the
+    lowest connected k from the result).
     Returns one row per k with columns: k, n_components, connected, frac_finite_pairs,
     pearson_geodesic_phylo, spearman_geodesic_phylo.
     """

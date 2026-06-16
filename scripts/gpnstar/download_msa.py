@@ -19,10 +19,10 @@ Three dtype options:
     a single zarr store.  Required for the GPN-Star mammalian (m447) model.
 
 Usage:
-    uv run python scripts/download_msa.py synthetic
-    uv run python scripts/download_msa.py vertebrate
-    uv run python scripts/download_msa.py mammalian
-    uv run python scripts/download_msa.py mammalian --out data/multiz447way.zarr
+    uv run python scripts/gpnstar/download_msa.py synthetic
+    uv run python scripts/gpnstar/download_msa.py vertebrate
+    uv run python scripts/gpnstar/download_msa.py mammalian
+    uv run python scripts/gpnstar/download_msa.py mammalian --out data/multiz447way.zarr
 """
 
 import argparse
@@ -30,22 +30,24 @@ from pathlib import Path
 
 import numpy as np
 
-
 # ── Synthetic zarr ────────────────────────────────────────────────────────────
 
 
 def build_synthetic_zarr(out_path: Path, n_species: int = 100, context: int = 512):
     """Create a minimal zarr with random MSA data for clinvar_vs_benign positions.
 
-    np.frombuffer vocab-lookup pattern is adapted from make_msa_chrom in analysis/gpn-star/wga_processing/workflow/rules/msa.smk.
+    np.frombuffer vocab-lookup pattern is adapted from make_msa_chrom in
+    analysis/gpn-star/wga_processing/workflow/rules/msa.smk
     from https://github.com/songlab-cal/gpn, Gonzalo Benegas et al., MIT License.
     """
     import zarr
     from datasets import load_dataset
 
     print("Loading songlab/clinvar_vs_benign to determine required positions...")
-    ds = load_dataset("songlab/clinvar_vs_benign", split="test") # features: ['chrom', 'pos', 'ref', 'alt', 'label', 'id', 'review_status', 'consequence']
-    df = ds.to_pandas()[["chrom", "pos"]] 
+    ds = load_dataset(
+        "songlab/clinvar_vs_benign", split="test"
+    )  # features: ['chrom', 'pos', 'ref', 'alt', 'label', 'id', 'review_status', 'consequence']
+    df = ds.to_pandas()[["chrom", "pos"]]
     print(f"  {len(df)} variants across {df.chrom.nunique()} chromosomes")
 
     print(f"\nBuilding synthetic zarr at {out_path}  (n_species={n_species})...")
@@ -53,14 +55,15 @@ def build_synthetic_zarr(out_path: Path, n_species: int = 100, context: int = 51
     store = zarr.open(str(out_path), mode="w")
 
     rng = np.random.default_rng(42)
-    vocab = np.frombuffer(b"ACGT", dtype="S1") # lookup array [b'A' b'C' b'G' b'T']
+    vocab = np.frombuffer(b"ACGT", dtype="S1")  # lookup array [b'A' b'C' b'G' b'T']
 
     for chrom, grp in df.groupby("chrom"):
         min_pos = int(grp.pos.min()) - 1  # convert to 0-based
         max_pos = int(grp.pos.max())  # exclusive end
 
-        # Cover the full range of positions + context on both sides; GenomeMSA extracts needed sequences during inference
-        start = max(0, min_pos - context) 
+        # Cover the full range of positions + context on both sides;
+        # GenomeMSA extracts needed sequences during inference
+        start = max(0, min_pos - context)
         end = max_pos + context
         length = end - start
 
@@ -69,7 +72,7 @@ def build_synthetic_zarr(out_path: Path, n_species: int = 100, context: int = 51
         seq = vocab[data]  # (length, n_species) of S1 bytes
 
         # Pad front with gap characters ('-') to align data to chrom positions
-        total_length = end  # minimal length to cover all positions 
+        total_length = end  # minimal length to cover all positions
         full = np.full((total_length, n_species), b"-", dtype="S1")
         full[start:end] = seq
 
@@ -99,12 +102,14 @@ def download_real(out_path: Path):
     print("Downloading songlab/multiz100way-pigz (99.zarr.tar.gz, ~42 GB)...")
     print("WARNING: this file is ~42 GB. Ensure you have sufficient disk space.")
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_archive = Path(hf_hub_download(
-        repo_id="songlab/multiz100way-pigz",
-        filename="99.zarr.tar.gz",
-        local_dir=str(out_path.parent),
-        repo_type="dataset",
-    ))
+    tmp_archive = Path(
+        hf_hub_download(
+            repo_id="songlab/multiz100way-pigz",
+            filename="99.zarr.tar.gz",
+            local_dir=str(out_path.parent),
+            repo_type="dataset",
+        )
+    )
 
     print(f"\nExtracting to {out_path.parent} ...")
     subprocess.run(
@@ -143,12 +148,14 @@ def download_m447(out_path: Path):
 
     for shard in SHARDS:
         print(f"\n  Downloading shard {shard}...")
-        archive = Path(hf_hub_download(
-            repo_id="songlab/hg38_cactus447way",
-            filename=shard,
-            local_dir=str(out_path.parent),
-            repo_type="dataset",
-        ))
+        archive = Path(
+            hf_hub_download(
+                repo_id="songlab/hg38_cactus447way",
+                filename=shard,
+                local_dir=str(out_path.parent),
+                repo_type="dataset",
+            )
+        )
         print(f"  Extracting {archive} into {out_path} ...")
         subprocess.run(
             ["tar", "-xzf", str(archive), "-C", str(out_path)],
@@ -191,6 +198,11 @@ def parse_args():
         default=100,
         help="Number of species columns in synthetic zarr (default: 100)",
     )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-download/extract even if the target zarr already exists.",
+    )
     return p.parse_args()
 
 
@@ -204,6 +216,15 @@ def main():
         out_path = Path("data/multiz447way.zarr")
     else:
         out_path = Path("data/multiz100way.zarr")
+
+    # Idempotency: an already-extracted zarr is the only thing downstream needs.
+    # Skip the multi-GB re-download + re-extract (synthetic is cheap, so rebuild it).
+    if args.dtype != "synthetic" and out_path.exists() and not args.force:
+        print(
+            f"MSA zarr already present at {out_path} — skipping download "
+            f"(use --force to re-download)."
+        )
+        return
 
     if args.dtype == "synthetic":
         build_synthetic_zarr(out_path, n_species=args.n_species)

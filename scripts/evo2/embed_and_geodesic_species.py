@@ -5,8 +5,8 @@ Lite replication of https://www.goodfire.ai/research/phylogeny-manifold using 50
 
 Pipeline:
   1. Load manifest CSV (data/species/gtdb_500_manifest.csv).
-  2. Load FASTA sequences from data/species/sequences/.
-  3. Embed each species with Evo2 7B (mean-pool over 10 windows).
+  2. Load FASTA sequences from data/species/sequences_5pct/.
+  3. Embed each species with Evo2 7B (mean-pool over sampled windows).
   4. Build k-NN graph with angular-distance edge weights.
   5. Compute all-pairs geodesic distances via Dijkstra.
   6. Download + parse GTDB bac120.tree, compute 500x500 patristic distance matrix.
@@ -21,32 +21,68 @@ Usage:
 
 import argparse
 import datetime
-import urllib.request
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import torch
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import connected_components, shortest_path
 from scipy.stats import spearmanr
-from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
+
+# Shared geodesic helpers live in scripts/geodesic_utils.py (one level up).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Phylogenetic baseline (GTDB patristic distances) lives in a sibling module.
+from calculate_species_baselines import compute_patristic_distances, download_tree  # noqa: E402
+from geodesic_utils import (  # noqa: E402
+    build_knn_graph,
+    compute_geodesic,
+    k_sweep_correlations,
+    mantel_test,
+    upper_triangle,
+    within_between_analysis,
+)
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
 MODEL_NAME = "evo2_7b"
-EMBED_LAYER = "blocks.24.mlp.l3"
+# Tap the RESIDUAL STREAM leaving block 24, not the MLP sublayer delta. A block's
+# forward returns (u, None) where u is the residual stream, so hooking the block
+# module `blocks.24` (vs `blocks.24.mlp.l3`, the pre-add MLP write) yields the
+# accumulated representation. The layer/tensor sweep (scripts/evo2/troubleshooting/layer_sweep.py)
+# showed this lifts geodesic-vs-phylo Pearson from ~0.36 → ~0.72, ~matching Goodfire;
+# `mlp.l3` carries a much weaker cosine geometry. Layer 24 of 32 confirmed (24 > 23).
+EMBED_LAYER = "blocks.24"
 
 MANIFEST_PATH = Path("data/species/gtdb_500_manifest.csv")
-SEQUENCES_DIR = Path("data/species/sequences")
-TREE_URL = "https://data.gtdb.ecogenomic.org/releases/latest/bac120.tree"
+SEQUENCES_DIR = Path("data/species/sequences_5pct")
 TREE_PATH = Path("data/species/bac120.tree")
 EMBED_DIR = Path("data/species/embeddings")
 EMBED_NPY = EMBED_DIR / "evo2_species_embeddings.npy"
 EMBED_META = EMBED_DIR / "metadata.csv"
+# Partial checkpoint flushed during embedding (cumulative: rewritten with all species
+# done so far, every CHECKPOINT_EVERY) so a subset analysis can run on completed
+# species while the full run continues. See preview_subset.py.
+EMBED_NPY_PARTIAL = EMBED_DIR / "embeddings_partial.npy"
+EMBED_META_PARTIAL = EMBED_DIR / "metadata_partial.csv"
+CHECKPOINT_EVERY = 25
 
-N_WINDOWS = 10  # sequences per species
+# Each stored window is FETCH_BP long; the first (FETCH_BP - EMBED_BP) bp prime the
+# autoregressive model (burn-in context) and only the final EMBED_BP positions are
+# pooled into the embedding, so the pooled tokens all have sufficient left-context
+# (Goodfire phylogeny-manifold method). Must match KEEP_BP in download_species_sequences.py.
+EMBED_BP = 2000
+
+# Goodfire's rule for the k-NN graph is "use the smallest K giving a single connected
+# component". That K scales with N — they report K=27 for 2400+ species — so hard-coding
+# their value over-densifies our 499-species graph, collapsing geodesics toward direct
+# angular distances and dragging the geodesic↔patristic correlation from ~0.50 (at the
+# true minimum K) down to ~0.28 (at K=27). Instead the pipeline sweeps these small K and
+# picks the lowest one that connects the graph at run time (the shared
+# geodesic_utils.k_sweep_correlations, also used by
+# scripts/evo2/troubleshooting/k_sweep.py). The few K
+# past the minimum are kept only as a sensitivity record in k_sweep.csv.
+K_SWEEP_VALUES = list(range(2, 11))
 
 # ── Step 2: Read FASTA sequences ───────────────────────────────────────────────
 
@@ -74,13 +110,14 @@ def read_fasta_sequences(fasta_path: Path) -> list[str]:
 # ── Step 3: Evo2 embedding ─────────────────────────────────────────────────────
 
 
-def embed_species(fasta_path: Path, model, device: str) -> np.ndarray:
-    """Embed a single species by mean-pooling 10 windows.
+def embed_species(fasta_path: Path, model, device: str) -> tuple[np.ndarray, int]:
+    """Embed a single species by mean-pooling sampled windows.
 
-    For each of the 10 sequences in fasta_path:
-      - tokenize -> forward pass with return_embeddings=True
-      - mean-pool over sequence length -> (4096,) float32 vector
-    Then average the 10 per-window vectors -> (4096,) species vector.
+    For each sequence in fasta_path:
+      - tokenize the full window -> forward pass with return_embeddings=True
+      - mean-pool over only the final EMBED_BP token positions -> (4096,) float32 vector
+        (the leading positions are burn-in context, not pooled)
+    Then average the per-window vectors -> (4096,) species vector.
     """
     sequences = read_fasta_sequences(fasta_path)
     if len(sequences) == 0:
@@ -89,26 +126,38 @@ def embed_species(fasta_path: Path, model, device: str) -> np.ndarray:
     window_vecs: list[np.ndarray] = []
     for seq_str in sequences:
         input_ids = (
-            torch.tensor(model.tokenizer.tokenize(seq_str), dtype=torch.int)
-            .unsqueeze(0)
-            .to(device)
+            torch.tensor(model.tokenizer.tokenize(seq_str), dtype=torch.int).unsqueeze(0).to(device)
         )
         with torch.no_grad():
-            _, emb_dict = model(
-                input_ids, return_embeddings=True, layer_names=[EMBED_LAYER]
-            )
-        emb = emb_dict[EMBED_LAYER][0].float().mean(dim=0).cpu().numpy()  # (4096,)
+            _, emb_dict = model(input_ids, return_embeddings=True, layer_names=[EMBED_LAYER])
+        # (L, 4096): pool only the final EMBED_BP positions; the rest are burn-in
+        # context. Evo2 uses single-nucleotide tokens, so token index ≈ bp index.
+        # If a window is shorter than EMBED_BP (e.g. legacy 2000 bp data), [-EMBED_BP:]
+        # safely keeps all positions.
+        win_emb = emb_dict[EMBED_LAYER][0].float()  # (L, 4096)
+        emb = win_emb[-EMBED_BP:].mean(dim=0).cpu().numpy()  # (4096,)
         window_vecs.append(emb)
 
-    return np.stack(window_vecs, axis=0).mean(axis=0).astype(np.float32)  # (4096,)
+    species_vec = np.stack(window_vecs, axis=0).mean(axis=0).astype(np.float32)
+    return species_vec, len(sequences)
 
 
 def compute_embeddings(
     manifest: pd.DataFrame,
     sequences_dir: Path,
     device: str,
+    checkpoint_npy: Path | None = None,
+    checkpoint_meta: Path | None = None,
+    checkpoint_every: int = CHECKPOINT_EVERY,
 ) -> tuple[np.ndarray, pd.DataFrame]:
-    """Embed all species and return (embeddings array, metadata DataFrame)."""
+    """Embed all species and return (embeddings array, metadata DataFrame).
+
+    If checkpoint paths are given, the partial embeddings + metadata (all species
+    completed so far) are flushed to disk every `checkpoint_every` species via an
+    atomic write, so a subset analysis can run while the full embedding continues.
+    Flushing is cumulative — each write contains every species done so far and never
+    drops earlier ones.
+    """
     from evo2 import Evo2
 
     print(f"  Loading {MODEL_NAME} (downloads on first run ~14 GB)...")
@@ -119,211 +168,44 @@ def compute_embeddings(
     embeddings: list[np.ndarray] = []
     meta_rows: list[dict] = []
 
-    for _, row in tqdm(manifest.iterrows(), total=len(manifest), desc="Embedding species"):
+    def flush_checkpoint() -> None:
+        if checkpoint_npy is None or checkpoint_meta is None:
+            return
+        checkpoint_npy.parent.mkdir(parents=True, exist_ok=True)
+        npy_tmp = checkpoint_npy.with_name(checkpoint_npy.name + ".tmp.npy")
+        np.save(npy_tmp, np.stack(embeddings, axis=0))
+        npy_tmp.replace(checkpoint_npy)  # atomic
+        meta_tmp = checkpoint_meta.with_name(checkpoint_meta.name + ".tmp")
+        pd.DataFrame(meta_rows).to_csv(meta_tmp, index=False)
+        meta_tmp.replace(checkpoint_meta)
+        tqdm.write(f"    [checkpoint] flushed {len(embeddings)} embeddings → {checkpoint_npy}")
+
+    for i, (_, row) in enumerate(
+        tqdm(manifest.iterrows(), total=len(manifest), desc="Embedding species")
+    ):
         ncbi_acc = row["ncbi_accession"]
         fasta_path = sequences_dir / f"{ncbi_acc}.fasta"
         if not fasta_path.exists():
             raise FileNotFoundError(f"FASTA not found: {fasta_path}")
-        emb = embed_species(fasta_path, model, device)
+        emb, n_windows = embed_species(fasta_path, model, device)
         embeddings.append(emb)
         meta_rows.append(
             {
                 "ncbi_accession": ncbi_acc,
+                "gtdb_accession": row["gtdb_accession"],
                 "species_name": row["species_name"],
                 "gtdb_phylum": row["gtdb_phylum"],
                 "gtdb_genus": row["gtdb_genus"],
+                "n_windows": n_windows,
+                "sequences_dir": str(sequences_dir),
             }
         )
+        if (i + 1) % checkpoint_every == 0:
+            flush_checkpoint()
 
-    emb_array = np.stack(embeddings, axis=0)  # (500, 4096)
+    emb_array = np.stack(embeddings, axis=0)  # (N, 4096)
     meta_df = pd.DataFrame(meta_rows)
     return emb_array, meta_df
-
-
-# ── Step 4: k-NN graph with angular distances ──────────────────────────────────
-
-
-def cosine_to_angular(cosine_dist: np.ndarray) -> np.ndarray:
-    return np.arccos(np.clip(1.0 - cosine_dist, -1.0, 1.0))
-
-
-def build_knn_graph(embeddings: np.ndarray, k: int) -> np.ndarray:
-    N = len(embeddings)
-    nn = NearestNeighbors(n_neighbors=k, metric="cosine", algorithm="brute")
-    nn.fit(embeddings)
-    cosine_dists, indices = nn.kneighbors(embeddings)
-    angular_dists = cosine_to_angular(cosine_dists)
-
-    W = np.zeros((N, N))
-    for i in range(N):
-        for j_pos in range(k):
-            j = indices[i, j_pos]
-            w = angular_dists[i, j_pos]
-            if W[j, i] > 0:
-                sym_w = min(w, W[j, i])
-                W[i, j] = sym_w
-                W[j, i] = sym_w
-            else:
-                W[i, j] = w
-    return W
-
-
-def find_min_connected_k(embeddings: np.ndarray, k_min: int = 3) -> tuple[int, np.ndarray]:
-    N = len(embeddings)
-    for k in range(k_min, N):
-        W = build_knn_graph(embeddings, k)
-        n_components, _ = connected_components(
-            csgraph=csr_matrix(W), directed=False, return_labels=True
-        )
-        print(f"  k={k}: {n_components} component(s)")
-        if n_components == 1:
-            print(f"  => Fully connected at k={k}")
-            return k, W
-    raise ValueError(f"Graph not connected even at k={N - 1}")
-
-
-# ── Step 5: All-pairs geodesic distances ───────────────────────────────────────
-
-
-def compute_geodesic(W: np.ndarray) -> np.ndarray:
-    geo = shortest_path(csr_matrix(W), method="auto", directed=False)
-    assert not np.any(np.isinf(geo)), "Geodesic matrix has inf — graph is not fully connected"
-    return geo
-
-
-# ── Step 6: GTDB patristic distances ───────────────────────────────────────────
-
-
-def download_tree(tree_path: Path) -> None:
-    """Download bac120.tree if not already present."""
-    tree_path.parent.mkdir(parents=True, exist_ok=True)
-    print(f"  Downloading GTDB tree from {TREE_URL} ...")
-    urllib.request.urlretrieve(TREE_URL, str(tree_path))
-    print(f"  Saved to {tree_path}  ({tree_path.stat().st_size / 1e6:.1f} MB)")
-
-
-def compute_patristic_distances(
-    tree_path: Path,
-    gtdb_accessions: list[str],
-) -> tuple[np.ndarray, np.ndarray]:
-    """Compute pairwise patristic distances for the given GTDB accessions.
-
-    Returns (D, present_mask) where present_mask[i] is True iff gtdb_accessions[i]
-    is a leaf in the tree. Distances for absent taxa are left as 0 and the caller
-    should restrict any downstream comparison to present taxa via present_mask.
-
-    The GTDB bac120 tree has ~100K leaves. dendropy's phylogenetic_distance_matrix()
-    materializes ALL pairwise distances among every leaf (~10^10 pairs for the full
-    tree), which exhausts memory. So we first prune the tree down to just our target
-    taxa, then compute the (small) distance matrix on the pruned tree. Tree leaf
-    names match gtdb_accession (e.g. "GB_GCA_000001405.15").
-    """
-    import dendropy
-
-    print("  Parsing GTDB tree with dendropy...")
-    # preserve_underscores=True: Newick treats unquoted underscores as spaces by
-    # default, which would turn "RS_GCF_..." leaf labels into "RS GCF ..." and break
-    # matching against our gtdb_accession values.
-    tree = dendropy.Tree.get(
-        path=str(tree_path), schema="newick", preserve_underscores=True
-    )
-
-    target_set = set(gtdb_accessions)
-    all_labels = {t.label for t in tree.taxon_namespace}
-    present = sorted(target_set & all_labels)
-    missing = target_set - all_labels
-    if missing:
-        print(
-            f"  WARNING: {len(missing)}/{len(target_set)} accessions not found in "
-            f"tree (their patristic distances left as 0): "
-            f"{sorted(missing)[:5]}{'...' if len(missing) > 5 else ''}"
-        )
-
-    print(f"  Pruning tree to {len(present)} target taxa...")
-    tree.retain_taxa_with_labels(present)
-
-    print("  Computing patristic distance matrix on pruned tree...")
-    pdm = tree.phylogenetic_distance_matrix()
-
-    # taxon_namespace still references the original taxa; map labels -> taxon objects
-    # that survive on the pruned tree.
-    taxon_map = {t.label: t for t in tree.taxon_namespace if t.label in target_set}
-
-    N = len(gtdb_accessions)
-    D = np.zeros((N, N), dtype=np.float32)
-    for i in range(N):
-        t_i = taxon_map.get(gtdb_accessions[i])
-        if t_i is None:
-            continue
-        for j in range(i + 1, N):
-            t_j = taxon_map.get(gtdb_accessions[j])
-            if t_j is None:
-                continue
-            d = pdm.patristic_distance(t_i, t_j)
-            D[i, j] = D[j, i] = max(0.0, d)
-
-    present_mask = np.array([a in taxon_map for a in gtdb_accessions], dtype=bool)
-    return D, present_mask
-
-
-# ── Step 7: Spearman rho + Mantel test ─────────────────────────────────────────
-
-
-def upper_triangle(matrix: np.ndarray) -> np.ndarray:
-    idx = np.triu_indices(matrix.shape[0], k=1)
-    return matrix[idx]
-
-
-def mantel_test(
-    mat_a: np.ndarray,
-    mat_b: np.ndarray,
-    n_perms: int = 9999,
-    seed: int = 42,
-) -> tuple[float, float]:
-    rng = np.random.default_rng(seed)
-    N = mat_a.shape[0]
-    b_flat = upper_triangle(mat_b)
-    obs_rho, _ = spearmanr(upper_triangle(mat_a), b_flat)
-    count_extreme = 0
-    for _ in range(n_perms):
-        perm = rng.permutation(N)
-        perm_flat = upper_triangle(mat_a[np.ix_(perm, perm)])
-        perm_rho, _ = spearmanr(perm_flat, b_flat)
-        if perm_rho >= obs_rho:
-            count_extreme += 1
-    p_value = (count_extreme + 1) / (n_perms + 1)
-    return float(obs_rho), float(p_value)
-
-
-# ── Step 8: Within vs. between phylum analysis ─────────────────────────────────
-
-
-def within_between_analysis(
-    geodesic: np.ndarray,
-    groups: np.ndarray,
-    n_perms: int = 9999,
-    seed: int = 42,
-) -> tuple[np.ndarray, np.ndarray, float, float]:
-    """Compare within-phylum vs between-phylum geodesic distances via permutation test."""
-    N = len(groups)
-    pairs_i, pairs_j = np.triu_indices(N, k=1)
-    pair_dists = geodesic[pairs_i, pairs_j]
-    same = groups[pairs_i] == groups[pairs_j]
-
-    within = pair_dists[same]
-    between = pair_dists[~same]
-    obs_ratio = between.mean() / within.mean()
-
-    rng = np.random.default_rng(seed)
-    count = 0
-    for _ in range(n_perms):
-        pf = rng.permutation(groups)
-        ps = pf[pairs_i] == pf[pairs_j]
-        if ps.any() and (~ps).any():
-            if pair_dists[~ps].mean() / pair_dists[ps].mean() >= obs_ratio:
-                count += 1
-    p_val = (count + 1) / (n_perms + 1)
-    return within, between, float(obs_ratio), float(p_val)
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
@@ -345,8 +227,8 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--sequences-dir",
-        default="data/species/sequences",
-        help="Directory containing per-species FASTA files (default: data/species/sequences/)",
+        default=str(SEQUENCES_DIR),
+        help="Directory containing per-species FASTA files (default: data/species/sequences_5pct/)",
     )
     return p.parse_args()
 
@@ -373,9 +255,7 @@ def main() -> None:
     # Not every species downloaded successfully — some assemblies are fragmented
     # drafts whose longest contig is shorter than one window. Keep only species
     # that actually have a FASTA on disk so every downstream array aligns.
-    has_fasta = manifest["ncbi_accession"].apply(
-        lambda a: (sequences_dir / f"{a}.fasta").exists()
-    )
+    has_fasta = manifest["ncbi_accession"].apply(lambda a: (sequences_dir / f"{a}.fasta").exists())
     n_missing = int((~has_fasta).sum())
     if n_missing:
         missing = manifest.loc[~has_fasta, "ncbi_accession"].tolist()
@@ -388,7 +268,7 @@ def main() -> None:
     N = len(manifest)
     ncbi_accessions = manifest["ncbi_accession"].tolist()
     gtdb_accessions = manifest["gtdb_accession"].tolist()
-    species_names = manifest["species_name"].tolist()
+    manifest["species_name"].tolist()
     phyla = np.array(manifest["gtdb_phylum"].tolist())
 
     phylum_counts = manifest["gtdb_phylum"].value_counts()
@@ -403,8 +283,39 @@ def main() -> None:
         print(f"  Loading cached embeddings from {EMBED_NPY}")
         embeddings = np.load(EMBED_NPY)
         meta_df = pd.read_csv(EMBED_META)
+        # The cache lives at a fixed path, not keyed to the manifest. Downstream code
+        # matches embedding row i to ncbi_accessions[i] purely by position, so a cache
+        # built from a different or reordered manifest would silently mislabel every
+        # species. Refuse to reuse it unless the accessions match exactly (same set,
+        # same order). The row-count assert below is only a coarse backstop.
+        cached_accessions = meta_df["ncbi_accession"].tolist()
+        if cached_accessions != ncbi_accessions:
+            raise ValueError(
+                f"Cached embeddings in {EMBED_NPY} do not match the current manifest "
+                f"(cached {len(cached_accessions)} species vs current {len(ncbi_accessions)}, "
+                "or same count in a different order/with different accessions). "
+                "Re-run with --force-reembed to rebuild the cache."
+            )
+        expected_sequences_dir = str(sequences_dir)
+        if "sequences_dir" not in meta_df.columns:
+            raise ValueError(
+                f"Cached embeddings in {EMBED_NPY} do not record sequences_dir. "
+                "Re-run with --force-reembed to rebuild the cache."
+            )
+        cached_sequence_dirs = meta_df["sequences_dir"].astype(str).tolist()
+        if cached_sequence_dirs != [expected_sequences_dir] * len(cached_accessions):
+            raise ValueError(
+                f"Cached embeddings in {EMBED_NPY} were built from a different "
+                "sequence directory. Re-run with --force-reembed to rebuild the cache."
+            )
     else:
-        embeddings, meta_df = compute_embeddings(manifest, sequences_dir, device)
+        embeddings, meta_df = compute_embeddings(
+            manifest,
+            sequences_dir,
+            device,
+            checkpoint_npy=EMBED_NPY_PARTIAL,
+            checkpoint_meta=EMBED_META_PARTIAL,
+        )
         np.save(EMBED_NPY, embeddings)
         meta_df.to_csv(EMBED_META, index=False)
         print(f"  Saved embeddings : {EMBED_NPY}  shape={embeddings.shape}")
@@ -414,23 +325,8 @@ def main() -> None:
     assert embeddings.shape[0] == N, f"Expected {N} rows, got {embeddings.shape[0]}"
     assert embeddings.shape[1] == 4096, f"Expected dim 4096, got {embeddings.shape[1]}"
 
-    # ── 4. k-NN graph ─────────────────────────────────────────────────────────
-    print("\n[4] Building k-NN graph with angular distances")
-    k_opt, W = find_min_connected_k(embeddings, k_min=3)
-    print(f"  Optimal k: {k_opt}")
-
-    # ── 5. Geodesic distances ─────────────────────────────────────────────────
-    print("\n[5] Computing all-pairs geodesic distances")
-    geodesic = compute_geodesic(W)
-    geo_npy = OUT_DIR / "evo2_species_geodesic.npy"
-    np.save(geo_npy, geodesic)
-    df_geo = pd.DataFrame(geodesic, index=ncbi_accessions, columns=ncbi_accessions)
-    df_geo.to_csv(OUT_DIR / "evo2_species_geodesic_labeled.csv")
-    print(f"  Saved geodesic matrix : {geo_npy}  shape={geodesic.shape}")
-    print(f"  Geodesic range        : [{geodesic.min():.4f}, {geodesic.max():.4f}]")
-
-    # ── 6. GTDB patristic distances ────────────────────────────────────────────
-    print("\n[6] GTDB patristic distances")
+    # ── 4. GTDB patristic distances (needed to score the k-sweep below) ─────────
+    print("\n[4] GTDB patristic distances")
     if not TREE_PATH.exists():
         download_tree(TREE_PATH)
     else:
@@ -439,7 +335,15 @@ def main() -> None:
     patristic_cache = OUT_DIR / "gtdb_patristic_distances.csv"
     if patristic_cache.exists():
         print(f"  Loading cached patristic matrix from {patristic_cache}")
-        patristic = pd.read_csv(patristic_cache, index_col=0).values.astype(np.float32)
+        pat_df = pd.read_csv(patristic_cache, index_col=0)
+        # Rows are matched to gtdb_accessions[i] by position, so reject a cache whose
+        # index doesn't match the current manifest (same staleness risk as embeddings).
+        if pat_df.index.astype(str).tolist() != gtdb_accessions:
+            raise ValueError(
+                f"Cached patristic matrix in {patristic_cache} does not match the current "
+                "manifest (different/reordered accessions). Delete it to rebuild."
+            )
+        patristic = pat_df.values.astype(np.float32)
         present_mask = (patristic != 0).any(axis=1)
     else:
         patristic, present_mask = compute_patristic_distances(TREE_PATH, gtdb_accessions)
@@ -448,11 +352,49 @@ def main() -> None:
         print(f"  Saved patristic matrix : {patristic_cache}  shape={patristic.shape}")
 
     print(f"  Patristic range : [{patristic.min():.4f}, {patristic.max():.4f}]")
+    n_present = int(present_mask.sum())
+    if n_present < N:
+        print(f"  {n_present}/{N} species are present in the GTDB tree")
+
+    # ── 5. k-NN graph: sweep k, pick the LOWEST connected k (Goodfire's rule) ────
+    print("\n[5] k-NN k-sweep (geodesic↔patristic vs k; choosing lowest connected k)")
+    sweep_df = k_sweep_correlations(
+        embeddings, patristic, K_SWEEP_VALUES, present_mask=present_mask
+    )
+    sweep_df.to_csv(OUT_DIR / "k_sweep.csv", index=False)
+    connected_ks = sweep_df[sweep_df["connected"]]
+    if connected_ks.empty:
+        raise ValueError(f"No k in {K_SWEEP_VALUES} connects the graph; widen K_SWEEP_VALUES.")
+    k_opt = int(connected_ks["k"].min())
+    print(f"  {'k':>3}  {'comp':>4}  {'%finite':>7}  {'Pearson':>8}  {'Spearman':>9}")
+    for _, r in sweep_df.iterrows():
+        marker = (
+            "  <- chosen"
+            if int(r["k"]) == k_opt
+            else ("" if r["connected"] else "  (disconnected)")
+        )
+        print(
+            f"  {int(r['k']):>3}  {int(r['n_components']):>4}  "
+            f"{r['frac_finite_pairs'] * 100:>6.1f}%  "
+            f"{r['pearson_geodesic_phylo']:>8.4f}  {r['spearman_geodesic_phylo']:>9.4f}{marker}"
+        )
+    print(f"  Saved k-sweep table : {OUT_DIR / 'k_sweep.csv'}")
+    print(f"  Lowest connected k (non-self neighbors): {k_opt}")
+
+    # ── 6. Geodesic distances at the chosen k ───────────────────────────────────
+    print(f"\n[6] All-pairs geodesic distances at k={k_opt}")
+    W = build_knn_graph(embeddings, k_opt)
+    geodesic = compute_geodesic(W)
+    geo_npy = OUT_DIR / "evo2_species_geodesic.npy"
+    np.save(geo_npy, geodesic)
+    df_geo = pd.DataFrame(geodesic, index=ncbi_accessions, columns=ncbi_accessions)
+    df_geo.to_csv(OUT_DIR / "evo2_species_geodesic_labeled.csv")
+    print(f"  Saved geodesic matrix : {geo_npy}  shape={geodesic.shape}")
+    print(f"  Geodesic range        : [{geodesic.min():.4f}, {geodesic.max():.4f}]")
 
     # Restrict every downstream comparison to species that are leaves in the tree.
     # Species absent from the tree have all-zero patristic rows and would otherwise
     # swamp the correlation with meaningless zeros.
-    n_present = int(present_mask.sum())
     if n_present < N:
         print(
             f"  Restricting correlation/within-between analysis to {n_present}/{N} "

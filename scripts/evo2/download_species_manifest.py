@@ -1,14 +1,22 @@
-"""Download GTDB bacterial metadata, stratified-sample 500 species by phylum, write manifest CSV."""
+"""Download GTDB bacterial metadata, sample species, write manifest CSV.
 
-import re
+Two sampling strategies (--sampling):
+  wide  phylum-proportional across ALL phyla (broad, in-distribution; default)
+  deep  dense+equal within the top-N largest families (narrow Goodfire-style footprint)
+"""
+
+import argparse
 import sys
 import urllib.request
 from pathlib import Path
 
 import pandas as pd
 
-METADATA_URL = "https://data.gtdb.ecogenomic.org/releases/latest/bac120_metadata.tsv.gz"
-TREE_URL = "https://data.gtdb.ecogenomic.org/releases/latest/bac120.tree"
+# Pinned to GTDB r220.0 to match Evo 2's training data (OpenGenome2)
+METADATA_URL = (
+    "https://data.gtdb.ecogenomic.org/releases/release220/220.0/bac120_metadata_r220.tsv.gz"
+)
+TREE_URL = "https://data.gtdb.ecogenomic.org/releases/release220/220.0/bac120_r220.tree"
 
 TARGET_N = 500
 RANDOM_STATE = 42
@@ -28,40 +36,24 @@ def download_file(url: str, dest: Path) -> None:
 
 def load_metadata(gz_path: Path) -> pd.DataFrame:
     print("Loading metadata TSV...")
-    # GTDB metadata files sometimes have a leading comment line starting with '#'.
-    # pandas read_csv with comment='#' handles that gracefully.
     df = pd.read_csv(
         gz_path,
         sep="\t",
-        comment="#",
+        comment="#",  # handle potential leading comment line
         low_memory=False,
     )
     print(f"  Loaded {len(df):,} rows, {len(df.columns)} columns")
     return df
 
 
-def parse_taxonomy(taxonomy_str: str) -> tuple[str, str]:
-    """Return (phylum, genus) as plain strings with rank prefix stripped."""
-    parts = taxonomy_str.split(";")
-    phylum = next((p[3:] for p in parts if p.startswith("p__")), "")
-    genus = next((p[3:] for p in parts if p.startswith("g__")), "")
-    return phylum, genus
+def parse_taxonomy(taxonomy_str: str) -> tuple[str, str, str]:
+    """Return (phylum, genus, species) with GTDB rank prefixes stripped."""
+    ranks = {p[:3]: p[3:] for p in taxonomy_str.split(";")}
+    return ranks.get("p__", ""), ranks.get("g__", ""), ranks.get("s__", "")
 
 
-def extract_species_name(taxonomy_str: str) -> str:
-    """Return species name as plain string with 's__' prefix stripped."""
-    parts = taxonomy_str.split(";")
-    species = next((p[3:] for p in parts if p.startswith("s__")), "")
-    return species
-
-
-def strip_prefix(gtdb_accession: str) -> str:
-    """Strip GB_/RS_ prefix from GTDB accession to recover plain NCBI accession."""
-    return re.sub(r"^(GB_|RS_)", "", gtdb_accession)
-
-
-def stratified_sample(df: pd.DataFrame, target: int, random_state: int) -> pd.DataFrame:
-    """Sample exactly target rows stratified by gtdb_phylum."""
+def sample_wide(df: pd.DataFrame, target: int, random_state: int) -> pd.DataFrame:
+    """Sample exactly target rows stratified by gtdb_phylum, proportional to phylum abundance."""
     phylum_counts = df["gtdb_phylum"].value_counts()
     total = len(df)
 
@@ -75,12 +67,11 @@ def stratified_sample(df: pd.DataFrame, target: int, random_state: int) -> pd.Da
     delta = target - current_total
 
     if delta != 0:
-        # Sort phyla by count descending (largest first) for tie-breaking
+        # fix up rounding by adjusting quotas, prioritizing larger phyla to preserve distribution
         sorted_phyla = phylum_counts.index.tolist()  # already sorted by value_counts
-        # Adjust from the largest phyla
         i = 0
         while delta != 0 and i < len(sorted_phyla):
-            phylum = sorted_phyla[i % len(sorted_phyla)]
+            phylum = sorted_phyla[i]
             available = phylum_counts[phylum]
             if delta > 0:
                 if quotas[phylum] < available:
@@ -105,9 +96,9 @@ def stratified_sample(df: pd.DataFrame, target: int, random_state: int) -> pd.Da
     if len(result) > target:
         result = result.iloc[:target]
     elif len(result) < target:
-        # Fill from unsampled rows, largest phyla first
-        sampled_ids = set(result.index)
-        remainder = df[~df.index.isin(sampled_ids)].sort_values(
+        # Fill from not-yet-sampled species (matched on accession), largest phyla first
+        sampled_ids = set(result["gtdb_accession"])
+        remainder = df[~df["gtdb_accession"].isin(sampled_ids)].sort_values(
             "gtdb_phylum",
             key=lambda col: col.map(phylum_counts),
             ascending=False,
@@ -118,7 +109,55 @@ def stratified_sample(df: pd.DataFrame, target: int, random_state: int) -> pd.Da
     return result.reset_index(drop=True)
 
 
+def sample_deep(
+    df: pd.DataFrame, n_families: int, per_family: int, random_state: int
+) -> pd.DataFrame:
+    """Sample per_family species from each of the top n_families largest families."""
+    top_families = df["gtdb_family"].value_counts().head(n_families).index.tolist()
+
+    sampled_frames = []
+    for family in top_families:
+        group = df[df["gtdb_family"] == family]
+        n_actual = min(per_family, len(group))
+        sampled_frames.append(group.sample(n=n_actual, random_state=random_state))
+
+    return pd.concat(sampled_frames, ignore_index=True).reset_index(drop=True)
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument(
+        "--sampling",
+        choices=["wide", "deep"],
+        default="wide",
+        help="wide=phylum-proportional across all phyla; deep=dense within top families",
+    )
+    p.add_argument(
+        "--target", type=int, default=TARGET_N, help="total species to sample (wide mode)"
+    )
+    p.add_argument(
+        "--n-families",
+        type=int,
+        default=24,
+        help="number of largest families to draw from (deep mode)",
+    )
+    p.add_argument(
+        "--per-family", type=int, default=100, help="species sampled per family (deep mode)"
+    )
+    p.add_argument("--seed", type=int, default=RANDOM_STATE)
+    p.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="output manifest path (default depends on --sampling)",
+    )
+    return p.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     # --- Download files ---
@@ -136,22 +175,20 @@ def main() -> None:
         print(f"ERROR: Missing columns in metadata: {missing}", file=sys.stderr)
         sys.exit(1)
 
-    # Keep only GTDB species representatives. The bac120.tree (our phylogenetic
-    # ground truth) contains exactly the representative genomes, so sampling
-    # non-representatives yields species with no position in the tree.
+    # Keep only GTDB species representatives for bac120.tree (phylogenetic baseline)
     before = len(df)
     df = df[df["gtdb_representative"] == "t"].copy()
     print(f"  Kept {len(df):,} species representatives (of {before:,} total genomes)")
 
     # Parse taxonomy
-    taxonomy_parsed = df["gtdb_taxonomy"].apply(parse_taxonomy)
-    df["gtdb_phylum"] = [t[0] for t in taxonomy_parsed]
-    df["gtdb_genus"] = [t[1] for t in taxonomy_parsed]
-    df["species_name"] = df["gtdb_taxonomy"].apply(extract_species_name)
+    df[["gtdb_phylum", "gtdb_genus", "species_name"]] = df["gtdb_taxonomy"].apply(
+        lambda s: pd.Series(parse_taxonomy(s))
+    )
+    df["gtdb_family"] = df["gtdb_taxonomy"].str.extract(r"f__([^;]*)")[0].fillna("")
 
     # Strip accession prefix
     df["gtdb_accession"] = df["accession"]
-    df["ncbi_accession"] = df["accession"].apply(strip_prefix)
+    df["ncbi_accession"] = df["accession"].str.replace(r"^(GB_|RS_)", "", regex=True)
 
     # Drop rows with empty phylum (unassigned)
     before = len(df)
@@ -160,16 +197,21 @@ def main() -> None:
     if before != after:
         print(f"  Dropped {before - after:,} rows with empty/unassigned phylum")
 
-    # Sort for reproducibility
+    # Sort for reproducibility (helpful if newer GTDB release used)
     df = df.sort_values("gtdb_accession").reset_index(drop=True)
 
     print(f"  {len(df):,} rows with assigned phylum across {df['gtdb_phylum'].nunique()} phyla")
 
-    # --- Stratified sample ---
-    print(f"Stratified sampling {TARGET_N} species by phylum...")
-    sampled = stratified_sample(df, TARGET_N, RANDOM_STATE)
-
-    assert len(sampled) == TARGET_N, f"Expected {TARGET_N} rows, got {len(sampled)}"
+    # --- Sample ---
+    if args.sampling == "wide":
+        print(f"Wide sampling {args.target} species stratified by phylum...")
+        sampled = sample_wide(df, args.target, args.seed)
+        assert len(sampled) == args.target, f"Expected {args.target} rows, got {len(sampled)}"
+        out_path = args.out or DATA_DIR / f"gtdb_{args.target}_manifest.csv"
+    else:
+        print(f"Deep sampling {args.per_family}/family from top {args.n_families} families...")
+        sampled = sample_deep(df, args.n_families, args.per_family, args.seed)
+        out_path = args.out or DATA_DIR / f"gtdb_top{args.n_families}_dense_manifest.csv"
 
     # --- Write manifest ---
     manifest_cols = [
@@ -181,14 +223,14 @@ def main() -> None:
         "genome_size",
     ]
     manifest = sampled[manifest_cols].copy()
-    manifest.to_csv(MANIFEST_PATH, index=False)
-    print(f"Wrote manifest: {MANIFEST_PATH} ({len(manifest)} rows)")
+    manifest.to_csv(out_path, index=False)
+    print(f"Wrote manifest: {out_path} ({len(manifest)} rows)")
 
-    # --- Print phylum distribution ---
-    print("\nPhylum distribution in sample:")
-    dist = manifest["gtdb_phylum"].value_counts()
-    for phylum, count in dist.items():
-        print(f"  {phylum:<50s} {count:>4d}")
+    # --- Print distribution ---
+    group_col = "gtdb_phylum" if args.sampling == "wide" else "gtdb_family"
+    print(f"\n{group_col} distribution in sample:")
+    for name, count in sampled[group_col].value_counts().items():
+        print(f"  {name:<50s} {count:>4d}")
     print(f"\nTotal: {len(manifest)}")
 
 

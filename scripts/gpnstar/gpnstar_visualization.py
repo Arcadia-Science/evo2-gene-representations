@@ -3,9 +3,10 @@ Visualizations for the GPN-Star gene-family geodesic analysis.
 
 Figure sets, selectable via --figures (default: all available):
 
-  family        : Figure 2 — per-family within-family geodesic heatmaps (2×5) plus
-                  family-level (10×10) geodesic centroid / Pfam JSD / CDS seq-identity
-                  / PANTHER heatmaps and a Spearman ρ bar chart with bootstrap CIs.
+  family        : Figure 2 — per-family within-family geodesic heatmaps (grid adapts
+                  to the family count) plus family-level (F×F) geodesic centroid /
+                  Pfam JSD / CDS seq-identity / PANTHER heatmaps and a Spearman ρ bar
+                  chart with bootstrap CIs.
                   -> figure2.{pdf,png}
 
   within-paralog: within-family geodesic vs. Ensembl Compara paralog protein identity
@@ -20,10 +21,12 @@ A requested within-* figure whose baseline CSV is absent is skipped with a warni
 Usage:
     uv run python scripts/gpnstar/gpnstar_visualization.py --run-dir RESULTS_DIR
     uv run python scripts/gpnstar/gpnstar_visualization.py --run-dir RESULTS_DIR --figures family
-    uv run python scripts/gpnstar/gpnstar_visualization.py --run-dir RESULTS_DIR --figures within-paralog within-seqid
+    uv run python scripts/gpnstar/gpnstar_visualization.py \
+        --run-dir RESULTS_DIR --figures within-paralog within-seqid
 """
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -35,10 +38,8 @@ from matplotlib.colors import Normalize
 from scipy.stats import spearmanr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from plot_utils import make_cmap_with_nan, pstar, set_pub_style  # noqa: E402
-
 from families import FAMILY_COLORS  # noqa: E402
-
+from plot_utils import make_cmap_with_nan, pstar, set_pub_style  # noqa: E402
 
 # ════════════════════════════════════════════════════════════════════════════════
 # Within-family comparison (geodesic vs. an evolutionary baseline)
@@ -110,7 +111,9 @@ def draw_within_hm(ax, sub, genes, cmap, vmax, title, color_strip=None, fontsize
     ax.set_title(title, fontsize=6.5, pad=5)
     if color_strip is not None:
         strip = ax.inset_axes([0, 1.04, 1, 0.07], transform=ax.transAxes)
-        strip.set_xlim(0, 1); strip.set_ylim(0, 1); strip.axis("off")
+        strip.set_xlim(0, 1)
+        strip.set_ylim(0, 1)
+        strip.axis("off")
         strip.add_patch(mpatches.Rectangle((0, 0), 1, 1, color=color_strip, linewidth=0))
 
 
@@ -179,22 +182,57 @@ def make_within_comparison_figure(run_dir: Path, baseline: str) -> None:
 
         _, genes, sub_geo = per_geo[fam]
         _, _, sub_base = per_base[fam]
-        draw_within_hm(ax_geo, sub_geo, genes, cmap_geo, vmax_geo,
-                       fam.replace("_", " ").title(), color_strip=FAMILY_COLORS[fam])
+        draw_within_hm(
+            ax_geo,
+            sub_geo,
+            genes,
+            cmap_geo,
+            vmax_geo,
+            fam.replace("_", " ").title(),
+            color_strip=FAMILY_COLORS[fam],
+        )
         draw_within_hm(ax_base, sub_base, genes, cmap_base, vmax_base, "")
 
         rho, pval, n_valid = per_rho[fam]
         n_pairs = len(genes) * (len(genes) - 1) // 2
-        ann = f"ρ={rho:.2f}{pstar(pval)}\n({n_valid}/{n_pairs})" if np.isfinite(rho) else f"n={n_valid}/{n_pairs}"
+        ann = (
+            f"ρ={rho:.2f}{pstar(pval)}\n({n_valid}/{n_pairs})"
+            if np.isfinite(rho)
+            else f"n={n_valid}/{n_pairs}"
+        )
         ax_base.text(
-            0.5, -0.32, ann, transform=ax_base.transAxes, ha="center", va="top", fontsize=5.5,
+            0.5,
+            -0.32,
+            ann,
+            transform=ax_base.transAxes,
+            ha="center",
+            va="top",
+            fontsize=5.5,
             bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.75", alpha=0.9),
         )
 
-    fig.text(0.005, 0.80, "Geodesic\n(model)", fontsize=8, fontweight="bold",
-             ha="left", va="center", rotation=90, color="#333333")
-    fig.text(0.005, 0.57, cfg["row_label"], fontsize=8, fontweight="bold",
-             ha="left", va="center", rotation=90, color=cfg["row_color"])
+    fig.text(
+        0.005,
+        0.80,
+        "Geodesic\n(model)",
+        fontsize=8,
+        fontweight="bold",
+        ha="left",
+        va="center",
+        rotation=90,
+        color="#333333",
+    )
+    fig.text(
+        0.005,
+        0.57,
+        cfg["row_label"],
+        fontsize=8,
+        fontweight="bold",
+        ha="left",
+        va="center",
+        rotation=90,
+        color=cfg["row_color"],
+    )
 
     for axes, cmap, vmax, label in [
         (geo_axes, cmap_geo, vmax_geo, "Geodesic dist."),
@@ -216,22 +254,36 @@ def make_within_comparison_figure(run_dir: Path, baseline: str) -> None:
     pvals = [per_rho[f][1] for f in family_order]
     nvs = [per_rho[f][2] for f in family_order]
     ax_bar_row.bar(
-        x, [r if np.isfinite(r) else 0 for r in rhos],
+        x,
+        [r if np.isfinite(r) else 0 for r in rhos],
         color=[FAMILY_COLORS[f] for f in family_order],
-        width=0.65, zorder=3, edgecolor="white", linewidth=0.5,
+        width=0.65,
+        zorder=3,
+        edgecolor="white",
+        linewidth=0.5,
     )
-    for xi, (rho, pval, nv) in enumerate(zip(rhos, pvals, nvs)):
+    for xi, (rho, pval, nv) in enumerate(zip(rhos, pvals, nvs, strict=False)):
         if np.isfinite(rho):
             ypos = rho + (0.04 if rho >= 0 else -0.09)
-            ax_bar_row.text(xi, ypos, f"ρ={rho:.2f}{pstar(pval)}", ha="center", va="bottom", fontsize=6.5)
+            ax_bar_row.text(
+                xi, ypos, f"ρ={rho:.2f}{pstar(pval)}", ha="center", va="bottom", fontsize=6.5
+            )
         else:
-            ax_bar_row.text(xi, 0.04, "n<3" if nv < 3 else "no pairs",
-                            ha="center", va="bottom", fontsize=6.5, color="#999999")
+            ax_bar_row.text(
+                xi,
+                0.04,
+                "n<3" if nv < 3 else "no pairs",
+                ha="center",
+                va="bottom",
+                fontsize=6.5,
+                color="#999999",
+            )
 
     ax_bar_row.axhline(0, color="black", linewidth=0.8, linestyle="--", zorder=2)
     ax_bar_row.set_xticks(x)
-    ax_bar_row.set_xticklabels([f.replace("_", " ").title() for f in family_order],
-                               rotation=30, ha="right", fontsize=7)
+    ax_bar_row.set_xticklabels(
+        [f.replace("_", " ").title() for f in family_order], rotation=30, ha="right", fontsize=7
+    )
     ax_bar_row.set_ylim(-1, 1.15)
     ax_bar_row.set_ylabel(cfg["bar_ylabel"], fontsize=7.5)
     ax_bar_row.set_title(cfg["title"], fontsize=9, fontweight="bold", pad=6)
@@ -250,7 +302,10 @@ def make_within_comparison_figure(run_dir: Path, baseline: str) -> None:
         _, genes, _ = per_geo[fam]
         n_total = len(genes) * (len(genes) - 1) // 2
         if np.isfinite(rho):
-            print(f"  {fam:<22}: ρ={rho:+.3f}  p={pval:.3f} {pstar(pval, ns='(n.s.)')}  ({nv}/{n_total} pairs)")
+            print(
+                f"  {fam:<22}: ρ={rho:+.3f}  p={pval:.3f} {pstar(pval, ns='(n.s.)')}  "
+                f"({nv}/{n_total} pairs)"
+            )
         else:
             print(f"  {fam:<22}: insufficient pairs ({nv}/{n_total})")
 
@@ -280,7 +335,9 @@ def make_family_figure(run_dir: Path) -> None:
 
     geo_labeled = list(run_dir.glob("*_geodesic_labeled.csv"))
     if not geo_labeled:
-        sys.exit(f"No *_geodesic_labeled.csv found in {run_dir} — re-run embed_and_geodesic_genes.py")
+        sys.exit(
+            f"No *_geodesic_labeled.csv found in {run_dir} — re-run embed_and_geodesic_genes.py"
+        )
     df_geo = pd.read_csv(geo_labeled[0], index_col=0)
     geodesic = df_geo.values
     gene_names = df_geo.index.tolist()
@@ -307,9 +364,12 @@ def make_family_figure(run_dir: Path) -> None:
     # ── Figure layout ─────────────────────────────────────────────────────────
     # Top: 10 per-family geodesic heatmaps (2×5). Bottom: 4 family-level heatmaps
     # [Geodesic][Pfam JSD][Seq Identity][PANTHER] + Spearman ρ bar chart.
+    # Per-family heatmaps: 2 rows, columns adapt to the family count.
+    n_rows_top = 2
+    n_cols_top = math.ceil(N_fam / n_rows_top)
     fig = plt.figure(figsize=(28, 16), dpi=300)
     gs_outer = fig.add_gridspec(2, 1, height_ratios=[1.25, 1], hspace=0.44)
-    gs_top = gs_outer[0].subgridspec(2, 5, hspace=0.72, wspace=0.55)
+    gs_top = gs_outer[0].subgridspec(n_rows_top, n_cols_top, hspace=0.72, wspace=0.55)
     gs_bot = gs_outer[1].subgridspec(1, 5, wspace=0.42)
     ax_geo_fam = fig.add_subplot(gs_bot[0])
     ax_jsd = fig.add_subplot(gs_bot[1])
@@ -317,18 +377,31 @@ def make_family_figure(run_dir: Path) -> None:
     ax_panther = fig.add_subplot(gs_bot[3])
     ax_bar = fig.add_subplot(gs_bot[4])
 
-    def draw_family_heatmap(ax, matrix, title, cmap, vmin=None, vmax=None,
-                            cbar_label="", show_yticks=True, tbd=False):
+    def draw_family_heatmap(
+        ax, matrix, title, cmap, vmin=None, vmax=None, cbar_label="", show_yticks=True, tbd=False
+    ):
         """Draw one 10×10 family-level heatmap (or a 'TBD' placeholder)."""
         fam_labels = [f.replace("_", " ").title() for f in family_order]
         if tbd:
             ax.set_facecolor("#F5F5F5")
-            ax.text(0.5, 0.5, "TBD", transform=ax.transAxes, ha="center", va="center",
-                    fontsize=14, color="#AAAAAA", fontweight="bold")
-            ax.set_xticks([]); ax.set_yticks([])
+            ax.text(
+                0.5,
+                0.5,
+                "TBD",
+                transform=ax.transAxes,
+                ha="center",
+                va="center",
+                fontsize=14,
+                color="#AAAAAA",
+                fontweight="bold",
+            )
+            ax.set_xticks([])
+            ax.set_yticks([])
         else:
-            norm = Normalize(vmin=vmin if vmin is not None else matrix.min(),
-                             vmax=vmax if vmax is not None else matrix.max())
+            norm = Normalize(
+                vmin=vmin if vmin is not None else matrix.min(),
+                vmax=vmax if vmax is not None else matrix.max(),
+            )
             im = ax.imshow(matrix, cmap=cmap, norm=norm, aspect="equal", interpolation="nearest")
             ax.set_xticks(range(N_fam))
             ax.set_yticks(range(N_fam) if show_yticks else [])
@@ -339,10 +412,17 @@ def make_family_figure(run_dir: Path) -> None:
             cb.set_label(cbar_label, fontsize=6)
             cb.ax.tick_params(labelsize=5)
             for xi, fam in enumerate(family_order):  # family color ticks on x-axis
-                ax.add_patch(mpatches.Rectangle(
-                    (xi - 0.5, N_fam - 0.5), 1, 0.22, color=FAMILY_COLORS[fam],
-                    transform=ax.transData, clip_on=False, linewidth=0,
-                ))
+                ax.add_patch(
+                    mpatches.Rectangle(
+                        (xi - 0.5, N_fam - 0.5),
+                        1,
+                        0.22,
+                        color=FAMILY_COLORS[fam],
+                        transform=ax.transData,
+                        clip_on=False,
+                        linewidth=0,
+                    )
+                )
         ax.set_title(title, fontsize=8, fontweight="bold", pad=10)
         ax.spines[["top", "right", "bottom", "left"]].set_linewidth(0.5)
 
@@ -355,13 +435,18 @@ def make_family_figure(run_dir: Path) -> None:
     vmax_within = float(np.percentile(within_vals, 95))
 
     for fi, fam in enumerate(family_order):
-        ax = fig.add_subplot(gs_top[fi // 5, fi % 5])
+        ax = fig.add_subplot(gs_top[fi // n_cols_top, fi % n_cols_top])
         fam_idx = np.where(families_arr == fam)[0]
         fam_genes = [gene_names[i] for i in fam_idx]
         sub_geo = geodesic[np.ix_(fam_idx, fam_idx)]
 
-        ax.imshow(sub_geo, cmap="YlOrRd", norm=Normalize(0, vmax_within),
-                  aspect="equal", interpolation="nearest")
+        ax.imshow(
+            sub_geo,
+            cmap="YlOrRd",
+            norm=Normalize(0, vmax_within),
+            aspect="equal",
+            interpolation="nearest",
+        )
         ax.set_xticks(range(len(fam_genes)))
         ax.set_yticks(range(len(fam_genes)))
         ax.set_xticklabels(fam_genes, rotation=90, fontsize=4.5)
@@ -369,9 +454,13 @@ def make_family_figure(run_dir: Path) -> None:
         ax.tick_params(length=2, pad=1)
 
         color = FAMILY_COLORS[fam]
-        ax.set_title(fam.replace("_", " ").title(), fontsize=7, color=color, fontweight="bold", pad=8)
+        ax.set_title(
+            fam.replace("_", " ").title(), fontsize=7, color=color, fontweight="bold", pad=8
+        )
         strip = ax.inset_axes([0, 1.04, 1, 0.07], transform=ax.transAxes)
-        strip.set_xlim(0, 1); strip.set_ylim(0, 1); strip.axis("off")
+        strip.set_xlim(0, 1)
+        strip.set_ylim(0, 1)
+        strip.axis("off")
         strip.add_patch(mpatches.Rectangle((0, 0), 1, 1, color=color, linewidth=0))
 
         if seqid_genes is not None and len(fam_idx) >= 3:  # within-family ρ vs seq identity
@@ -379,8 +468,16 @@ def make_family_figure(run_dir: Path) -> None:
             geo_pairs = sub_geo[tri]
             si_pairs = (1.0 - seqid_genes.values[np.ix_(fam_idx, fam_idx)])[tri]
             rho_w, _ = spearmanr(geo_pairs, si_pairs)
-            ax.text(0.97, 0.03, f"ρ={rho_w:.2f}", transform=ax.transAxes, ha="right", va="bottom",
-                    fontsize=5, bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="0.7", alpha=0.85))
+            ax.text(
+                0.97,
+                0.03,
+                f"ρ={rho_w:.2f}",
+                transform=ax.transAxes,
+                ha="right",
+                va="bottom",
+                fontsize=5,
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="0.7", alpha=0.85),
+            )
 
     cb_ax = fig.add_axes([0.922, 0.57, 0.006, 0.33])
     sm = plt.cm.ScalarMappable(cmap="YlOrRd", norm=Normalize(vmin=0, vmax=vmax_within))
@@ -388,21 +485,46 @@ def make_family_figure(run_dir: Path) -> None:
     cb = fig.colorbar(sm, cax=cb_ax)
     cb.set_label("Geodesic distance", fontsize=7)
     cb.ax.tick_params(labelsize=6)
-    fig.text(0.02, 0.97, "A  Within-family geodesic distances", fontsize=10, fontweight="bold", va="top")
+    fig.text(
+        0.02, 0.97, "A  Within-family geodesic distances", fontsize=10, fontweight="bold", va="top"
+    )
 
     # ── Panels B–E: family-level heatmaps ─────────────────────────────────────
-    draw_family_heatmap(ax_geo_fam, dist_centroid.values, "B  Geodesic centroid\n(model)",
-                        "YlOrRd", cbar_label="Mean geodesic dist.")
-    draw_family_heatmap(ax_jsd, dist_jsd.values, "C  Pfam HMM JSD\n(baseline 1)",
-                        "Blues", cbar_label="JSD", show_yticks=False)
+    draw_family_heatmap(
+        ax_geo_fam,
+        dist_centroid.values,
+        "B  Geodesic centroid\n(model)",
+        "YlOrRd",
+        cbar_label="Mean geodesic dist.",
+    )
+    draw_family_heatmap(
+        ax_jsd,
+        dist_jsd.values,
+        "C  Pfam HMM JSD\n(baseline 1)",
+        "Blues",
+        cbar_label="JSD",
+        show_yticks=False,
+    )
     if dist_seqid_fam is not None:
-        draw_family_heatmap(ax_seqid, 1.0 - dist_seqid_fam.values, "D  Seq identity distance\n(baseline 2)",
-                            "Greens", cbar_label="1 − mean identity", show_yticks=False)
+        draw_family_heatmap(
+            ax_seqid,
+            1.0 - dist_seqid_fam.values,
+            "D  Seq identity distance\n(baseline 2)",
+            "Greens",
+            cbar_label="1 − mean identity",
+            show_yticks=False,
+        )
     else:
         draw_family_heatmap(ax_seqid, None, "D  Seq identity\n(baseline 2)", None, tbd=True)
     if dist_panther is not None:
-        draw_family_heatmap(ax_panther, dist_panther.values, "E  PANTHER / TimeTree\n(baseline 3)",
-                            "Purples", cbar_label="Branch length / Mya", show_yticks=False)
+        draw_family_heatmap(
+            ax_panther,
+            dist_panther.values,
+            "E  PANTHER / TimeTree\n(baseline 3)",
+            "Purples",
+            cbar_label="Branch length / Mya",
+            show_yticks=False,
+        )
     else:
         draw_family_heatmap(ax_panther, None, "E  PANTHER / TimeTree\n(baseline 3)", None, tbd=True)
 
@@ -418,12 +540,20 @@ def make_family_figure(run_dir: Path) -> None:
         baselines_bar.append(("PANTHER / TimeTree\n(baseline 3)", None, "#BDBDBD"))
 
     x = np.arange(len(baselines_bar))
-    for xi, (label, mat, color) in enumerate(baselines_bar):
+    for xi, (_label, mat, color) in enumerate(baselines_bar):
         if mat is not None:
             rho, ci_lo, ci_hi = bootstrap_spearman(x_geo, mat[idx_upper])
             ax_bar.bar(xi, rho, color=color, width=0.52, zorder=3, edgecolor="white", linewidth=0.5)
-            ax_bar.errorbar(xi, rho, yerr=[[rho - ci_lo], [ci_hi - rho]],
-                            fmt="none", color="black", capsize=4, linewidth=1.2, zorder=4)
+            ax_bar.errorbar(
+                xi,
+                rho,
+                yerr=[[rho - ci_lo], [ci_hi - rho]],
+                fmt="none",
+                color="black",
+                capsize=4,
+                linewidth=1.2,
+                zorder=4,
+            )
             ax_bar.text(xi, ci_hi + 0.04, f"ρ={rho:.2f}", ha="center", va="bottom", fontsize=8)
         else:
             ax_bar.bar(xi, 0, color=color, width=0.52, zorder=3)
@@ -434,7 +564,9 @@ def make_family_figure(run_dir: Path) -> None:
     ax_bar.set_xticklabels([b[0] for b in baselines_bar], fontsize=7)
     ax_bar.set_ylim(-1, 1)
     ax_bar.set_ylabel("Spearman ρ  (centroid geodesic vs. baseline)", fontsize=7.5)
-    ax_bar.set_title("F  Baseline correlation\n(GPN-Star Vertebrate)", fontsize=8, fontweight="bold", pad=6)
+    ax_bar.set_title(
+        "F  Baseline correlation\n(GPN-Star Vertebrate)", fontsize=8, fontweight="bold", pad=6
+    )
     ax_bar.spines[["top", "right"]].set_visible(False)
     ax_bar.yaxis.grid(True, linestyle=":", linewidth=0.5, alpha=0.6, zorder=0)
 
@@ -448,7 +580,9 @@ def make_family_figure(run_dir: Path) -> None:
     for label, mat, _ in baselines_bar:
         if mat is not None:
             rho, ci_lo, ci_hi = bootstrap_spearman(x_geo, mat[idx_upper])
-            print(f"  {label.replace(chr(10), ' ')}: ρ={rho:.4f}  95% CI [{ci_lo:.4f}, {ci_hi:.4f}]")
+            print(
+                f"  {label.replace(chr(10), ' ')}: ρ={rho:.4f}  95% CI [{ci_lo:.4f}, {ci_hi:.4f}]"
+            )
         else:
             print(f"  {label.replace(chr(10), ' ')}: TBD")
 
@@ -464,10 +598,17 @@ FIGURES = {
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--run-dir", required=True, help="Dated results folder")
-    p.add_argument("--figures", nargs="+", choices=list(FIGURES), default=list(FIGURES),
-                   help="Which figures to generate (default: all)")
+    p.add_argument(
+        "--figures",
+        nargs="+",
+        choices=list(FIGURES),
+        default=list(FIGURES),
+        help="Which figures to generate (default: all)",
+    )
     return p.parse_args()
 
 
