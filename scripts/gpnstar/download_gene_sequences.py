@@ -7,12 +7,10 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
 from Bio import Entrez, SeqIO
-
 from families import GENE_FAMILIES  # sibling module: scripts/gpnstar/families.py
 
 # NCBI requires a contact email; set NCBI_EMAIL in your environment.
@@ -30,10 +28,7 @@ def check_mmseqs2():
 
 
 def fetch_gene_records(gene, max_candidates):
-    query = (
-        f"{gene}[Gene Name] AND txid7776[Organism] "
-        "AND srcdb_refseq[PROP] AND biomol_mrna[PROP]"
-    )
+    query = f"{gene}[Gene Name] AND txid7776[Organism] AND srcdb_refseq[PROP] AND biomol_mrna[PROP]"
     handle = Entrez.esearch(db="nucleotide", term=query, usehistory="y", retmax=0)
     sr = Entrez.read(handle)
     handle.close()
@@ -103,19 +98,29 @@ def write_fasta(entries, path):
 
 def run_mmseqs(input_fasta, output_prefix, tmp_dir):
     cmd = [
-        "mmseqs", "easy-linclust",
+        "mmseqs",
+        "easy-linclust",
         str(input_fasta),
         str(output_prefix),
         str(tmp_dir),
-        "--dbtype", "2",
-        "--min-seq-id", "0.90",
-        "--cov-mode", "1",
-        "-c", "0.90",
-        "--cluster-mode", "2",
-        "--kmer-per-seq", "80",
-        "--spaced-kmer-mode", "0",
-        "--threads", "4",
-        "--remove-tmp-files", "1",
+        "--dbtype",
+        "2",
+        "--min-seq-id",
+        "0.90",
+        "--cov-mode",
+        "1",
+        "-c",
+        "0.90",
+        "--cluster-mode",
+        "2",
+        "--kmer-per-seq",
+        "80",
+        "--spaced-kmer-mode",
+        "0",
+        "--threads",
+        "4",
+        "--remove-tmp-files",
+        "1",
     ]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
@@ -129,13 +134,15 @@ def append_manifest(manifest_path, family, entries):
         if write_header:
             writer.writeheader()
         for e in entries:
-            writer.writerow({
-                "family": family,
-                "accession": e["accession"],
-                "species": e["organism"],
-                "gene_name": e["gene_name"],
-                "cds_length": e["cds_length"],
-            })
+            writer.writerow(
+                {
+                    "family": family,
+                    "accession": e["accession"],
+                    "species": e["organism"],
+                    "gene_name": e["gene_name"],
+                    "cds_length": e["cds_length"],
+                }
+            )
 
 
 def parse_rep_fasta(rep_fasta_path):
@@ -146,13 +153,15 @@ def parse_rep_fasta(rep_fasta_path):
         accession = parts[0] if len(parts) > 0 else record.id
         gene_name = parts[1] if len(parts) > 1 else ""
         species = parts[2].replace("_", " ") if len(parts) > 2 else "unknown"
-        entries.append({
-            "accession": accession,
-            "organism": species,
-            "gene_name": gene_name,
-            "cds_seq": str(record.seq),
-            "cds_length": len(record.seq),
-        })
+        entries.append(
+            {
+                "accession": accession,
+                "organism": species,
+                "gene_name": gene_name,
+                "cds_seq": str(record.seq),
+                "cds_length": len(record.seq),
+            }
+        )
     return entries
 
 
@@ -216,7 +225,9 @@ def main():
     print(f"After dedup: {len(rep_entries)} representative sequences")
 
     if len(rep_entries) < 10:
-        print(f"WARNING: only {len(rep_entries)} sequences survived deduplication for {args.family}")
+        print(
+            f"WARNING: only {len(rep_entries)} sequences survived deduplication for {args.family}"
+        )
 
     final_entries = rep_entries[: args.max_seqs]
 

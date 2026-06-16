@@ -92,3 +92,6 @@ results/
 activations_debug.log
 project_overview.txt
 .claude/
+
+# One-off diagnostics / sweeps / scale-up experiments (not part of the pipeline)
+scripts/evo2/troubleshooting/

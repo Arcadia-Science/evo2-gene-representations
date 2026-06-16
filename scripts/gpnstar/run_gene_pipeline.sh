@@ -31,7 +31,13 @@ echo ""
 echo "--- [$(date)] Step 2: Embed genes with GPN-Star + geodesic analysis + baselines ---"
 uv run python scripts/gpnstar/embed_and_geodesic_genes.py
 
+RUN_DIR="results/$(date +%F)_gpnstar-vertebrate"
+echo ""
+echo "--- [$(date)] Step 3: Figures -> $RUN_DIR ---"
+uv run python scripts/gpnstar/gpnstar_visualization.py --run-dir "$RUN_DIR"
+
 echo ""
 echo "========================================"
 echo "Pipeline complete: $(date)"
+echo "Results + figures in: $RUN_DIR"
 echo "========================================"
