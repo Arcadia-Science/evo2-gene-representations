@@ -61,7 +61,7 @@ def download_model(hf_id: str, cache_dir: Path) -> Path:
 
 
 def load_model_compat(model_path: Path):
-    """Load a GPN-Star model, working around transformers 5.x meta-device init.
+    """Load a GPN-Star model, working around transformers >=4.44 meta-device init.
 
     Adapted from load_model() in gpn/star/model.py (https://github.com/songlab-cal/gpn),
     originally by Gonzalo Benegas et al., MIT License.
@@ -74,8 +74,6 @@ def load_model_compat(model_path: Path):
 
     Fix: instantiate the model directly (outside of from_pretrained's context)
     and then load the safetensors weights manually.
-
-    TODO: verify this approach
     """
     import os
 
