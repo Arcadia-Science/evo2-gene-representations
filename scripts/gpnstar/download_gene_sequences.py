@@ -11,7 +11,10 @@ import time
 from pathlib import Path
 
 from Bio import Entrez, SeqIO
-from families import GENE_FAMILIES  # sibling module: scripts/gpnstar/families.py
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from gene_families import family_members  # noqa: E402
+
+GENE_FAMILIES = family_members("human")
 
 # NCBI requires a contact email; set NCBI_EMAIL in your environment.
 Entrez.email = os.environ.get("NCBI_EMAIL", "")
