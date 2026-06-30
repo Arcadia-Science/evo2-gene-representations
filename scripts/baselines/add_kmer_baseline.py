@@ -2,7 +2,7 @@
 
 The GPN-Star pipeline already scores its geodesic against CDS alignment identity,
 Pfam JSD, and Compara paralog identity. This adds the SAME alignment-free k-mer
-divergence baseline the Evo2 pipeline uses (shared scripts/sequence_baselines.py),
+divergence baseline the Evo2 pipeline uses (shared scripts/baselines/kmer_sequence_divergence.py),
 so the two models can be compared apples-to-apples on one common reference.
 
 Operates on a finished run dir — no re-embedding. It reuses:
@@ -17,7 +17,7 @@ within- and between-family Spearman ρ (alongside the existing Pfam JSD between-
 for direct comparison).
 
 Usage:
-    uv run python scripts/gpnstar/add_kmer_baseline.py \
+    uv run python scripts/baselines/add_kmer_baseline.py \
         --run-dir results/YYYY-MM-DD_gpnstar-vertebrate
 """
 
@@ -31,8 +31,9 @@ import pandas as pd
 from scipy.stats import spearmanr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "baselines"))  # kmer_sequence_divergence
 from geodesic_utils import upper_triangle  # noqa: E402
-from sequence_baselines import kmer_distance_matrix  # noqa: E402
+from kmer_sequence_divergence import kmer_distance_matrix  # noqa: E402
 
 CDS_CACHE = Path("data/cache/cds_sequences.json")
 
@@ -57,6 +58,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--kmer-k", type=int, default=6)
+    ap.add_argument("--distances-from", default=None,
+                    help="Reuse the gene- and family-level k-mer matrices "
+                         "(kmer_distance_genes.csv, kmer_distance_family.csv) from this donor "
+                         "run dir instead of recomputing the O(N²) k-mer distances. They are "
+                         "sequence-derived and layer-independent — for an all-layer sweep.")
     args = ap.parse_args()
     run_dir = Path(args.run_dir)
 
@@ -71,19 +77,26 @@ def main() -> None:
     families = meta["family"].to_numpy()
     family_order = (run_dir / "family_order.txt").read_text().strip().splitlines()
 
-    if not CDS_CACHE.exists():
-        sys.exit(f"CDS cache not found: {CDS_CACHE} (run the GPN-Star pipeline first)")
-    cds = json.loads(CDS_CACHE.read_text())
-    missing = [g for g in genes if g not in cds or not cds[g]]
-    if missing:
-        sys.exit(f"{len(missing)} genes missing from CDS cache: {missing[:5]}")
-    seqs = [cds[g].upper() for g in genes]
-
     # ── k-mer distance, gene + family level ─────────────────────────────────────
-    print(f"Computing k-mer (k={args.kmer_k}) divergence for {len(genes)} genes...")
-    kmer = kmer_distance_matrix(seqs, k=args.kmer_k)
+    if args.distances_from:
+        donor = Path(args.distances_from)
+        kmer = pd.read_csv(donor / "kmer_distance_genes.csv", index_col=0) \
+            .reindex(index=genes, columns=genes).values
+        kmer_fam = pd.read_csv(donor / "kmer_distance_family.csv", index_col=0) \
+            .reindex(index=family_order, columns=family_order).values
+        print(f"Reusing k-mer distance matrices from {donor}")
+    else:
+        if not CDS_CACHE.exists():
+            sys.exit(f"CDS cache not found: {CDS_CACHE} (run the GPN-Star pipeline first)")
+        cds = json.loads(CDS_CACHE.read_text())
+        missing = [g for g in genes if g not in cds or not cds[g]]
+        if missing:
+            sys.exit(f"{len(missing)} genes missing from CDS cache: {missing[:5]}")
+        seqs = [cds[g].upper() for g in genes]
+        print(f"Computing k-mer (k={args.kmer_k}) divergence for {len(genes)} genes...")
+        kmer = kmer_distance_matrix(seqs, k=args.kmer_k)
+        kmer_fam = aggregate_family_matrix(kmer, families, family_order)
     pd.DataFrame(kmer, index=genes, columns=genes).to_csv(run_dir / "kmer_distance_genes.csv")
-    kmer_fam = aggregate_family_matrix(kmer, families, family_order)
     pd.DataFrame(kmer_fam, index=family_order, columns=family_order).to_csv(
         run_dir / "kmer_distance_family.csv"
     )

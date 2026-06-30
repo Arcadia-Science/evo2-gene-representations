@@ -11,8 +11,11 @@ from pathlib import Path
 
 import numpy as np
 
-# Pinned to GTDB r220.0 to match Evo 2's training release (see download_species_manifest.py).
-TREE_URL = "https://data.gtdb.ecogenomic.org/releases/release220/220.0/bac120_r220.tree"
+# GTDB r226.0 — matches the Goodfire tree-of-life reproduction
+# (tree_of_life_reproduction.zip), which builds its patristic ground truth from
+# bac120_r226.tree. (Earlier this pipeline pinned r220 to match Evo 2's stated
+# training release; we follow Goodfire's r226 choice instead. See download_species_manifest.py.)
+TREE_URL = "https://data.gtdb.ecogenomic.org/releases/release226/226.0/bac120_r226.tree"
 
 
 def download_tree(tree_path: Path) -> None:
