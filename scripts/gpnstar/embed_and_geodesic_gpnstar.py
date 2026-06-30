@@ -119,7 +119,7 @@ def fetch_cds_coords(gene_symbol: str) -> dict:
         except Exception as e:
             wait = 10 * 2 ** attempt
             print(f"  Ensembl request failed ({e}), retrying in {wait}s...")
-            import time; time.sleep(wait)
+            time.sleep(wait)
     else:
         raise RuntimeError(f"Ensembl lookup failed for {gene_symbol} after 5 attempts")
 
