@@ -82,3 +82,16 @@ venv/
 # Nextflow related folders and files
 .nextflow*
 work/
+
+# Data
+data/
+# Model weights and large outputs
+models/
+vertebrate-200m/
+results/
+activations_debug.log
+project_overview.txt
+.claude/
+
+# One-off diagnostics / sweeps / scale-up experiments (not part of the pipeline)
+scripts/evo2/troubleshooting/

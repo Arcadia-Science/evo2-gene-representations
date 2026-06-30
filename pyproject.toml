@@ -1,11 +1,60 @@
 [project]
-name = "TODO: Tool name"
-description = "TODO: Tool description"
+name = "glm-latent-mapping"
+description = "exploring glm latent spaces"
 version = "0.0.0"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
+dependencies = [
+    "torch>=2.11.0",
+    # Pinned to a known-good commit: test_gpn_star.py relies on gpn internals
+    # (meta-device VEPInference/MLMforVEPModel workaround) that can break on
+    # upstream changes. Bump deliberately, not implicitly.
+    "gpn @ git+https://github.com/songlab-cal/gpn.git@ce8954b6c1c13919001a896d83a58f3f024c4f6f",
+    "transformers>=4.40.0,<5.0.0",
+    "datasets>=2.20.0",
+    "huggingface_hub>=0.23.0",
+    "scikit-learn>=1.3.0",
+    "evo2>=0.5.5",  # verified to build + import with flash-attn 2.8.3 / torch cu128
+    "flash-attn>=2.0",
+    "zarr>=2.0.0,<3.0.0",
+    "biopython>=1.87",
+    "dendropy>=4.6.1",
+    "scipy>=1.17.1",
+    "pyhmmer>=0.12.0",
+    "networkx>=3.6.1",
+    "seaborn>=0.13.2",
+    "matplotlib>=3.10.9",
+    "umap-learn>=0.5.12",
+    "pyfaidx>=0.9.0.4",
+]
+# Optional external (non-PyPI) tools — install separately if you use the feature:
+#   mmseqs2 — near-duplicate sequence clustering in
+#             scripts/evo2/build_gene_families_evo2.py and
+#             scripts/gpnstar/download_gene_sequences.py (collapses near-identical
+#             sequences to one representative per cluster). Not pip-installable
+#             (compiled C++ binary); install via `conda install -c bioconda mmseqs2`
+#             or a static release. Both scripts run without it (clustering is skipped).
 
+[dependency-groups]
+dev = [
+    "jupyter>=1.0.0",
+    "pre-commit>=3.5.0",
+    "pytest>=9.0.3",
+    "ruff>=0.4.8",
+]
+
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128" }]
+
+[tool.uv.extra-build-dependencies]
+flash-attn = ["torch", "packaging", "setuptools", "wheel", "ninja"]
 
 [tool.ruff]
 # The directories to consider when resolving first- vs. third-party imports
