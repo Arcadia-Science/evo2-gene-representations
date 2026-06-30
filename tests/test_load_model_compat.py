@@ -31,7 +31,7 @@ from safetensors.torch import load_file
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from test_gpn_star import load_model_compat  # noqa: E402
 
-import gpn.star.model  # registers GPNStar with AutoConfig/AutoModel  # noqa: E402
+import gpn.star.model  # registers GPNStar with AutoConfig/AutoModel  # noqa: F401, E402
 from gpn.star.model import GPNStarForMaskedLM  # noqa: E402
 from transformers import AutoConfig  # noqa: E402
 
@@ -61,12 +61,18 @@ _SPOT_CHECK_KEYS = [
 @pytest.fixture(scope="module")
 def model_path():
     """Resolve the local HuggingFace snapshot (no download; must already be cached)."""
-    path = snapshot_download(
-        repo_id=_HF_ID,
-        cache_dir=str(_MODEL_DIR),
-        local_files_only=True,
-        ignore_patterns=["*.msgpack", "*.h5", "flax_model*", "tf_model*"],
-    )
+    try:
+        path = snapshot_download(
+            repo_id=_HF_ID,
+            cache_dir=str(_MODEL_DIR),
+            local_files_only=True,
+            ignore_patterns=["*.msgpack", "*.h5", "flax_model*", "tf_model*"],
+        )
+    except Exception as e:
+        pytest.skip(
+            f"Model snapshot not found in cache for {_HF_ID} under {_MODEL_DIR} "
+            f"(local_files_only=True): {e}"
+        )
     return Path(path)
 
 
