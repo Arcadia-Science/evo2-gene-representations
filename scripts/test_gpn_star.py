@@ -29,7 +29,7 @@ import torch
 from huggingface_hub import snapshot_download
 
 import gpn.star.model  # registers GPNStar with AutoModel/AutoConfig
-from transformers import AutoConfig, AutoModelForMaskedLM
+from transformers import AutoConfig
 
 # ── Model registry ────────────────────────────────────────────────────────────
 
