@@ -103,18 +103,17 @@ uv run python scripts/gpnstar/test_gpn_star.py
 # VEP benchmark on songlab/clinvar_vs_benign (requires zarr data)
 uv run python scripts/gpnstar/test_gpn_star.py --alignments vertebrate
 
-# Gene family embedding + geodesic analysis (main analysis)
-uv run python scripts/gpnstar/embed_and_geodesic_genes.py
-uv run python scripts/gpnstar/embed_and_geodesic_genes.py --model vertebrate --force-reembed
+# Matched human gene-family embedding + geodesic analysis (main analysis)
+screen -dmS gpn_human bash scripts/gpnstar/run_paralog_human_gene_pipeline_gpnstar.sh
 ```
 
-Results written to `results/YYYY-MM-DD_gpnstar-vertebrate/`.
+Results written to `results/YYYY-MM-DD_gpnstar-human-panel-L<layer>/`.
 
 ---
 
 ## Analysis 2 — Species phylogeny geodesic (Evo 2)
 
-Embeds 500 bacterial species sampled from [GTDB](https://gtdb.ecogenomic.org/) using Evo 2 7B (layer `blocks.24.mlp.l3`), then tests whether geodesic distances in that embedding space correlate with GTDB patristic distances.
+Embeds 500 bacterial species sampled from [GTDB](https://gtdb.ecogenomic.org/) using Evo 2 7B (residual stream leaving `blocks.24`), then tests whether geodesic distances in that embedding space correlate with GTDB patristic distances.
 
 ### Model
 
@@ -179,17 +178,21 @@ screen -dmS species_pipeline bash scripts/evo2/run_species_pipeline.sh
 
 ## Scripts
 
-Each analysis lives in its own folder, with a README describing every file:
+Each model's pipelines live in its own folder, with a README describing every file:
 
-- **[scripts/evo2/](scripts/evo2/README.md)** — species phylogeny pipeline (Evo 2): manifest → window sampling → embed + geodesic + patristic baseline → figures.
-- **[scripts/gpnstar/](scripts/gpnstar/README.md)** — gene-family pipeline (GPN-Star): MSA download → embed + geodesic + Pfam/seq-id/paralog baselines → figures.
+- **[scripts/evo2/](scripts/evo2/README.md)** — Evo2 pipelines: species phylogeny, the cross-kingdom **ortholog** gene-family panel, and the Evo2 side of the matched human **paralog** panel (+ the ClinVar VEP check).
+- **[scripts/gpnstar/](scripts/gpnstar/README.md)** — GPN-Star pipelines: the matched human **paralog** gene-family panel (+ the ClinVar VEP check).
 
-Shared helpers imported by both:
+Shared across both models (top level of `scripts/`):
 
 | Module | Purpose |
 |--------|---------|
+| [scripts/gene_families.py](scripts/gene_families.py) | Single source of truth for gene-family **selection** (both panels): family order / colors / Pfam accessions + the HGNC (`build-human-paralog`) and KEGG (`build-ortholog`) membership builders |
+| [scripts/test_sample_human_genes.py](scripts/test_sample_human_genes.py) | Assemble + sample the matched human paralog panel: which genes both models can embed (`build-table`) and the shared transcript-span locus each samples (`resolve-loci`) |
 | [scripts/geodesic_utils.py](scripts/geodesic_utils.py) | k-NN graph (angular distance), Dijkstra geodesic, Spearman + Mantel, within-vs-between permutation test |
-| [scripts/sequence_baselines.py](scripts/sequence_baselines.py) | Alignment-free k-mer sequence-divergence baseline used by both pipelines, so Evo 2 and GPN-Star are scored against an identical nucleotide-composition reference |
+| [scripts/baselines/](scripts/baselines/) | Ground-truth baselines scored against the geodesic, identical across models: k-mer divergence, Pfam-HMM JSD, CDS seq-identity, protein-alignment patristic, between-family multi-axis, GTDB patristic |
+| [scripts/controls/](scripts/controls/) | Composition / ablation controls (e.g. the transcript-span k-mer + GC null) |
+| [scripts/layer_selection/](scripts/layer_selection/) | Model-agnostic layer-selection benchmark over a dense single-pass layer sweep |
 | [scripts/plot_utils.py](scripts/plot_utils.py) | Shared matplotlib publication style + NaN-aware colormap + significance-star helpers for figures |
 
 ---
