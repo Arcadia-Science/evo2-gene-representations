@@ -155,7 +155,9 @@ for fi, fam in enumerate(family_order):
     ax.set_title(fam.replace("_", " ").title(), fontsize=7, color=color, fontweight="bold", pad=8)
 
     strip = ax.inset_axes([0, 1.04, 1, 0.07], transform=ax.transAxes)
-    strip.set_xlim(0, 1); strip.set_ylim(0, 1); strip.axis("off")
+    strip.set_xlim(0, 1)
+    strip.set_ylim(0, 1)
+    strip.axis("off")
     strip.add_patch(mpatches.Rectangle((0, 0), 1, 1, color=color, linewidth=0))
 
     # Annotate within-family Spearman ρ vs seq identity if available
