@@ -95,3 +95,11 @@ project_overview.txt
 
 # One-off diagnostics / sweeps / scale-up experiments (not part of the pipeline)
 scripts/evo2/troubleshooting/
+
+# Local deprecated/parked scripts (not maintained)
+deprecated/
+
+# Large reference binaries — keep out of git (papers + Goodfire reproduction bundle)
+evo2.pdf
+gpnstar.pdf
+tree_of_life_reproduction_goodfire/
