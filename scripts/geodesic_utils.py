@@ -2,7 +2,7 @@
 
 These functions are pipeline-agnostic: they operate on an (N, D) embedding matrix
 or an (N, N) distance matrix and know nothing about genes vs. species. Both
-``scripts/gpnstar/embed_and_geodesic_genes.py`` and
+``scripts/gpnstar/embed_and_geodesic.py`` and
 ``scripts/evo2/embed_and_geodesic_species.py`` import from here so the k-NN graph,
 geodesic, and statistical-test logic lives in exactly one place.
 
@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components, shortest_path
-from scipy.stats import pearsonr, spearmanr
+from scipy.stats import pearsonr, rankdata, spearmanr
 from sklearn.neighbors import NearestNeighbors
 
 # ── k-NN graph with angular distances ──────────────────────────────────────────
@@ -33,13 +33,26 @@ def cosine_similarity_matrix(embeddings: np.ndarray) -> np.ndarray:
 
 
 def build_knn_graph(embeddings: np.ndarray, k: int) -> np.ndarray:
-    """Build a symmetric k-NN adjacency matrix with angular-distance edge weights.
+    """Build a symmetric k-NN adjacency matrix with cosine-distance edge weights.
 
-    ``k`` is the number of non-self neighbors per point. scikit-learn's
-    kneighbors result includes the query point itself, so we ask for one extra
-    neighbor and skip ``j == i`` below.
+    Follows the Goodfire tree-of-life reproduction (``tree_of_life_reproduction.zip``,
+    ``METHODS_DECISIONS.md`` §4 / ``metric_probing/analysis/analysis_utils.py:knn_graph``):
 
-    For mutual neighbors the smaller of the two angular distances is kept.
+      * Edges are weighted by **cosine distance** (``1 - cosine similarity``) rather
+        than angular distance. The neighbor *sets* are identical to the angular case
+        (``arccos`` is monotonic), but the geodesic edge weights — and therefore the
+        shortest-path sums — differ.
+      * The directed k-NN matrix is symmetrized by the **union** rule
+        ``A = max(A, Aᵀ)``: an undirected edge is kept whenever *either* endpoint
+        lists the other (the Isomap symmetric-kNN graph). This is *not* the mutual /
+        intersection (``min``) graph, which keeps an edge only when *both* list each
+        other, is sparser, and needs a larger k to connect. Because cosine distance
+        is symmetric, ``max`` governs edge *presence*, not the weight value (the two
+        stored directed distances are equal whenever both are present).
+
+    ``k`` is the number of non-self neighbors per point. scikit-learn's kneighbors
+    result includes the query point itself, so we ask for one extra neighbor and
+    skip ``j == i`` below.
     """
     N = len(embeddings)
     if k < 1 or k >= N:
@@ -48,7 +61,6 @@ def build_knn_graph(embeddings: np.ndarray, k: int) -> np.ndarray:
     nn = NearestNeighbors(n_neighbors=k + 1, metric="cosine", algorithm="brute")
     nn.fit(embeddings)
     cosine_dists, indices = nn.kneighbors(embeddings)
-    angular_dists = cosine_to_angular(cosine_dists)
 
     W = np.zeros((N, N))
     for i in range(N):
@@ -57,13 +69,13 @@ def build_knn_graph(embeddings: np.ndarray, k: int) -> np.ndarray:
             j = indices[i, j_pos]
             if j == i:
                 continue
-            w = angular_dists[i, j_pos]
-            if W[j, i] > 0:
-                sym_w = min(w, W[j, i])
-                W[i, j] = sym_w
-                W[j, i] = sym_w
-            else:
-                W[i, j] = w
+            w = cosine_dists[i, j_pos]
+            # Union / max-symmetrize (Goodfire `A.maximum(A.T)`): keep the larger of
+            # the two directed weights. For a symmetric metric the two are equal, so
+            # this simply unions the directed edge sets without altering weights.
+            sym_w = max(w, W[i, j])
+            W[i, j] = sym_w
+            W[j, i] = sym_w
             n_added += 1
             if n_added == k:
                 break
@@ -95,6 +107,54 @@ def compute_geodesic(W: np.ndarray) -> np.ndarray:
     geo = shortest_path(csr_matrix(W), method="auto", directed=False)
     assert not np.any(np.isinf(geo)), "Geodesic matrix has inf — graph is not fully connected"
     return geo
+
+
+# ── Between-family distances over family centroids ─────────────────────────────
+
+
+def family_centroids(
+    embeddings: np.ndarray,
+    groups: np.ndarray,
+    group_order: list[str],
+) -> np.ndarray:
+    """Per-family centroid vector = mean of the L2-normalized member embeddings.
+
+    Each family collapses to a single direction in embedding space, so the
+    centroid is independent of how many members the family has.
+    """
+    cents = []
+    for g in group_order:
+        idx = np.where(groups == g)[0]
+        if len(idx) == 0:
+            raise ValueError(f"No members for group {g!r}")
+        unit = embeddings[idx] / np.clip(
+            np.linalg.norm(embeddings[idx], axis=1, keepdims=True), 1e-12, None
+        )
+        cents.append(unit.mean(axis=0))
+    return np.vstack(cents)
+
+
+def compute_centroid_geodesic(
+    embeddings: np.ndarray,
+    groups: np.ndarray,
+    group_order: list[str],
+    k_min: int = 3,
+) -> np.ndarray:
+    """Between-family geodesic built BETWEEN family centroids, not member genes.
+
+    Collapses each family to one centroid (``family_centroids``), then runs the
+    standard angular k-NN geodesic over those F centroid nodes only. The result
+    is independent of per-family membership counts — a 400-member OR family and
+    a 3-member NOS family each contribute exactly one node — unlike averaging
+    member-pair geodesics over the gene-level graph, where a large family
+    reshapes the manifold every path traverses. With F small the graph is
+    near-complete, so the geodesic stays close to the direct centroid angular
+    distance (there is little manifold to follow at the family level).
+    """
+    cents = family_centroids(embeddings, groups, group_order)
+    F = len(group_order)
+    _, W = find_min_connected_k(cents, k_min=min(k_min, F - 1))
+    return compute_geodesic(W)
 
 
 def k_sweep_correlations(
@@ -181,6 +241,41 @@ def mantel_test(
     return float(obs_rho), float(p_value)
 
 
+def chatterjee_xi(x: np.ndarray, y: np.ndarray) -> float:
+    """Chatterjee's rank-correlation coefficient ξₙ (Chatterjee 2021).
+
+    Ported verbatim from the Goodfire tree-of-life reproduction
+    (``metric_probing/analysis/analysis_utils.py:compute_chatterjee_correlation``),
+    which reports it alongside Spearman/Pearson. ξ lies in [0, 1]: 0 ⇔ independence,
+    1 ⇔ Y is (a.s.) a measurable function of X. Unlike Spearman/Pearson it detects
+    *non-monotonic* functional dependence, but it is **asymmetric** — ξ(x, y) ≠
+    ξ(y, x) in general (it measures how well Y is predictable from X).
+
+    Ties: X-ties keep NumPy's stable mergesort order; Y is ranked with average ranks
+    (matching the R ``xicor`` package), using the ties-robust denominator so the
+    estimate stays valid when Y has ties.
+    """
+    x = np.asanyarray(x, dtype=np.float64)
+    y = np.asanyarray(y, dtype=np.float64)
+    if x.ndim != 1 or y.ndim != 1:
+        raise ValueError("x and y must be one-dimensional.")
+    if x.size != y.size:
+        raise ValueError("x and y must have the same length.")
+    n = x.size
+    if n < 2:
+        return float("nan")
+
+    order = np.argsort(x, kind="mergesort")  # stable sort: X-ties keep input order
+    y_sorted = y[order]
+    r = rankdata(y_sorted, method="average")  # ranks of Y, average rank for ties
+
+    num = np.sum(np.abs(np.diff(r)))  # Σ |r_{i+1} − r_i|
+    ell = n + 1 - r  # l_i = #{j : Y_j ≥ Y_i}, derived from ranks
+    denom = 2 * np.sum(ell * (n - ell))  # ties-robust denominator
+    xi = 1 - n * num / denom
+    return float(np.clip(xi, 0.0, 1.0))
+
+
 # ── Within- vs. between-group geodesic analysis ────────────────────────────────
 
 
@@ -214,3 +309,46 @@ def within_between_analysis(
                 count += 1
     p_val = (count + 1) / (n_perms + 1)
     return within, between, float(obs_ratio), float(p_val)
+
+
+# ── Control reconstruction (preservation): control geometry vs the natural geometry ──────
+# Shared by the within/between control scorers (analyses/embed_and_score_controls.py and
+# analyses/embed_and_score_msa_controls.py). The metric is rho->1 = the control reconstructed
+# the natural geometry (that aspect of the sequence was not load-bearing); rho falling = the
+# ablated aspect carried real structure.
+
+
+def between_preservation_rho(nat_centroid: np.ndarray, ctrl_centroid: np.ndarray) -> float:
+    """Spearman rho between the upper triangles of two aligned F x F centroid-distance
+    matrices (natural vs a control). Caller aligns both to the same family order. NaN-safe."""
+    a, b = upper_triangle(nat_centroid), upper_triangle(ctrl_centroid)
+    ok = np.isfinite(a) & np.isfinite(b)
+    if ok.sum() < 4 or np.ptp(a[ok]) == 0 or np.ptp(b[ok]) == 0:
+        return float("nan")
+    return float(spearmanr(a[ok], b[ok]).correlation)
+
+
+def within_preservation_rho(
+    nat_geo: np.ndarray,
+    ctrl_geo: np.ndarray,
+    families: np.ndarray,
+    family_order: list[str] | None = None,
+    min_members: int = 4,
+) -> tuple[list[tuple[str, int, float]], float]:
+    """Per-family Spearman(control submatrix, natural submatrix) of two per-gene geodesics
+    that share the SAME gene order (rows/cols of both matrices index the same genes, with
+    `families` the per-gene family label). Families with < `min_members` genes (or zero
+    variance) are skipped. Returns ([(family, n_members, rho), ...], equal-weight mean)."""
+    order = family_order if family_order is not None else sorted(set(map(str, families)))
+    rows: list[tuple[str, int, float]] = []
+    for fam in order:
+        idx = np.where(families == fam)[0]
+        if len(idx) < min_members:
+            continue
+        a = upper_triangle(nat_geo[np.ix_(idx, idx)])
+        b = upper_triangle(ctrl_geo[np.ix_(idx, idx)])
+        if np.ptp(a) == 0 or np.ptp(b) == 0:
+            continue
+        rows.append((str(fam), int(len(idx)), float(spearmanr(a, b).correlation)))
+    mean = float(np.mean([r[2] for r in rows])) if rows else float("nan")
+    return rows, mean
