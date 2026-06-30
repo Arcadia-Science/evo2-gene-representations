@@ -192,7 +192,8 @@ def draw_family_heatmap(ax, matrix, title, cmap, vmin=None, vmax=None,
         ax.set_facecolor("#F5F5F5")
         ax.text(0.5, 0.5, "TBD", transform=ax.transAxes, ha="center", va="center",
                 fontsize=14, color="#AAAAAA", fontweight="bold")
-        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_xticks([])
+        ax.set_yticks([])
     else:
         norm = Normalize(vmin=vmin if vmin is not None else matrix.min(),
                          vmax=vmax if vmax is not None else matrix.max())
