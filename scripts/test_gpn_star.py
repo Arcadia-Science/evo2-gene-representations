@@ -96,7 +96,7 @@ def load_model_compat(model_path: Path):
             )
 
     # Direct instantiation avoids the meta-device context in from_pretrained
-    model = GPNStarForMaskedLM(config) 
+    model = GPNStarForMaskedLM(config)
 
     weights_path = os.path.join(str(model_path), "model.safetensors")
     state_dict = load_file(weights_path)
