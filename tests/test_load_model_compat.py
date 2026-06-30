@@ -31,7 +31,7 @@ from safetensors.torch import load_file
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from test_gpn_star import load_model_compat  # noqa: E402
 
-import gpn.star.model  # registers GPNStar with AutoConfig/AutoModel  # noqa: E402
+import gpn.star.model  # registers GPNStar with AutoConfig/AutoModel  # noqa: F401, E402
 from gpn.star.model import GPNStarForMaskedLM  # noqa: E402
 from transformers import AutoConfig  # noqa: E402
 
