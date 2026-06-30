@@ -47,11 +47,11 @@ _N_SPECIES = 100
 _SPOT_CHECK_KEYS = [
     "model.encoder.layer.0.attention.col_attention.self.key.weight",
     "model.encoder.layer.0.attention.row_attention.self.query.weight",
-    "model.encoder.layer.15.output.dense.weight",   # last transformer layer
+    "model.encoder.layer.15.output.dense.weight",  # last transformer layer
     "model.target_embedding.input_embed.weight",
     "model.source_embedding.embed.weight",
     "cls.predictions.transform.dense.weight",
-    "cls.predictions.decoder.weight",               # in _tied_weights_keys but IS in checkpoint
+    "cls.predictions.decoder.weight",  # in _tied_weights_keys but IS in checkpoint
 ]
 
 # ── Module-scoped fixtures (model loaded once for the session) ────────────────
@@ -106,8 +106,8 @@ def synthetic_batch():
     rng = np.random.default_rng(42)
     B, L, T, N = 1, 32, 1, _N_SPECIES
     return {
-        "input_ids":      torch.from_numpy(rng.integers(1, 5, (B, L, T))).long(),
-        "source_ids":     torch.from_numpy(rng.integers(1, 5, (B, L, N))).long(),
+        "input_ids": torch.from_numpy(rng.integers(1, 5, (B, L, T))).long(),
+        "source_ids": torch.from_numpy(rng.integers(1, 5, (B, L, N))).long(),
         "target_species": torch.zeros(B, T, dtype=torch.long),
     }
 
@@ -180,9 +180,9 @@ def test_decoder_bias_values_match_checkpoint(loaded_model, checkpoint_weights):
     """
     expected = checkpoint_weights["cls.predictions.bias"]
     actual = loaded_model.cls.predictions.decoder.bias
-    assert torch.equal(actual, expected), (
-        f"decoder.bias value mismatch. Max diff: {(actual - expected).abs().max().item():.3e}"
-    )
+    assert torch.equal(
+        actual, expected
+    ), f"decoder.bias value mismatch. Max diff: {(actual - expected).abs().max().item():.3e}"
 
 
 # ── Missing / unexpected keys ─────────────────────────────────────────────────
@@ -232,9 +232,9 @@ def test_output_shape(loaded_model, synthetic_batch):
     with torch.no_grad():
         out = loaded_model(**synthetic_batch)
     expected_shape = (B, L, T, loaded_model.config.vocab_size)
-    assert tuple(out.logits.shape) == expected_shape, (
-        f"Got {tuple(out.logits.shape)}, expected {expected_shape}"
-    )
+    assert (
+        tuple(out.logits.shape) == expected_shape
+    ), f"Got {tuple(out.logits.shape)}, expected {expected_shape}"
 
 
 def test_output_is_finite(loaded_model, synthetic_batch):
