@@ -1,20 +1,4 @@
-"""Shared Evo2 embedding engine for the gene-panel analyses (paralog / ortholog + the layer sweep).
-
-One place for "load Evo2 → tokenize → return_embeddings forward → second-half mean-pool", so the
-three gene-panel scripts don't each re-implement it (and don't import primitives from each other):
-
-  * embed_and_geodesic_ortholog.py  — one KEGG CDS per row (cross-kingdom)
-  * embed_and_geodesic_paralog.py   — GRCh38 genomic string per human gene (matched panel)
-  * layer_sweep.py                  — all 32 blocks at once, for layer selection
-
-It also holds the Evo2-7B block taxonomy (N_BLOCKS / layer_type / LAYER_NAMES) the sweep + paralog
-embedder share. This is the Evo2 analog of scripts/geodesic_utils.py — pure embedding mechanics, no
-analysis logic.
-
-NOTE: the SPECIES pipeline (embed_and_geodesic_species.py) deliberately does NOT use this engine —
-it loads a different checkpoint (evo2_7b_262k, to match Goodfire's weights) and pools the tail of a
-fixed 4096-bp window, so it keeps its own embedding code.
-"""
+"""Shared Evo2 embedding engine for the gene-panel analyses (paralog / ortholog + the layer sweep)."""
 
 from __future__ import annotations
 
@@ -59,15 +43,7 @@ def load_model(model_name: str = MODEL_NAME):
 
 
 def pool_second_half(win_emb):
-    """Mean-pool the SECOND HALF of the token positions of a (L, H) hidden-state tensor.
-
-    Evo2 is autoregressive (causal): a position's hidden state has attended over every earlier
-    token, so by the back half of the sequence the representation is well past the autoregressive
-    burn-in — the gene's identity is "burned in" — regardless of how long the gene is. Pooling the
-    second half drops the low-left-context first half while keeping a length-proportional,
-    length-consistent window for every gene. The WHOLE sequence is still fed to the model; this only
-    selects which positions' hidden states are averaged, so no input sequence is truncated.
-    """
+    """Mean-pool the SECOND HALF of the token positions of a (L, H) hidden-state tensor."""
     half = win_emb.shape[0] // 2
     return win_emb[half:].mean(dim=0)
 
