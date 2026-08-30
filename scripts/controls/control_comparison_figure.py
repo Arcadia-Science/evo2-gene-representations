@@ -1,16 +1,4 @@
-"""Figure 3: do composition controls reproduce Evo2's within-family signal?
-
-Compares the per-family within-family geodesic-vs-taxonomy Spearman ρ of the NATURAL
-sequences against each composition control (make_control_sequences.py +
-embed_and_score_controls.py). Taxonomy is the fixed, clade-structured ground truth; if a
-control retains the natural ρ, Evo2's within-family "phylogeny" recovery is explained by
-the composition that control preserves. Two panels: per-family grouped bars (left) and the
-across-family mean ρ per condition (right) — the headline "controls do/don't reproduce it".
-
-Usage:
-    uv run python analyses/control_comparison_figure.py \
-        --natural-run results/2026-06-19_evo2-gene-families
-"""
+"""Figure 3: do composition controls reproduce Evo2's within-family signal?"""
 
 from __future__ import annotations
 
@@ -22,23 +10,63 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-# This script lives in analyses/; plot_utils lives under scripts/.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-from plot_utils import grouped_rho_bars, set_pub_style  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+import arcadia_style as acs  # noqa: E402
+from plot_utils import control_preservation_figure, grouped_rho_bars, set_pub_style  # noqa: E402
 
 CONTROL_ROOT = Path("data/evo2_gene_families/controls")
 # (key, label, control_dir or None for natural, colour). Ordered as a composition
 # gradient: natural → 6-mer → 4-mer → codon(3) → dinucleotide(2) → GC(1) preserved, plus
 # synonymous-recode (preserves PROTEIN, scrambles nucleotides) as the orthogonal rung.
+_C = acs.CONTROL_COLORS
 CONDITIONS = [
-    ("natural", "Natural", None, "#2A6F4E"),
-    ("kmer6_shuffle", "6-mer shuffle", "kmer6_shuffle", "#1F4E79"),
-    ("codon_shuffle", "Codon shuffle", "codon_shuffle", "#6FA8DC"),
-    ("dinuc_shuffle", "Dinucleotide shuffle", "dinuc_shuffle", "#A8C7E8"),
-    ("gc_match", "GC-matched random", "gc_match", "#9AA0A6"),
-    ("synonymous_recode", "Synonymous recode (protein)", "synonymous_recode", "#B5651D"),
+    ("natural", "Natural", None, _C["natural"]),
+    ("kmer6_shuffle", "6-mer shuffle", "kmer6_shuffle", _C["kmer6_shuffle"]),
+    ("kmer4_shuffle", "4-mer shuffle", "kmer4_shuffle", _C["kmer4_shuffle"]),
+    ("codon_shuffle", "Codon shuffle", "codon_shuffle", _C["codon_shuffle"]),
+    ("dinuc_shuffle", "Dinucleotide shuffle", "dinuc_shuffle", _C["dinuc_shuffle"]),
+    ("gc_match", "GC-matched random", "gc_match", _C["gc_match"]),
+    # The nested pair: missense_subset edits a strict SUBSET of synonymous_recode's changed bases,
+    # so it perturbs the nucleotides less while damaging the protein the recode kept.
+    ("synonymous_recode", "Synonymous recode (protein kept)", "synonymous_recode",
+     _C["synonymous_recode"]),
+    ("missense_subset", "Missense at recode sites (protein damaged)", "missense_subset",
+     _C["missense_subset"]),
 ]
 TAX_COL = "spearman_geodesic_taxonomy"
+
+
+def preservation_figure(out_dir: Path, family_order: list[str]) -> None:
+    """Companion 'control vs natural GEODESIC' figure, styled identically to the Evo2-human and GPN-Star-human panels via the shared plot_utils.control_preservation_figure()."""
+    win_p = out_dir / "control_within_scores.csv"
+    if not win_p.exists():
+        print(f"  [skip] control_preservation: no {win_p.name} (run the control scoring first)")
+        return
+    win = pd.read_csv(win_p)
+    if "rho_geodesic_vs_natural" not in win.columns:
+        print("  [skip] control_preservation: no rho_geodesic_vs_natural column")
+        return
+    within_by = {cond: dict(zip(g["family"], g["rho_geodesic_vs_natural"]))
+                 for cond, g in win.groupby("condition")}
+
+    between_by = None
+    btw_p = out_dir / "control_between_scores.csv"
+    if btw_p.exists():
+        btw = pd.read_csv(btw_p)
+        if "rho_vs_natural_centroid" in btw.columns:
+            between_by = dict(zip(btw["condition"], btw["rho_vs_natural_centroid"]))
+
+    # Display = the named controls (Natural is the self=1.0 reference line drawn by the
+    # helper), in the composition-gradient order, reusing the CONDITIONS labels/colours.
+    display = [(k, lbl, c) for k, lbl, _, c in CONDITIONS if k != "natural"]
+    ok = control_preservation_figure(
+        str(out_dir / "control_preservation"), family_order, display,
+        within_by, between_by_condition=between_by,
+        title_left="Composition controls: is the within-family geometry preserved? "
+                   "(Evo2 gene families)",
+    )
+    print(f"Saved {out_dir}/control_preservation.{{pdf,png}}" if ok
+          else "  [skip] control_preservation: no control had within-family data")
 
 
 def main() -> None:
@@ -94,12 +122,13 @@ def main() -> None:
     stds = [s[2] for s in summary]
     colors = [s[3] for s in summary]
     xs = np.arange(len(summary))
-    axR.bar(xs, means, yerr=stds, color=colors, edgecolor="black", linewidth=0.5, capsize=4, zorder=3)
+    axR.bar(xs, means, yerr=stds, color=colors, edgecolor=acs.apc.white, linewidth=0.5,
+            capsize=4, zorder=3)
     for x, m in zip(xs, means):
         axR.text(x, m + 0.02, f"{m:.2f}", ha="center", fontsize=9, fontweight="bold")
     axR.set_xticks(xs)
     axR.set_xticklabels(labels, rotation=30, ha="right", fontsize=8)
-    axR.axhline(0, color="black", linewidth=0.8)
+    axR.axhline(0, color=acs.ZERO_LINE, linewidth=0.8)
     axR.set_ylim(-0.3, 1.0)
     axR.set_ylabel("Mean within-family ρ across families")
     axR.set_title("Mean across families", fontweight="bold")
@@ -118,6 +147,9 @@ def main() -> None:
           "pct_of_natural": (m / nat_mean if nat_mean else np.nan)} for lbl, m, sd, _ in summary]
     )
     summ_df.to_csv(out_dir / "control_summary.csv", index=False)
+
+    # Companion control-vs-natural geodesic PRESERVATION figure (human-panel style).
+    preservation_figure(out_dir, family_order)
 
     print(f"Saved {out}.{{pdf,png}} and {out_dir}/control_summary.csv")
     print(f"Controls folder: {out_dir}/  ({len(summary)} conditions + per-condition CSVs)")

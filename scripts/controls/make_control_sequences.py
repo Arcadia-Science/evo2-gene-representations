@@ -1,31 +1,4 @@
-"""Generate composition-matched control sequence sets for the Evo2 gene-family panel.
-
-Section 3 of the project: test whether Evo2's within-family geodesic signal (which
-recovers per-family phylogeny, ρ up to 0.78) is genuine higher-order structure or merely
-a reflection of sequence COMPOSITION — which is itself phylogenetically structured (GC
-content and k-mer usage vary by clade). Each natural CDS is replaced by a control that
-preserves a specific level of composition and destroys everything above it; we then
-re-embed and ask whether the geodesic still recovers the *source organism's* taxonomy
-(a fixed property preserved by labelling). If it does, the "phylogeny" signal is a
-composition artifact; if it collapses, Evo2 reads higher-order features.
-
-Four controls, increasingly destructive (length-preserving except where noted):
-  dinuc_shuffle     Altschul–Erikson shuffle — EXACT mono+dinucleotide frequencies,
-                    destroys codons/motifs/higher k-mers.
-  codon_shuffle     reorder the CDS's own codons — exact codon multiset + amino-acid
-                    composition + reading frame, destroys codon order/motifs.
-  synonymous_recode keep the protein, resample each codon from the family's codon-usage
-                    distribution — preserves protein + family codon bias, changes nt.
-  gc_match          random sequence, length- and GC-fraction-matched only.
-
-Output mirrors the natural data dir so the control embedder can consume it:
-  data/evo2_gene_families/controls/<control>/{manifest.csv, <family>.fasta}
-(metadata — org_gene/family/taxonomy — is copied verbatim; only the sequences change.)
-
-Usage:
-    uv run python analyses/make_control_sequences.py            # all 4 controls
-    uv run python analyses/make_control_sequences.py --controls dinuc_shuffle
-"""
+"""Generate composition-matched control sequence sets for the Evo2 gene-family panel."""
 
 from __future__ import annotations
 
@@ -38,10 +11,11 @@ import pandas as pd
 
 DATA_DIR = Path("data/evo2_gene_families")
 CONTROL_ROOT = DATA_DIR / "controls"
-# kmer4/kmer6 preserve the exact 4-mer/6-mer spectrum (k=6 matches the k-mer ground-truth
-# baseline) — the high-order rungs of the composition gradient.
+# kmer4/kmer6 preserve exact k-mer spectra. `missense_subset` is nested within each recode.
+# The paired-p3 arms share edited sites and rates and should be compared only with each other.
 CONTROLS = ["dinuc_shuffle", "codon_shuffle", "synonymous_recode", "gc_match",
-            "kmer4_shuffle", "kmer6_shuffle"]
+            "kmer4_shuffle", "kmer6_shuffle", "missense_subset",
+            "paired_p3_syn", "paired_p3_missense"]
 SEED = 1234
 
 # Standard genetic code (frame-0 translation for amino-acid grouping).
@@ -59,127 +33,76 @@ _CODON = {
 }
 
 
-# ── control generators ───────────────────────────────────────────────────────
+# ── control generators
 
 
-def dinuc_shuffle(seq: str, rng: random.Random, max_tries: int = 100) -> str:
-    """Altschul–Erikson dinucleotide-preserving shuffle: a uniformly-random sequence
-    with EXACTLY the same first/last symbol and mono+dinucleotide frequencies.
-
-    Builds the de Bruijn edge multiset, fixes a random arborescence of "last edges"
-    toward the terminal symbol (retrying until it spans), shuffles the rest, and walks
-    the Eulerian path. (Treats any alphabet symbol uniformly, so N/ambiguity is safe.)
+def _random_arborescence(edges: dict, verts: set, last, rng: random.Random) -> dict:
+    """A UNIFORMLY-random arborescence (spanning in-tree) oriented toward `last`, as
+    {vertex -> its chosen "last edge" successor} for every vertex except `last`.
     """
-    s = seq.upper()
-    n = len(s)
-    if n < 4 or len(set(s)) < 2:
-        return s
-    last = s[-1]
-    verts = set(s)
-    edges = defaultdict(list)
-    for a, b in zip(s[:-1], s[1:]):
-        edges[a].append(b)
-
-    for _ in range(max_tries):
-        avail = {x: list(ys) for x, ys in edges.items()}
-        last_edge: dict[str, str] = {}
-        ok = True
-        for x in verts:
-            if x == last:
-                continue
-            if not avail[x]:
-                ok = False
-                break
-            last_edge[x] = avail[x].pop(rng.randrange(len(avail[x])))
-        if not ok:
+    next_edge: dict = {}
+    in_tree = {last}
+    for v in verts:
+        if v in in_tree:
             continue
-        # last_edge must form a tree directed into `last` (every vertex reaches it).
-        def reaches(x: str) -> bool:
-            seen = set()
-            while x != last:
-                if x in seen or x not in last_edge:
-                    return False
-                seen.add(x)
-                x = last_edge[x]
-            return True
-
-        if not all(reaches(x) for x in verts if x != last):
-            continue
-        for x in verts:
-            rng.shuffle(avail[x])
-            if x in last_edge:
-                avail[x].append(last_edge[x])  # terminal edge consumed last
-        out = [s[0]]
-        cur = s[0]
-        idx = {x: 0 for x in verts}
-        for _ in range(n - 1):
-            nxt = avail[cur][idx[cur]]
-            idx[cur] += 1
-            out.append(nxt)
-            cur = nxt
-        return "".join(out)
-    return s  # rare: failed to construct → leave unchanged
+        u = v
+        while u not in in_tree:                      # random walk, erasing loops as it goes
+            succ = edges[u]
+            next_edge[u] = succ[rng.randrange(len(succ))]
+            u = next_edge[u]
+        u = v
+        while u not in in_tree:                      # commit the loop-erased path
+            in_tree.add(u)
+            u = next_edge[u]
+    return next_edge
 
 
-def _euler_shuffle(symbols: list, rng: random.Random, max_tries: int = 100) -> list:
-    """Altschul–Erikson shuffle on an arbitrary symbol list: a uniformly-random
-    reordering that preserves the count of every adjacent (symbol_i, symbol_{i+1}) pair
-    and the first/last symbol. (dinuc_shuffle is the nucleotide-symbol special case.)"""
+def _euler_shuffle(symbols: list, rng: random.Random) -> list:
+    """Randomize a sequence while preserving its k-mer counts."""
     n = len(symbols)
     if n < 4 or len(set(symbols)) < 2:
         return list(symbols)
     last = symbols[-1]
     verts = set(symbols)
-    edges = defaultdict(list)
+    edges: dict = defaultdict(list)
     for a, b in zip(symbols[:-1], symbols[1:]):
         edges[a].append(b)
-    for _ in range(max_tries):
-        # default [] for vertices with no outgoing edge (e.g. the terminal (k-1)-mer,
-        # which appears only as the last token and has no successor).
-        avail = {x: list(edges.get(x, [])) for x in verts}
-        last_edge: dict = {}
-        ok = True
-        for x in verts:
-            if x == last:
-                continue
-            if not avail[x]:
-                ok = False
-                break
-            last_edge[x] = avail[x].pop(rng.randrange(len(avail[x])))
-        if not ok:
-            continue
+    # Every vertex other than `last` has an outgoing edge: a symbol occurring only at the
+    # final position IS `last`. So the walk in _random_arborescence cannot dead-end.
+    last_edge = _random_arborescence(edges, verts, last, rng)
 
-        def reaches(x):
-            seen = set()
-            while x != last:
-                if x in seen or x not in last_edge:
-                    return False
-                seen.add(x)
-                x = last_edge[x]
-            return True
+    avail = {x: list(edges.get(x, [])) for x in verts}
+    for x, e in last_edge.items():
+        avail[x].remove(e)                           # reserve the tree edge for last
+    for x in verts:
+        rng.shuffle(avail[x])
+        if x in last_edge:
+            avail[x].append(last_edge[x])            # terminal edge consumed last
+    out = [symbols[0]]
+    cur = symbols[0]
+    idx = {x: 0 for x in verts}
+    for _ in range(n - 1):
+        nxt = avail[cur][idx[cur]]
+        idx[cur] += 1
+        out.append(nxt)
+        cur = nxt
+    return out
 
-        if not all(reaches(x) for x in verts if x != last):
-            continue
-        for x in verts:
-            rng.shuffle(avail[x])
-            if x in last_edge:
-                avail[x].append(last_edge[x])
-        out = [symbols[0]]
-        cur = symbols[0]
-        idx = {x: 0 for x in verts}
-        for _ in range(n - 1):
-            nxt = avail[cur][idx[cur]]
-            idx[cur] += 1
-            out.append(nxt)
-            cur = nxt
-        return out
-    return list(symbols)
+
+def dinuc_shuffle(seq: str, rng: random.Random) -> str:
+    """Altschul–Erikson dinucleotide-preserving shuffle: a uniformly-random sequence
+    with EXACTLY the same first/last symbol and mono+dinucleotide frequencies.
+    """
+    s = seq.upper()
+    if len(s) < 4 or len(set(s)) < 2:
+        return s
+    return "".join(_euler_shuffle(list(s), rng))
 
 
 def klet_shuffle(seq: str, k: int, rng: random.Random) -> str:
     """Shuffle preserving the EXACT k-mer spectrum (k>=2): an Eulerian walk on the graph
-    whose nodes are (k-1)-mers and edges are k-mers. At higher k fewer (k-1)-mers repeat,
-    so less reordering is possible — the shuffle preserves more and destroys less."""
+    whose nodes are (k-1)-mers and edges are k-mers.
+    """
     s = seq.upper()
     if len(s) < k + 1:
         return s
@@ -232,6 +155,84 @@ def synonymous_recode(seq: str, fam_usage: dict, rng: random.Random) -> str:
     return "".join(out) + s[ncod * 3 :]
 
 
+_ALL_CODONS = sorted(_CODON)
+_SENSE_CODONS = [c for c in _ALL_CODONS if _CODON[c] != "*"]
+
+
+def _hamming(a: str, b: str) -> int:
+    return sum(x != y for x, y in zip(a, b))
+
+
+# ── Matched synonymous/missense pair
+# Both arms edit the same eligible position-3 sites at the same rate; only the protein outcome differs.
+# Compare these arms with each other, not with `synonymous_recode`, which has a different edit rate.
+def _p3_alternatives(cod: str) -> tuple[list[str], list[str]]:
+    """(synonymous, missense) position-3 alternatives of `cod`, stops never included."""
+    aa = _CODON.get(cod)
+    if aa is None or aa == "*":
+        return [], []
+    syn, mis = [], []
+    for b in "ACGT":
+        if b == cod[2]:
+            continue
+        alt = cod[:2] + b
+        a2 = _CODON.get(alt)
+        if a2 is None or a2 == "*":
+            continue
+        (syn if a2 == aa else mis).append(alt)
+    return syn, mis
+
+
+def paired_p3(seq: str, fam_usage: dict, rng: random.Random, arm: str) -> str:
+    """One arm of the matched pair. `arm` is 'synonymous' or 'missense'."""
+    if arm not in ("synonymous", "missense"):
+        raise ValueError(f"arm must be 'synonymous' or 'missense', got {arm!r}")
+    s = seq.upper()
+    ncod = len(s) // 3
+    out = []
+    for i in range(ncod):
+        cod = s[i * 3:i * 3 + 3]
+        syn, mis = _p3_alternatives(cod)
+        if not syn or not mis:               # 4-fold (no missense) or 1-fold (no synonym): skip
+            out.append(cod)
+            continue
+        if arm == "missense":
+            out.append(rng.choice(mis))
+        else:
+            usage = fam_usage.get(_CODON[cod])
+            if usage is None:
+                out.append(rng.choice(syn))
+            else:
+                codons, weights = usage
+                w = [dict(zip(codons, weights)).get(c, 0) for c in syn]
+                out.append(rng.choices(syn, weights=w, k=1)[0] if sum(w) > 0
+                           else rng.choice(syn))
+    return "".join(out) + s[ncod * 3:]
+
+
+def missense_subset(seq: str, recoded: str, rng: random.Random) -> str:
+    """The NONSYNONYMOUS counterpart of a `synonymous_recode`, changing ONLY bases the recode itself changed — a strict subset of the recode's edits, never a base the recode left alone."""
+    s, r = seq.upper(), recoded.upper()
+    ncod = min(len(s), len(r)) // 3
+    out = []
+    for i in range(ncod):
+        src, rec = s[i * 3:i * 3 + 3], r[i * 3:i * 3 + 3]
+        aa = _CODON.get(src)
+        if aa is None or src == rec:
+            out.append(src)                    # non-ACGT, or the recode left this codon alone
+            continue
+        allowed = {j for j in range(3) if src[j] != rec[j]}
+        cands = [c for c in _SENSE_CODONS
+                 if c != src and _CODON[c] != aa
+                 and all(c[j] == src[j] for j in range(3) if j not in allowed)]
+        if not cands:
+            out.append(src)                    # no missense reachable inside the recode's sites
+            continue
+        best = max(_hamming(c, src) for c in cands)   # use as much of `allowed` as possible
+        out.append(rng.choice([c for c in cands if _hamming(c, src) == best]))
+    return "".join(out) + s[ncod * 3:]
+
+
 def gc_match(seq: str, rng: random.Random) -> str:
     """Random length-matched sequence with the same G+C fraction (only)."""
     s = seq.upper()
@@ -241,7 +242,7 @@ def gc_match(seq: str, rng: random.Random) -> str:
     return "".join(rng.choice("GC") if rng.random() < p else rng.choice("AT") for _ in s)
 
 
-# ── FASTA IO ─────────────────────────────────────────────────────────────────
+# ── FASTA IO
 
 
 def load_family_fastas() -> tuple[dict[str, str], dict[str, list[tuple[str, str]]]]:
@@ -277,10 +278,17 @@ def main() -> None:
     print(f"Loaded {len(seqs)} CDS across {len(order)} families")
     manifest = pd.read_csv(DATA_DIR / "manifest.csv")
 
-    fam_usage_all = build_family_codon_usage(seqs_by_family) if "synonymous_recode" in args.controls else {}
+    needs_usage = {"synonymous_recode", "missense_subset", "paired_p3_syn"}
+    fam_usage_all = (build_family_codon_usage(seqs_by_family)
+                     if needs_usage & set(args.controls) else {})
 
     for control in args.controls:
         rng = random.Random(SEED)  # fresh deterministic stream per control
+        # missense_subset draws its recode partner from a DEDICATED stream seeded exactly as the
+        # synonymous_recode control's own stream is, and consumes it in the same family/gene order.
+        # The partner is therefore byte-identical to the recode set on disk, so the two rungs are
+        # matched per sequence and not merely in distribution.
+        partner_rng = random.Random(SEED) if control == "missense_subset" else None
         out_dir = CONTROL_ROOT / control
         out_dir.mkdir(parents=True, exist_ok=True)
         n_total = 0
@@ -298,6 +306,13 @@ def main() -> None:
                     c = codon_shuffle(s, rng)
                 elif control == "synonymous_recode":
                     c = synonymous_recode(s, fam_usage_all[fam], rng)
+                elif control == "paired_p3_syn":
+                    c = paired_p3(s, fam_usage_all[fam], rng, "synonymous")
+                elif control == "paired_p3_missense":
+                    c = paired_p3(s, {}, rng, "missense")
+                elif control == "missense_subset":
+                    c = missense_subset(
+                        s, synonymous_recode(s, fam_usage_all[fam], partner_rng), rng)
                 else:  # gc_match
                     c = gc_match(s, rng)
                 lines.append(f">{hdr}\n{c}")
