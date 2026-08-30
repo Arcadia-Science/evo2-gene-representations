@@ -1,7 +1,6 @@
 """Graph-free composition-control preservation for the mammalian ortholog panel, both axes."""
 
 from __future__ import annotations
-
 import argparse
 import contextlib
 import io
@@ -42,8 +41,9 @@ def load_panel() -> tuple[list[str], pd.DataFrame]:
 
 def ready_conditions(keys: list[str]) -> list[str]:
     """Natural plus every control rung whose embedding cache is COMPLETE."""
-    return [ARM] + [f"{ARM}_{c}" for c in CONTROLS
-                    if len(list((CA / f"{ARM}_{c}").glob("*.npy"))) == len(keys)]
+    return [ARM] + [
+        f"{ARM}_{c}" for c in CONTROLS if len(list((CA / f"{ARM}_{c}").glob("*.npy"))) == len(keys)
+    ]
 
 
 def load_stack(cond: str, keys: list[str]) -> np.ndarray:
@@ -54,8 +54,9 @@ def load_stack(cond: str, keys: list[str]) -> np.ndarray:
 # ── between-family: Wasserstein
 def score_between(keys: list[str], meta: pd.DataFrame) -> Path:
     OT_CACHE.mkdir(parents=True, exist_ok=True)
-    fam_order = json.loads(
-        (RUN / "blocks15" / "betweenfam_ot_metadata.json").read_text())["fam_order"]
+    fam_order = json.loads((RUN / "blocks15" / "betweenfam_ot_metadata.json").read_text())[
+        "fam_order"
+    ]
     fam_arr = meta.family.to_numpy()
     F = len(fam_order)
     iu = np.triu_indices(F, 1)
@@ -79,8 +80,7 @@ def score_between(keys: list[str], meta: pd.DataFrame) -> Path:
             if f.exists():
                 Wm = np.load(f)
             else:
-                Wm = compute_ot_matrices(XL, fam_arr, fam_order,
-                                         alphas=()).matrices["wasserstein"]
+                Wm = compute_ot_matrices(XL, fam_arr, fam_order, alphas=()).matrices["wasserstein"]
                 np.save(f, Wm)
             cen = family_centroids(XL, fam_arr, fam_order)
             with contextlib.redirect_stdout(io.StringIO()):
@@ -92,10 +92,15 @@ def score_between(keys: list[str], meta: pd.DataFrame) -> Path:
                 g_c = np.load(GEO / f"{cond}_L{L}.npz")["centroid_ut"]
                 rec["rho_geodesic"] = spearmanr(g_n, g_c).statistic
             rows.append(rec)
-            print(f"    L{L:<2} k_centroid={k_cen:<3}"
-                  + (f" wasserstein={rec['rho_wasserstein']:.4f}"
-                     f" geodesic={rec['rho_geodesic']:.4f}"
-                     if "rho_wasserstein" in rec else ""), flush=True)
+            print(
+                f"    L{L:<2} k_centroid={k_cen:<3}"
+                + (
+                    f" wasserstein={rec['rho_wasserstein']:.4f} geodesic={rec['rho_geodesic']:.4f}"
+                    if "rho_wasserstein" in rec
+                    else ""
+                ),
+                flush=True,
+            )
         del X
 
     df = pd.DataFrame(rows)
@@ -103,8 +108,10 @@ def score_between(keys: list[str], meta: pd.DataFrame) -> Path:
     df.to_csv(out, index=False)
     print(f"\nwrote {out}", flush=True)
     print("\nk used for the 48-centroid graph, by condition:", flush=True)
-    print(df.groupby("condition")["k_centroid_graph"]
-          .describe()[["min", "50%", "max"]].to_string(), flush=True)
+    print(
+        df.groupby("condition")["k_centroid_graph"].describe()[["min", "50%", "max"]].to_string(),
+        flush=True,
+    )
     return out
 
 
@@ -134,8 +141,10 @@ def score_within(keys: list[str], meta: pd.DataFrame) -> Path:
     for cond in ready:
         print(f"  loading {cond} ...", flush=True)
         X = load_stack(cond, keys)
-        red[cond] = {L: {g: angular_upper(X[ix, L, :].astype(np.float64))
-                         for g, ix in idx.items()} for L in LAYERS}
+        red[cond] = {
+            L: {g: angular_upper(X[ix, L, :].astype(np.float64)) for g, ix in idx.items()}
+            for L in LAYERS
+        }
         del X
         print(f"    reduced {cond}", flush=True)
 
@@ -151,24 +160,41 @@ def score_within(keys: list[str], meta: pd.DataFrame) -> Path:
                 if ok.sum() >= 6 and np.ptp(a[ok]) > 0 and np.ptp(b[ok]) > 0:
                     per_fam[fam].append(spearmanr(a[ok], b[ok]).statistic)
             vals = [np.mean(v) for v in per_fam.values() if v]
-            rows.append({"condition": cond.replace(f"{ARM}_", ""), "layer": L,
-                         "rho_within_angular": float(np.mean(vals)) if vals else np.nan,
-                         "n_families": len(vals)})
+            rows.append(
+                {
+                    "condition": cond.replace(f"{ARM}_", ""),
+                    "layer": L,
+                    "rho_within_angular": float(np.mean(vals)) if vals else np.nan,
+                    "n_families": len(vals),
+                }
+            )
         print(f"  scored {cond}", flush=True)
 
     out = ROOT / "results" / f"_angular_control_preservation_{ARM}.csv"
     pd.DataFrame(rows).to_csv(out, index=False)
     print(f"\nwrote {out}", flush=True)
-    print(pd.DataFrame(rows).query("8 <= layer <= 27").groupby("condition")
-          ["rho_within_angular"].mean().round(3).to_string(), flush=True)
+    print(
+        pd.DataFrame(rows)
+        .query("8 <= layer <= 27")
+        .groupby("condition")["rho_within_angular"]
+        .mean()
+        .round(3)
+        .to_string(),
+        flush=True,
+    )
     return out
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--axis", choices=["between", "within", "both"], default="both",
-                    help="which control-preservation axis to score (default: both)")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--axis",
+        choices=["between", "within", "both"],
+        default="both",
+        help="which control-preservation axis to score (default: both)",
+    )
     args = ap.parse_args()
 
     keys, meta = load_panel()

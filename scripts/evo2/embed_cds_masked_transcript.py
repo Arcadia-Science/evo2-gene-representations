@@ -1,7 +1,6 @@
 """Condition C — embed the Evo2-human GENOMIC TRANSCRIPT SPAN, pool only the CDS positions."""
 
 from __future__ import annotations
-
 import argparse
 import json
 import math
@@ -15,8 +14,8 @@ from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "evo2"))
-from evo2_embedding import LAYER_NAMES, load_model, MODEL_NAME  # noqa: E402
-from embed_and_geodesic_paralog import N_BLOCKS, EMBED_DIM, EVO2_WINDOW  # noqa: E402
+from embed_and_geodesic_paralog import EMBED_DIM, EVO2_WINDOW, N_BLOCKS  # noqa: E402
+from evo2_embedding import LAYER_NAMES, MODEL_NAME, load_model  # noqa: E402
 
 GENOMIC_CACHE = ROOT / "data" / "cache" / "evo2_human_genomic.json"
 CDS_POS = ROOT / "data" / "cache" / "human_cds_positions.json"
@@ -25,23 +24,30 @@ META_SRC = ROOT / "results" / "2026-07-01_evo2-human-panel" / "blocks15" / "meta
 CACHE_DIR = ROOT / "data" / "cache" / "evo2_human_cdspool_transcript"
 
 
-def _forward_positions(seq: str, model, device: str, want_local: list[int]) -> dict[str, np.ndarray]:
+def _forward_positions(
+    seq: str, model, device: str, want_local: list[int]
+) -> dict[str, np.ndarray]:
     """Forward over `seq`; return {layer: (len(want_local), H)} hidden states at the given 0-based
     positions, in the given order."""
     input_ids = torch.tensor(model.tokenizer.tokenize(seq), dtype=torch.int).unsqueeze(0).to(device)
     idx = torch.tensor(want_local, dtype=torch.long, device=device)
     with torch.no_grad():
         _, emb = model(input_ids, return_embeddings=True, layer_names=list(LAYER_NAMES))
-    out = {ln: emb[ln][0].float().index_select(0, idx).cpu().numpy().astype(np.float32)
-           for ln in LAYER_NAMES}
+    out = {
+        ln: emb[ln][0].float().index_select(0, idx).cpu().numpy().astype(np.float32)
+        for ln in LAYER_NAMES
+    }
     del input_ids, emb, idx
     torch.cuda.empty_cache()
     return out
 
 
-def embed_cds_masked(seq: str, cds_pos: list[int], model, device: str,
-                     window: int = EVO2_WINDOW) -> np.ndarray:
-    """(N_BLOCKS, H): hidden states at CDS positions (transcript order) across contiguous windows, second half mean-pooled."""
+def embed_cds_masked(
+    seq: str, cds_pos: list[int], model, device: str, window: int = EVO2_WINDOW
+) -> np.ndarray:
+    """(N_BLOCKS, H): hidden states at CDS positions (transcript order) across contiguous windows,
+    second half mean-pooled.
+    """
     L = len(seq)
     cds = np.array(sorted(p for p in cds_pos if 0 <= p < L))
     if L <= window:
@@ -60,7 +66,7 @@ def embed_cds_masked(seq: str, cds_pos: list[int], model, device: str,
     out = np.zeros((N_BLOCKS, EMBED_DIM), dtype=np.float32)
     for i, ln in enumerate(LAYER_NAMES):
         allpos = np.concatenate(collected[ln], axis=0)  # (n_cds, H), transcript order
-        half = len(allpos) // 2                          # pool_second_half rule, on CDS positions
+        half = len(allpos) // 2  # pool_second_half rule, on CDS positions
         out[i] = allpos[half:].mean(axis=0)
     return out
 
@@ -69,8 +75,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--checkpoint-every", type=int, default=50)
-    ap.add_argument("--meta-src", default=str(META_SRC),
-                    help="metadata.csv whose gene column defines this arm's gene set")
+    ap.add_argument(
+        "--meta-src",
+        default=str(META_SRC),
+        help="metadata.csv whose gene column defines this arm's gene set",
+    )
     args = ap.parse_args()
 
     genomic = json.loads(GENOMIC_CACHE.read_text())
@@ -78,21 +87,37 @@ def main() -> None:
     meta_src = pd.read_csv(args.meta_src)  # gene, family — same set/order as the transcript run (B)
 
     # keep the transcript run's gene order, restricted to genes with a validated CDS mask
-    rows = [(g, f) for g, f in zip(meta_src["gene"].astype(str), meta_src["family"])
-            if g in cds_pos and g in genomic]
+    rows = [
+        (g, f)
+        for g, f in zip(meta_src["gene"].astype(str), meta_src["family"], strict=False)
+        if g in cds_pos and g in genomic
+    ]
     dropped = [g for g in meta_src["gene"].astype(str) if g not in cds_pos]
     genes = [g for g, _ in rows]
     fams = [f for _, f in rows]
-    print(f"{len(genes)} genes with validated CDS masks "
-          f"({len(dropped)} dropped, no/failed mask): {dropped[:8]}", flush=True)
+    print(
+        f"{len(genes)} genes with validated CDS masks "
+        f"({len(dropped)} dropped, no/failed mask): {dropped[:8]}",
+        flush=True,
+    )
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     stack_path = CACHE_DIR / "layer_stack.npy"
-    config = {"model": MODEL_NAME, "pool": "second_half_of_cds", "input": "transcript_span",
-              "n_blocks": N_BLOCKS, "window": EVO2_WINDOW, "genes": genes}
+    config = {
+        "model": MODEL_NAME,
+        "pool": "second_half_of_cds",
+        "input": "transcript_span",
+        "n_blocks": N_BLOCKS,
+        "window": EVO2_WINDOW,
+        "genes": genes,
+    }
     cfg_path = CACHE_DIR / "config.json"
-    if not args.force and stack_path.exists() and cfg_path.exists() \
-            and json.loads(cfg_path.read_text()) == config:
+    if (
+        not args.force
+        and stack_path.exists()
+        and cfg_path.exists()
+        and json.loads(cfg_path.read_text()) == config
+    ):
         print("  Reusing cached CDS-masked stack (config matches).")
         return
 
@@ -103,7 +128,8 @@ def main() -> None:
         stack[:, i, :] = embed_cds_masked(genomic[g], cds_pos[g], model, device)
         if (i + 1) % args.checkpoint_every == 0:
             tmp = stack_path.with_suffix(".tmp.npy")
-            np.save(tmp, stack); tmp.replace(stack_path)
+            np.save(tmp, stack)
+            tmp.replace(stack_path)
             tqdm.write(f"    [checkpoint] {i + 1}/{len(genes)}")
     np.save(stack_path, stack)
     pd.DataFrame({"gene": genes, "family": fams}).to_csv(CACHE_DIR / "metadata.csv", index=False)

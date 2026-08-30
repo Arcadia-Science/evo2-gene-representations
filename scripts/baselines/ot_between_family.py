@@ -1,7 +1,6 @@
 """Centroid-free between-family proximity via optimal transport (POT / ``ot``)."""
 
 from __future__ import annotations
-
 import json
 import time
 import warnings
@@ -28,8 +27,8 @@ class OTResult:
     """Container for the centroid-free family-distance matrices + full provenance."""
 
     fam_order: list[str]
-    matrices: dict[str, np.ndarray]              # name -> F×F symmetric distance matrix
-    meta: dict = field(default_factory=dict)     # sizes, preprocessing, solver, convergence…
+    matrices: dict[str, np.ndarray]  # name -> F×F symmetric distance matrix
+    meta: dict = field(default_factory=dict)  # sizes, preprocessing, solver, convergence…
 
     def to_run_dir(self, run_dir: Path, prefix: str = "betweenfam_ot") -> None:
         """Write each matrix as a labelled F×F CSV plus one metadata JSON into ``run_dir``."""
@@ -72,21 +71,28 @@ def _preprocess(emb: np.ndarray, standardize: bool) -> np.ndarray:
 # ── solvers
 
 
-def _wasserstein(M: np.ndarray, p: np.ndarray, q: np.ndarray, *,
-                 solver: str, reg: float | None) -> tuple[float, dict]:
+def _wasserstein(
+    M: np.ndarray, p: np.ndarray, q: np.ndarray, *, solver: str, reg: float | None
+) -> tuple[float, dict]:
     """W2 between two families given squared-angular cost M. Returns (w2, info)."""
     if solver == "exact":
         w2sq, log = ot.emd2(p, q, M, log=True)
-        info = {"solver": "emd2", "result_code": log.get("result_code"),
-                "warning": log.get("warning")}
+        info = {
+            "solver": "emd2",
+            "result_code": log.get("result_code"),
+            "warning": log.get("warning"),
+        }
     elif solver == "entropic":
         if reg is None:
             raise ValueError("entropic solver requires reg (regularization strength)")
         T = ot.sinkhorn(p, q, M, reg)
         w2sq = float(np.sum(T * M))
-        info = {"solver": "sinkhorn", "reg": reg,
-                "marginal_residual_row": float(np.abs(T.sum(1) - p).max()),
-                "marginal_residual_col": float(np.abs(T.sum(0) - q).max())}
+        info = {
+            "solver": "sinkhorn",
+            "reg": reg,
+            "marginal_residual_row": float(np.abs(T.sum(1) - p).max()),
+            "marginal_residual_col": float(np.abs(T.sum(0) - q).max()),
+        }
     else:
         raise ValueError(f"unknown solver {solver!r} (want 'exact' or 'entropic')")
     w2 = float(np.sqrt(max(float(w2sq), 0.0)))
@@ -94,9 +100,20 @@ def _wasserstein(M: np.ndarray, p: np.ndarray, q: np.ndarray, *,
     return w2, info
 
 
-def _fgw(M: np.ndarray, C_f: np.ndarray, C_g: np.ndarray, p: np.ndarray, q: np.ndarray,
-         alpha: float, *, solver: str, reg: float | None,
-         n_init: int, seed: int, max_iter: int) -> tuple[float, dict]:
+def _fgw(
+    M: np.ndarray,
+    C_f: np.ndarray,
+    C_g: np.ndarray,
+    p: np.ndarray,
+    q: np.ndarray,
+    alpha: float,
+    *,
+    solver: str,
+    reg: float | None,
+    n_init: int,
+    seed: int,
+    max_iter: int,
+) -> tuple[float, dict]:
     """FGW distance for one alpha. Returns (fgw_value, convergence-info)."""
     vals, infos = [], []
     for i in range(max(1, n_init)):
@@ -108,22 +125,53 @@ def _fgw(M: np.ndarray, C_f: np.ndarray, C_g: np.ndarray, p: np.ndarray, q: np.n
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")  # quad_loss/alpha divide-by-zero at alpha=0
                 val, log = ot.gromov.fused_gromov_wasserstein2(
-                    M, C_f, C_g, p=p, q=q, loss_fun="square_loss", alpha=alpha,
-                    G0=G0, log=True, max_iter=max_iter)
-            infos.append({"result_code": log.get("result_code"), "warning": log.get("warning"),
-                          "n_cg_iter": len(log.get("loss", [])),
-                          "quad_loss": float(log.get("quad_loss", np.nan)),
-                          "lin_loss": float(log.get("lin_loss", np.nan))})
+                    M,
+                    C_f,
+                    C_g,
+                    p=p,
+                    q=q,
+                    loss_fun="square_loss",
+                    alpha=alpha,
+                    G0=G0,
+                    log=True,
+                    max_iter=max_iter,
+                )
+            infos.append(
+                {
+                    "result_code": log.get("result_code"),
+                    "warning": log.get("warning"),
+                    "n_cg_iter": len(log.get("loss", [])),
+                    "quad_loss": float(log.get("quad_loss", np.nan)),
+                    "lin_loss": float(log.get("lin_loss", np.nan)),
+                }
+            )
         elif solver == "entropic":
             if reg is None:
                 raise ValueError("entropic FGW requires reg")
             val, log = ot.gromov.entropic_fused_gromov_wasserstein2(
-                M, C_f, C_g, p=p, q=q, loss_fun="square_loss", alpha=alpha, epsilon=reg,
-                G0=G0, log=True)
+                M,
+                C_f,
+                C_g,
+                p=p,
+                q=q,
+                loss_fun="square_loss",
+                alpha=alpha,
+                epsilon=reg,
+                G0=G0,
+                log=True,
+            )
             T = log.get("T")
-            infos.append({"reg": reg,
-                          "marginal_residual_row": float(np.abs(T.sum(1) - p).max()) if T is not None else np.nan,
-                          "marginal_residual_col": float(np.abs(T.sum(0) - q).max()) if T is not None else np.nan})
+            infos.append(
+                {
+                    "reg": reg,
+                    "marginal_residual_row": float(np.abs(T.sum(1) - p).max())
+                    if T is not None
+                    else np.nan,
+                    "marginal_residual_col": float(np.abs(T.sum(0) - q).max())
+                    if T is not None
+                    else np.nan,
+                }
+            )
         else:
             raise ValueError(f"unknown solver {solver!r}")
         vals.append(float(val))
@@ -185,15 +233,26 @@ def compute_ot_matrices(
     for i in range(F):
         for j in range(i + 1, F):
             fa, fb = fam_order[i], fam_order[j]
-            A_fg = angular_distance(unit[fa], unit[fb])   # cross-family angular, n_fa×n_fb
-            M = A_fg ** 2                                 # squared angular cross cost
+            A_fg = angular_distance(unit[fa], unit[fb])  # cross-family angular, n_fa×n_fb
+            M = A_fg**2  # squared angular cross cost
             p, q = weights[fa], weights[fb]
             w2, winf = _wasserstein(M, p, q, solver=solver, reg=reg)
             W[i, j] = W[j, i] = w2
             w_info[f"{fa}|{fb}"] = winf
             for a in alphas:
-                val, finf = _fgw(M, C[fa], C[fb], p, q, a, solver=solver, reg=reg,
-                                 n_init=fgw_n_init, seed=fgw_seed, max_iter=fgw_max_iter)
+                val, finf = _fgw(
+                    M,
+                    C[fa],
+                    C[fb],
+                    p,
+                    q,
+                    a,
+                    solver=solver,
+                    reg=reg,
+                    n_init=fgw_n_init,
+                    seed=fgw_seed,
+                    max_iter=fgw_max_iter,
+                )
                 FGW[a][i, j] = FGW[a][j, i] = val
                 fgw_info[a][f"{fa}|{fb}"] = finf
 
@@ -212,18 +271,23 @@ def compute_ot_matrices(
             "l2_normalize": True,
             "standardize": bool(standardize),
             "cost": "theta = arccos(clip(cos_sim,-1,1))/pi; wasserstein cost = theta**2; "
-                    "FGW cross cost M = theta**2, structure C_f = theta (A_ff)",
+            "FGW cross cost M = theta**2, structure C_f = theta (A_ff)",
             "weights": "uniform within family (p_i = 1/n_f); total mass 1 per family",
         },
-        "solver": {"kind": solver, "reg": reg, "fgw_n_init": fgw_n_init,
-                   "fgw_seed": fgw_seed, "fgw_max_iter": fgw_max_iter},
+        "solver": {
+            "kind": solver,
+            "reg": reg,
+            "fgw_n_init": fgw_n_init,
+            "fgw_seed": fgw_seed,
+            "fgw_max_iter": fgw_max_iter,
+        },
         "alphas": list(alphas),
-        "convergence": {"wasserstein": w_info,
-                        **{_alpha_key(a): fgw_info[a] for a in alphas}},
+        "convergence": {"wasserstein": w_info, **{_alpha_key(a): fgw_info[a] for a in alphas}},
         "tiny_families": tiny,
         "tiny_family_note": (
             f"families with <= {TINY_FAMILY_MAX} genes have poorly resolved within-family "
-            f"geometry; FGW comparisons involving them (its quadratic term) are unreliable."),
+            f"geometry; FGW comparisons involving them (its quadratic term) are unreliable."
+        ),
         "runtime_seconds": round(time.perf_counter() - t0, 3),
     }
     return OTResult(fam_order=list(fam_order), matrices=matrices, meta=meta)
@@ -250,8 +314,9 @@ def subsample_sensitivity(
     rng = np.random.default_rng(seed)
     stacks: dict[str, list[np.ndarray]] = {}
     for _ in range(n_repeats):
-        pick = np.concatenate([
-            rng.choice(idx[f], size=size, replace=len(idx[f]) < size) for f in fam_order])
+        pick = np.concatenate(
+            [rng.choice(idx[f], size=size, replace=len(idx[f]) < size) for f in fam_order]
+        )
         sub_fams = families[pick]
         res = compute_ot_matrices(emb[pick], sub_fams, fam_order, **kwargs)
         for name, D in res.matrices.items():
@@ -270,14 +335,26 @@ def _solver_kwargs(meta: dict) -> dict:
     """Reconstruct the compute_ot_matrices solver kwargs from a result's metadata, so a
     validation re-run reproduces the same numerics (n_init, seed, solver, reg)."""
     s = meta["solver"]
-    return dict(alphas=tuple(meta["alphas"]), solver=s["kind"], reg=s["reg"],
-                standardize=meta["preprocessing"]["standardize"],
-                fgw_n_init=s["fgw_n_init"], fgw_seed=s["fgw_seed"],
-                fgw_max_iter=s["fgw_max_iter"])
+    return dict(
+        alphas=tuple(meta["alphas"]),
+        solver=s["kind"],
+        reg=s["reg"],
+        standardize=meta["preprocessing"]["standardize"],
+        fgw_n_init=s["fgw_n_init"],
+        fgw_seed=s["fgw_seed"],
+        fgw_max_iter=s["fgw_max_iter"],
+    )
 
 
-def validate(res: OTResult, emb: np.ndarray, families: np.ndarray, fam_order: list[str],
-             *, atol_diag: float = 1e-9, verbose: bool = True) -> dict:
+def validate(
+    res: OTResult,
+    emb: np.ndarray,
+    families: np.ndarray,
+    fam_order: list[str],
+    *,
+    atol_diag: float = 1e-9,
+    verbose: bool = True,
+) -> dict:
     """Structural + solver-sanity checks."""
     checks: dict[str, bool] = {}
     kw = _solver_kwargs(res.meta)
@@ -296,8 +373,10 @@ def validate(res: OTResult, emb: np.ndarray, families: np.ndarray, fam_order: li
     # Determinism: identical inputs + identical settings -> identical matrices.
     res2 = compute_ot_matrices(emb, families, fam_order, **kw)
     for name in res.matrices:
-        _log(f"{name}: deterministic repeat",
-             np.allclose(res.matrices[name], res2.matrices[name], atol=1e-9))
+        _log(
+            f"{name}: deterministic repeat",
+            np.allclose(res.matrices[name], res2.matrices[name], atol=1e-9),
+        )
 
     # Invariance to gene ordering: permute rows -> same family matrices. Asserted only for
     # the deterministic FGW path (n_init=1); with restarts we skip (see docstring).
@@ -307,8 +386,10 @@ def validate(res: OTResult, emb: np.ndarray, families: np.ndarray, fam_order: li
     for name in res.matrices:
         if name.startswith("fgw") and kw["fgw_n_init"] > 1:
             continue  # random restarts are arrangement-dependent by construction
-        _log(f"{name}: gene-order invariant",
-             np.allclose(res.matrices[name], res3.matrices[name], atol=1e-6))
+        _log(
+            f"{name}: gene-order invariant",
+            np.allclose(res.matrices[name], res3.matrices[name], atol=1e-6),
+        )
 
     # Solver sanity: FGW at alpha=0 reproduces the Wasserstein-squared objective.
     U = _preprocess(emb, res.meta["preprocessing"]["standardize"])
@@ -319,20 +400,21 @@ def validate(res: OTResult, emb: np.ndarray, families: np.ndarray, fam_order: li
     for i in range(len(fam_order)):
         for j in range(i + 1, len(fam_order)):
             fa, fb = fam_order[i], fam_order[j]
-            A = angular_distance(unit[fa], unit[fb]); M = A ** 2
+            A = angular_distance(unit[fa], unit[fb])
+            M = A**2
             p = np.full(len(idx[fa]), 1 / len(idx[fa]))
             q = np.full(len(idx[fb]), 1 / len(idx[fb]))
             Cf, Cg = angular_distance(unit[fa], unit[fa]), angular_distance(unit[fb], unit[fb])
-            fgw0 = ot.gromov.fused_gromov_wasserstein2(M, Cf, Cg, p=p, q=q,
-                                                       loss_fun="square_loss", alpha=0.0)
+            fgw0 = ot.gromov.fused_gromov_wasserstein2(
+                M, Cf, Cg, p=p, q=q, loss_fun="square_loss", alpha=0.0
+            )
             w2sq = ot.emd2(p, q, M)
             max_diff = max(max_diff, abs(float(fgw0) - float(w2sq)))
     _log(f"FGW(alpha=0) == W2^2 (max diff {max_diff:.2e})", max_diff < 1e-6)
 
     if verbose:
         n_fail = sum(not v for v in checks.values())
-        print(f"  {'ALL PASS' if n_fail == 0 else f'{n_fail} FAILED'} "
-              f"({len(checks)} checks)")
+        print(f"  {'ALL PASS' if n_fail == 0 else f'{n_fail} FAILED'} ({len(checks)} checks)")
     return checks
 
 
@@ -348,8 +430,7 @@ def _self_test() -> None:
         fams += [f] * sizes[f]
     emb = np.vstack(embs)
     fams = np.array(fams)
-    print("compute_ot_matrices on synthetic 4-family panel "
-          f"(sizes {sizes}) ...")
+    print(f"compute_ot_matrices on synthetic 4-family panel (sizes {sizes}) ...")
     # Primary path (n_init=1): deterministic + order-invariant, all invariants asserted.
     res = compute_ot_matrices(emb, fams, fam_order)
     print(f"  runtime {res.meta['runtime_seconds']}s, tiny families {res.meta['tiny_families']}")
@@ -359,9 +440,11 @@ def _self_test() -> None:
     # Separate diagnostic (NOT asserted): FGW stability across initializations.
     print("FGW multi-init stability (init_spread per pair; >0 = local-optimum sensitivity):")
     res_ms = compute_ot_matrices(emb, fams, fam_order, fgw_n_init=3)
-    spreads = [inf.get("init_spread", 0.0)
-               for a in res_ms.meta["alphas"]
-               for inf in res_ms.meta["convergence"][_alpha_key(a)].values()]
+    spreads = [
+        inf.get("init_spread", 0.0)
+        for a in res_ms.meta["alphas"]
+        for inf in res_ms.meta["convergence"][_alpha_key(a)].values()
+    ]
     print(f"  max init_spread across all FGW pairs/alphas = {max(spreads):.2e}")
     print("SELF-TEST PASSED")
 
@@ -369,8 +452,9 @@ def _self_test() -> None:
 if __name__ == "__main__":
     import argparse
 
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--self-test", action="store_true", help="run synthetic validation")
     args = ap.parse_args()
     if args.self_test:

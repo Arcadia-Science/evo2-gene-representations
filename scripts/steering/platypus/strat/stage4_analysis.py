@@ -1,7 +1,6 @@
 """Stage 4 analysis — did the held-out direction steer, and does it depend on conservation?"""
 
 from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path
@@ -29,31 +28,38 @@ def boot_ci(x: np.ndarray, n_boot: int = 5000, seed: int = SEED) -> tuple[float,
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--run", type=Path, required=True)
     ap.add_argument("--dir", required=True, help="stage4 output dir name under --run")
     add_metric_args(ap)
     args = ap.parse_args()
 
-    d, spec = load_scores(args.run, args.dir, scores=args.scores, metric=args.metric,
-                          min_voters=args.min_voters)
+    d, spec = load_scores(
+        args.run, args.dir, scores=args.scores, metric=args.metric, min_voters=args.min_voters
+    )
     # Write the (possibly voter-filtered) alias back under its real name, so every emitted column is
     # labelled with the site set it came from and no downstream reader has to guess.
     prim = spec["col"]
     d[prim] = d["metric"]
     READOUTS = [prim] + SECONDARY_READOUTS
-    print(f"{len(d)} rows, {d.gene.nunique()} genes, conditions: "
-          f"{sorted(d.condition.unique())}\n")
+    print(f"{len(d)} rows, {d.gene.nunique()} genes, conditions: {sorted(d.condition.unique())}\n")
 
     # gene x condition means: samples within a cell are correlated (shared prompt), so the gene mean
     # is the unit, not the individual generation
     g = d.groupby(["gene", "condition"])[READOUTS].mean().reset_index()
     # Use the scorable-site count for the selected site set.
-    meta = d.groupby("gene").agg(stratum=("stratum", "first"),
-                                 perc_id_hp=("perc_id_hp", "first"),
-                                 n_sites=(spec["n_col"], "first"),
-                                 gen_bp=("gen_bp", "first")).reset_index()
+    meta = (
+        d.groupby("gene")
+        .agg(
+            stratum=("stratum", "first"),
+            perc_id_hp=("perc_id_hp", "first"),
+            n_sites=(spec["n_col"], "first"),
+            gen_bp=("gen_bp", "first"),
+        )
+        .reset_index()
+    )
 
     base = g[g.condition == "unsteered"].set_index("gene")
     conds = [c for c in g.condition.unique() if c != "unsteered"]
@@ -84,9 +90,18 @@ def main() -> None:
             line[f"{r}_p"] = float(p)
         rows.append(line)
     res = pd.DataFrame(rows)
-    show = ["condition", "n", f"{prim}_n", f"{prim}_delta", f"{prim}_ci",
-            f"{prim}_p", "aa_id_to_target_delta", "aa_id_to_target_p",
-            "indel_bp_delta", "n_stop_codons_delta"]
+    show = [
+        "condition",
+        "n",
+        f"{prim}_n",
+        f"{prim}_delta",
+        f"{prim}_ci",
+        f"{prim}_p",
+        "aa_id_to_target_delta",
+        "aa_id_to_target_p",
+        "indel_bp_delta",
+        "n_stop_codons_delta",
+    ]
     print(res[show].to_string(index=False))
     print("\nabsolute means by condition:")
     print(g.groupby("condition")[READOUTS].mean().round(2).to_string())
@@ -104,12 +119,16 @@ def main() -> None:
                 delta = (sub.loc[common, r] - rnd.loc[common, r]).to_numpy(float)
                 lo, hi = boot_ci(delta)
                 _s, p = stats.wilcoxon(delta[np.isfinite(delta)])
-                print(f"  {c:14s} vs random  {r:20s} {np.nanmean(delta):+.2f} pp "
-                      f"[{lo:+.2f},{hi:+.2f}]  p={p:.4g}")
+                print(
+                    f"  {c:14s} vs random  {r:20s} {np.nanmean(delta):+.2f} pp "
+                    f"[{lo:+.2f},{hi:+.2f}]  p={p:.4g}"
+                )
 
     # ---- 3. conservation gradient (exploratory) -------------------------------------------------
     print("\n" + "=" * 96)
-    print("3. does the GAIN depend on conservation?  EXPLORATORY: n=100 detects rho~0.28 at 80% power")
+    print(
+        "3. does the GAIN depend on conservation?  EXPLORATORY: n=100 detects rho~0.28 at 80% power"
+    )
     print("   -- the same power as the 2026-08-04 null, so a null here is uninformative")
     print("=" * 96)
     grows = []
@@ -120,8 +139,15 @@ def main() -> None:
             gain = (sub.loc[common, r] - base.loc[common, r]).rename("gain").reset_index()
             m = gain.merge(meta, on="gene")
             rho, p = stats.spearmanr(m.perc_id_hp, m.gain, nan_policy="omit")
-            grows.append({"condition": c, "readout": r, "rho_vs_perc_id": round(float(rho), 3),
-                          "p": float(p), "n": len(m)})
+            grows.append(
+                {
+                    "condition": c,
+                    "readout": r,
+                    "rho_vs_perc_id": round(float(rho), 3),
+                    "p": float(p),
+                    "n": len(m),
+                }
+            )
             if r == prim:
                 print(f"\n  {c} -- mean gain by stratum (0 = fastest, 4 = most conserved):")
                 bs = m.groupby("stratum").gain.agg(["mean", "std", "size"]).round(2)

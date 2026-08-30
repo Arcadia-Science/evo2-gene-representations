@@ -1,7 +1,6 @@
 """Stage 2 — is there a shared human->platypus direction in the paired prefix activations?"""
 
 from __future__ import annotations
-
 import argparse
 import csv
 import json
@@ -36,7 +35,9 @@ def loo_alignment(DD: np.ndarray, g: np.ndarray, ss: float, n: int) -> np.ndarra
 
 
 def coherence(UU: np.ndarray, signs: np.ndarray | None = None) -> np.ndarray:
-    """C = ||mean_i s_i u_i|| from the unit-vector Gram UU. `signs` is (P,N) of +-1, or None for +1."""
+    """
+    C = ||mean_i s_i u_i|| from the unit-vector Gram UU. `signs` is (P,N) of +-1, or None for +1.
+    """
     n = UU.shape[0]
     if signs is None:
         return np.sqrt(max(UU.sum(), 0.0)) / n
@@ -95,14 +96,14 @@ def analyse_layer(Hm: np.ndarray, Pm: np.ndarray, families: np.ndarray, rng: np.
     for b in range(N_SPLIT):
         perm = rng.permutation(n)
         WA[b, perm[:half]] = 1.0
-        WB[b, perm[half:2 * half]] = 1.0
+        WB[b, perm[half : 2 * half]] = 1.0
     s_split = _pair_cos(DD, WA, WB)
 
     # ---- null 1: sign flip ---------------------------------------------------
     eps = rng.choice([-1.0, 1.0], size=(N_PERM, n))
     # S_eps = eps @ D ; <D_i^eps, S_eps> = eps_i * (eps @ DD)_i ; ||D_i^eps||^2 = dd_i
-    E = eps @ DD                       # (P,N) = sum_j eps_j DD[i,j]
-    g_eps = eps * E                    # <eps_i D_i, S_eps>
+    E = eps @ DD  # (P,N) = sum_j eps_j DD[i,j]
+    g_eps = eps * E  # <eps_i D_i, S_eps>
     ss_eps = np.einsum("pi,pi->p", eps, E)
     yy = ss_eps[:, None] - 2.0 * g_eps + dd[None, :]
     a_sf = _cos_from_grams(np.broadcast_to(dd, yy.shape), yy, g_eps - dd[None, :])
@@ -110,22 +111,32 @@ def analyse_layer(Hm: np.ndarray, Pm: np.ndarray, families: np.ndarray, rng: np.
 
     # ---- null 2: mismatched pairs (platypus permuted) ------------------------
     PP, HH, PH = Pm @ Pm.T, Hm @ Hm.T, Pm @ Hm.T
-    pS, hS = Pm @ S, Hm @ S            # for <D~_i, S>: S is invariant under the permutation
+    pS, hS = Pm @ S, Hm @ S  # for <D~_i, S>: S is invariant under the permutation
     a_mm, C_mm = _mismatch_null(PP, HH, PH, pS, hS, ss, families, rng, within_family=True)
-    a_mm_pool, C_mm_pool = _mismatch_null(PP, HH, PH, pS, hS, ss, families, rng, within_family=False)
+    a_mm_pool, C_mm_pool = _mismatch_null(
+        PP, HH, PH, pS, hS, ss, families, rng, within_family=False
+    )
 
     return {
-        "delta": D, "dnorm": dnorm, "v": v, "a": a, "infl": infl,
+        "delta": D,
+        "dnorm": dnorm,
+        "v": v,
+        "a": a,
+        "infl": infl,
         "stats": {
             "v_norm": vnorm,
             "v_norm_over_mean_delta_norm": vnorm / float(dnorm.mean()) if dnorm.mean() else np.nan,
             "delta_norm_median": float(np.median(dnorm)),
             "delta_norm_cv": float(dnorm.std() / dnorm.mean()) if dnorm.mean() else np.nan,
-            "loo_mean": float(np.nanmean(a)), "loo_median": float(np.nanmedian(a)),
-            "loo_std": float(np.nanstd(a)), "loo_min": float(np.nanmin(a)),
+            "loo_mean": float(np.nanmean(a)),
+            "loo_median": float(np.nanmedian(a)),
+            "loo_std": float(np.nanstd(a)),
+            "loo_min": float(np.nanmin(a)),
             "loo_max": float(np.nanmax(a)),
-            "loo_frac_pos": float(np.nanmean(a > 0)), "loo_frac_gt25": float(np.nanmean(a > 0.25)),
-            "coherence": C, "coherence_isotropic_floor": 1.0 / np.sqrt(n),
+            "loo_frac_pos": float(np.nanmean(a > 0)),
+            "loo_frac_gt25": float(np.nanmean(a > 0.25)),
+            "coherence": C,
+            "coherence_isotropic_floor": 1.0 / np.sqrt(n),
             "split_median": float(np.nanmedian(s_split)),
             "split_p2.5": float(np.nanpercentile(s_split, 2.5)),
             "split_p97.5": float(np.nanpercentile(s_split, 97.5)),
@@ -142,9 +153,15 @@ def analyse_layer(Hm: np.ndarray, Pm: np.ndarray, families: np.ndarray, rng: np.
             "p_mismatchpool_loo": _pval(float(np.nanmean(a)), np.nanmean(a_mm_pool, axis=1)),
             "p_mismatchpool_coherence": _pval(C, C_mm_pool),
         },
-        "dists": {"split": s_split, "sf_loo": np.nanmean(a_sf, axis=1),
-                  "sf_coh": C_sf, "mm_loo": np.nanmean(a_mm, axis=1), "mm_coh": C_mm,
-                  "mmpool_loo": np.nanmean(a_mm_pool, axis=1), "mmpool_coh": C_mm_pool},
+        "dists": {
+            "split": s_split,
+            "sf_loo": np.nanmean(a_sf, axis=1),
+            "sf_coh": C_sf,
+            "mm_loo": np.nanmean(a_mm, axis=1),
+            "mm_coh": C_mm,
+            "mmpool_loo": np.nanmean(a_mm_pool, axis=1),
+            "mmpool_coh": C_mm_pool,
+        },
     }
 
 
@@ -181,13 +198,23 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     base = ROOT / "results" / "2026-07-28_evo2-platypus-paired"
     ap.add_argument("--stage1-dir", type=Path, default=base / "stage1")
-    ap.add_argument("--out-dir", type=Path, default=None,
-                    help="default stage2/ ; for --pooled, stage2_<representation>/")
-    ap.add_argument("--pooled", action="store_true",
-                    help="analyse a representation_sweep.py pooling instead of the Stage-1 "
-                         "last-position activations")
-    ap.add_argument("--pooled-npz", type=Path,
-                    default=base / "stage6_representation" / "pooled_representations.npz")
+    ap.add_argument(
+        "--out-dir",
+        type=Path,
+        default=None,
+        help="default stage2/ ; for --pooled, stage2_<representation>/",
+    )
+    ap.add_argument(
+        "--pooled",
+        action="store_true",
+        help="analyse a representation_sweep.py pooling instead of the Stage-1 "
+        "last-position activations",
+    )
+    ap.add_argument(
+        "--pooled-npz",
+        type=Path,
+        default=base / "stage6_representation" / "pooled_representations.npz",
+    )
     ap.add_argument("--representation", default="cds_mean")
     args = ap.parse_args()
 
@@ -195,9 +222,11 @@ def main() -> None:
         # Run the same statistics for any selected pooling representation.
         d = np.load(args.pooled_npz, allow_pickle=True)
         if args.representation not in d.files:
-            raise SystemExit(f"{args.representation!r} not in {args.pooled_npz.name}; have "
-                             f"{[k for k in d.files if k not in ('genes', 'layers')]}")
-        a = d[args.representation]                     # (N, 2, L, H)
+            raise SystemExit(
+                f"{args.representation!r} not in {args.pooled_npz.name}; have "
+                f"{[k for k in d.files if k not in ('genes', 'layers')]}"
+            )
+        a = d[args.representation]  # (N, 2, L, H)
         genes = np.array([str(g) for g in d["genes"]])
         with open(args.stage1_dir / "pairs.csv") as fh:
             rows = list(csv.DictReader(fh))
@@ -210,7 +239,7 @@ def main() -> None:
         tag = args.representation
     else:
         d = np.load(args.stage1_dir / "activations_last_pos.npz", allow_pickle=True)
-        acts = d["acts"]                      # (N, 2, L, H)
+        acts = d["acts"]  # (N, 2, L, H)
         genes, families, layers = d["genes"], d["families"], d["layers"]
         out_dir = args.out_dir or base / "stage2"
         tag = "prefix_last"
@@ -227,42 +256,64 @@ def main() -> None:
         res = analyse_layer(Hm, Pm, families, rng)
         rows.append({"layer": li, "layer_name": str(layers[li]), **res["stats"]})
         for i in range(n):
-            per_gene.append({"layer": li, "gene": str(genes[i]), "family": str(families[i]),
-                             "loo_cos": res["a"][i],
-                             "delta_norm": res["dnorm"][i], "influence": res["infl"][i]})
+            per_gene.append(
+                {
+                    "layer": li,
+                    "gene": str(genes[i]),
+                    "family": str(families[i]),
+                    "loo_cos": res["a"][i],
+                    "delta_norm": res["dnorm"][i],
+                    "influence": res["infl"][i],
+                }
+            )
         vecs[f"v_{li}"] = res["v"].astype(np.float32)
         nrm = np.linalg.norm(res["v"])
-        vecs[f"vhat_{li}"] = (res["v"] / nrm).astype(np.float32) if nrm > 0 else res["v"].astype(np.float32)
+        vecs[f"vhat_{li}"] = (
+            (res["v"] / nrm).astype(np.float32) if nrm > 0 else res["v"].astype(np.float32)
+        )
         dists[f"split_{li}"] = res["dists"]["split"].astype(np.float32)
         for k in ("sf_loo", "sf_coh", "mm_loo", "mm_coh", "mmpool_loo", "mmpool_coh"):
             dists[f"{k}_{li}"] = np.asarray(res["dists"][k], dtype=np.float32)
         s = res["stats"]
-        print(f"  L{li:2d} loo_med={s['loo_median']:+.4f} frac+={s['loo_frac_pos']:.2f} "
-              f"C={s['coherence']:.4f} (floor {s['coherence_isotropic_floor']:.4f}) "
-              f"split={s['split_median']:+.4f} |v|={s['v_norm']:.4g}", flush=True)
+        print(
+            f"  L{li:2d} loo_med={s['loo_median']:+.4f} frac+={s['loo_frac_pos']:.2f} "
+            f"C={s['coherence']:.4f} (floor {s['coherence_isotropic_floor']:.4f}) "
+            f"split={s['split_median']:+.4f} |v|={s['v_norm']:.4g}",
+            flush=True,
+        )
 
     pd.DataFrame(rows).to_csv(args.out_dir / "layer_stats.csv", index=False)
     pd.DataFrame(per_gene).to_csv(args.out_dir / "per_gene_by_layer.csv", index=False)
-    np.savez_compressed(args.out_dir / "mean_vectors.npz", genes=genes, families=families,
-                        layers=layers, **vecs)
+    np.savez_compressed(
+        args.out_dir / "mean_vectors.npz", genes=genes, families=families, layers=layers, **vecs
+    )
     np.savez_compressed(args.out_dir / "null_distributions.npz", **dists)
-    (args.out_dir / "stage2_config.json").write_text(json.dumps({
-        "n_genes": int(n), "n_layers": int(n_layers), "n_split": N_SPLIT,
-        "representation": tag,
-        "n_perm": N_PERM, "seed": SEED,
-        "dtype": "float64", "pval_rule": "(count_ge + 1)/(n_perm + 1)",
-        "statistics": {
-            "loo_alignment": {"null": 0.0},
-            "coherence": {"null": "1/sqrt(n_genes)"},
-            "split_half": {"null": 0.0},
-        },
-        "removed_2026_08_03": {
-            "projections_q": "q_mean is algebraically identical to v_norm; q_frac_pos was not "
-                             "leave-one-out corrected and has a null of ~1.0 at H >> N",
-            "bootstrap_stability": "measures resample overlap; its own sign-flip null sat at 0.713 "
-                                   "at all 32 layers vs 0.72-0.81 observed",
-        },
-    }, indent=2))
+    (args.out_dir / "stage2_config.json").write_text(
+        json.dumps(
+            {
+                "n_genes": int(n),
+                "n_layers": int(n_layers),
+                "n_split": N_SPLIT,
+                "representation": tag,
+                "n_perm": N_PERM,
+                "seed": SEED,
+                "dtype": "float64",
+                "pval_rule": "(count_ge + 1)/(n_perm + 1)",
+                "statistics": {
+                    "loo_alignment": {"null": 0.0},
+                    "coherence": {"null": "1/sqrt(n_genes)"},
+                    "split_half": {"null": 0.0},
+                },
+                "removed_2026_08_03": {
+                    "projections_q": "q_mean equals v_norm; q_frac_pos was not "
+                    "leave-one-out corrected and has a null of ~1.0 at H >> N",
+                    "bootstrap_stability": "resample overlap; its sign-flip null was 0.713 "
+                    "at all 32 layers vs 0.72-0.81 observed",
+                },
+            },
+            indent=2,
+        )
+    )
     print(f"-> {args.out_dir}")
 
 

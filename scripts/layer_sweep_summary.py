@@ -1,7 +1,6 @@
 """Summary figures tracking how each baseline correlation moves across layers."""
 
 from __future__ import annotations
-
 import argparse
 import hashlib
 import re
@@ -20,8 +19,11 @@ from gene_families import family_colors  # noqa: E402
 from plot_utils import set_pub_style  # noqa: E402
 
 # ── Shared style constants
-AXIS_COLORS = {"1_homology": acs.apc.dragon, "2_mechanism": acs.apc.seaweed,
-               "control": acs.apc.chateau}
+AXIS_COLORS = {
+    "1_homology": acs.apc.dragon,
+    "2_mechanism": acs.apc.seaweed,
+    "control": acs.apc.chateau,
+}
 AXIS_LABELS = {
     "1_homology": "Homology",
     "2_mechanism": "Mechanism / chemistry",
@@ -57,13 +59,19 @@ LEAD_SHAPES = [("o", "-"), ("s", "-"), ("^", "-"), ("D", "-")]
 # Within-family baselines: (label, csv filename, rho column). Whatever is present on disk gets a
 # panel. The k-mer baseline lives in one of two filenames that share a column name, first wins.
 WITHIN_SPECS = [
-    ("k-mer composition (CDS)", ["axisB_within_family_correlations.csv",
-                           "kmer_within_family_correlations.csv"], "spearman_geodesic_kmer"),
+    (
+        "k-mer composition (CDS)",
+        ["axisB_within_family_correlations.csv", "kmer_within_family_correlations.csv"],
+        "spearman_geodesic_kmer",
+    ),
     ("sequence identity", ["within_family_seqid.csv"], "spearman_geodesic_seqid"),
     ("patristic tree", ["within_family_patristic.csv"], "spearman_geodesic_patristic"),
     ("taxonomy", ["axisB_within_family_correlations.csv"], "spearman_geodesic_taxonomy"),
-    ("k-mer (transcript null)", ["within_family_kmer_transcript.csv"],
-     "spearman_geodesic_kmer_transcript"),
+    (
+        "k-mer (transcript null)",
+        ["within_family_kmer_transcript.csv"],
+        "spearman_geodesic_kmer_transcript",
+    ),
     # mammalian ortholog panel: within-ortholog-group geodesic vs the INDEPENDENT species tree
     ("species tree (mammal)", ["within_family_speciestree.csv"], "spearman_geodesic_speciestree"),
     # mononucleotide composition control — the floor under the k-mer panel. Written by
@@ -97,9 +105,11 @@ def discover_layers(pattern: str) -> list[tuple[int, Path]]:
 
 
 # Data loading → tidy long-form frames
-def load_between(layers: list[tuple[int, Path]],
-                 filename: str = "between_family_baseline_scores.csv",
-                 approach: str | None = None) -> pd.DataFrame:
+def load_between(
+    layers: list[tuple[int, Path]],
+    filename: str = "between_family_baseline_scores.csv",
+    approach: str | None = None,
+) -> pd.DataFrame:
     """Long frame: one row per (layer, baseline) with rho + Mantel p."""
     rows = []
     for layer, run_dir in layers:
@@ -116,13 +126,15 @@ def load_between(layers: list[tuple[int, Path]],
         for _, r in df.iterrows():
             if r["baseline"] in DEPRECATED_BASELINES:
                 continue
-            rows.append({
-                "layer": layer,
-                "baseline": r["baseline"],
-                "axis": r.get("axis"),
-                "rho": r.get("spearman_rho"),
-                "p_mantel": r.get("p_mantel"),
-            })
+            rows.append(
+                {
+                    "layer": layer,
+                    "baseline": r["baseline"],
+                    "axis": r.get("axis"),
+                    "rho": r.get("spearman_rho"),
+                    "p_mantel": r.get("p_mantel"),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -139,12 +151,14 @@ def load_within(layers: list[tuple[int, Path]], file_suffix: str = "") -> pd.Dat
                 if col not in df.columns or "family" not in df.columns:
                     continue
                 for _, r in df.iterrows():
-                    rows.append({
-                        "layer": layer,
-                        "metric": label,
-                        "family": r["family"],
-                        "rho": pd.to_numeric(r[col], errors="coerce"),
-                    })
+                    rows.append(
+                        {
+                            "layer": layer,
+                            "metric": label,
+                            "family": r["family"],
+                            "rho": pd.to_numeric(r[col], errors="coerce"),
+                        }
+                    )
                 break  # first file that supplies this metric wins
     return pd.DataFrame(rows)
 
@@ -156,16 +170,23 @@ def _grid(n: int, ncols: int) -> tuple[int, int]:
 
 def _balanced_grid(n: int, max_cols: int = 3) -> tuple[int, int]:
     """(rows, cols) preferring a full rectangle over a ragged last row: the widest column count that
-        divides n exactly (4 -> 2x2, 6 -> 3x2), else max_cols.
+    divides n exactly (4 -> 2x2, 6 -> 3x2), else max_cols.
     """
     exact = [c for c in range(2, min(max_cols, n) + 1) if n % c == 0]
     ncols = max(exact) if exact else min(max_cols, n)
     return (int(np.ceil(n / ncols)), ncols)
 
 
-def plot_between(between: pd.DataFrame, out_dir: Path, title: str,
-                 exclude_between: list[str] | None = None, stem_suffix: str = "",
-                 lead_per_baseline: bool = False, *, kmer_k: int | None = None) -> None:
+def plot_between(
+    between: pd.DataFrame,
+    out_dir: Path,
+    title: str,
+    exclude_between: list[str] | None = None,
+    stem_suffix: str = "",
+    lead_per_baseline: bool = False,
+    *,
+    kmer_k: int | None = None,
+) -> None:
     if between.empty:
         print("  SKIP between figure: no between_family_baseline_scores.csv found")
         return
@@ -176,7 +197,9 @@ def plot_between(between: pd.DataFrame, out_dir: Path, title: str,
     if drop:
         between = between[~between["baseline"].isin(drop)]
         if between.empty:
-            print(f"  SKIP between figure: --exclude-between removed every baseline ({sorted(drop)})")
+            print(
+                f"  SKIP between figure: --exclude-between removed every baseline ({sorted(drop)})"
+            )
             return
         print(f"  excluding between baselines: {', '.join(repr(b) for b in sorted(drop))}")
     present = [(b, ax) for b, ax in BETWEEN_ORDER if b in set(between["baseline"])]
@@ -187,12 +210,12 @@ def plot_between(between: pd.DataFrame, out_dir: Path, title: str,
         # same series one at a time, and every comparison is already legible in the overlay.
         n_panels = 1
         nrows, ncols = 1, 1
-        fig, axes = plt.subplots(1, 1, dpi=300, squeeze=False,
-                                 figsize=pub.size(pub.FULL, 560))
+        fig, axes = plt.subplots(1, 1, dpi=300, squeeze=False, figsize=pub.size(pub.FULL, 560))
     else:
         nrows, ncols = _grid(n_panels, 4)
-        fig, axes = plt.subplots(nrows, ncols, figsize=(3.4 * ncols, 2.7 * nrows),
-                                 dpi=300, squeeze=False)
+        fig, axes = plt.subplots(
+            nrows, ncols, figsize=(3.4 * ncols, 2.7 * nrows), dpi=300, squeeze=False
+        )
     axes = axes.ravel()
     layers_sorted = sorted(between["layer"].unique())
 
@@ -218,8 +241,16 @@ def plot_between(between: pd.DataFrame, out_dir: Path, title: str,
                 label = f"{disp} (k={kmer_k})" if (baseline == "kmer" and kmer_k) else disp
             else:
                 label = f"{baseline} ({AXIS_LABELS[axis]})"
-            ax0.plot(sub.index, sub.values, ls=ls, marker=marker, ms=3.4, lw=1.3,
-                     color=AXIS_COLORS[axis], label=label)
+            ax0.plot(
+                sub.index,
+                sub.values,
+                ls=ls,
+                marker=marker,
+                ms=3.4,
+                lw=1.3,
+                color=AXIS_COLORS[axis],
+                label=label,
+            )
     else:
         for axis in ["1_homology", "2_mechanism", "control"]:
             # every baseline this axis contributes to the figure's fixed order
@@ -230,16 +261,24 @@ def plot_between(between: pd.DataFrame, out_dir: Path, title: str,
             if sub.empty:
                 continue
             m = sub.groupby("layer")["rho"].mean().reindex(layers_sorted)
-            ax0.plot(m.index, m.values, "-o", ms=3, lw=1.6, color=AXIS_COLORS[axis],
-                     label=AXIS_LABELS[axis])
+            ax0.plot(
+                m.index,
+                m.values,
+                "-o",
+                ms=3,
+                lw=1.6,
+                color=AXIS_COLORS[axis],
+                label=AXIS_LABELS[axis],
+            )
     ax0.axhline(0, color=acs.ZERO_LINE, lw=0.6, ls="--")
     ax0.set_ylabel("Spearman ρ" if lead_per_baseline else "mean Spearman ρ")
     ax0.set_xlabel("layer")
     if pub.is_on():
         # No in-artwork title (the caption carries it). The curves cross the whole band, so there
         # is no free corner: the key sits above the axes in one row.
-        pub.arc.key(ax0, title="Baseline", loc="lower left", ncol=len(present),
-                    bbox_to_anchor=(0.0, 1.02))
+        pub.arc.key(
+            ax0, title="Baseline", loc="lower left", ncol=len(present), bbox_to_anchor=(0.0, 1.02)
+        )
     else:
         ax0.set_title("All baselines" if lead_per_baseline else "Axis means", fontweight="bold")
         ax0.legend(frameon=False, fontsize=6, loc="best")
@@ -261,10 +300,25 @@ def plot_between(between: pd.DataFrame, out_dir: Path, title: str,
         # Same marker this baseline wears in the lead panel, so the two panels read as one series.
         # Only in per-baseline lead mode: with an axis-mean lead panel there is no marker to match.
         mk = shape_of[baseline][0] if lead_per_baseline else "o"
-        ax.scatter(sub["layer"][sig], sub["rho"][sig], s=22, color=color, marker=mk,
-                   zorder=3, label="Mantel p<0.05")
-        ax.scatter(sub["layer"][~sig], sub["rho"][~sig], s=22, facecolors=acs.apc.white,
-                   edgecolors=color, linewidths=0.9, marker=mk, zorder=3)
+        ax.scatter(
+            sub["layer"][sig],
+            sub["rho"][sig],
+            s=22,
+            color=color,
+            marker=mk,
+            zorder=3,
+            label="Mantel p<0.05",
+        )
+        ax.scatter(
+            sub["layer"][~sig],
+            sub["rho"][~sig],
+            s=22,
+            facecolors=acs.apc.white,
+            edgecolors=color,
+            linewidths=0.9,
+            marker=mk,
+            zorder=3,
+        )
         ax.axhline(0, color=acs.ZERO_LINE, lw=0.6, ls="--")
         ax.set_ylim(*ylim)
         disp = f"kmer (k={kmer_k})" if (baseline == "kmer" and kmer_k) else baseline
@@ -276,8 +330,7 @@ def plot_between(between: pd.DataFrame, out_dir: Path, title: str,
     for j in range(n_panels, len(axes)):
         axes[j].axis("off")
 
-    fig.suptitle(f"{title} — between-family ρ across layers", fontsize=11,
-                 fontweight="bold", y=1.0)
+    fig.suptitle(f"{title} — between-family ρ across layers", fontsize=11, fontweight="bold", y=1.0)
     fig.tight_layout()
     _save(fig, out_dir, f"between_axis_vs_layer{stem_suffix}")
 
@@ -295,10 +348,13 @@ def _save(fig, out_dir: Path, stem: str) -> None:
     print(f"  saved {out_dir}/{stem}.{{png,pdf}}")
 
 
-def _within_metrics(within: pd.DataFrame, exclude: list[str] | None, quiet: bool = False) -> list[str]:
+def _within_metrics(
+    within: pd.DataFrame, exclude: list[str] | None, quiet: bool = False
+) -> list[str]:
     """Metric labels to draw: present on disk, not all-NaN, not excluded, in WITHIN_SPECS order."""
-    metrics = [m for m in within["metric"].unique()
-               if within[(within["metric"] == m)]["rho"].notna().any()]
+    metrics = [
+        m for m in within["metric"].unique() if within[(within["metric"] == m)]["rho"].notna().any()
+    ]
     metrics = [m for m in [s[0] for s in WITHIN_SPECS] if m in metrics]
     for m in exclude or []:
         if m in metrics:
@@ -306,14 +362,21 @@ def _within_metrics(within: pd.DataFrame, exclude: list[str] | None, quiet: bool
             if not quiet:
                 print(f"  excluding within panel: {m!r} (still present in the CSV)")
         elif not quiet:
-            print(f"  NOTE --exclude-within {m!r}: no such panel in this sweep "
-                  f"(labels present: {metrics})")
+            print(
+                f"  NOTE --exclude-within {m!r}: no such panel in this sweep "
+                f"(labels present: {metrics})"
+            )
     return metrics
 
 
-def plot_within_band(within: pd.DataFrame, out_dir: Path, title: str,
-                     exclude: list[str] | None = None, stem_suffix: str = "",
-                     footnote: str | None = None) -> None:
+def plot_within_band(
+    within: pd.DataFrame,
+    out_dir: Path,
+    title: str,
+    exclude: list[str] | None = None,
+    stem_suffix: str = "",
+    footnote: str | None = None,
+) -> None:
     """Per-family spaghetti collapsed to mean +/- 1 SD across families, one panel per metric."""
     if within.empty:
         print("  SKIP within band figure: no within-family correlation CSVs found")
@@ -330,8 +393,9 @@ def plot_within_band(within: pd.DataFrame, out_dir: Path, title: str,
     # y-range would obscure exactly the metric-to-metric comparison the panel exists for.
     n_panels = 1 + len(metrics)
     nrows, ncols = _grid(n_panels, min(3, n_panels))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(4.2 * ncols, 3.2 * nrows),
-                             dpi=300, squeeze=False)
+    fig, axes = plt.subplots(
+        nrows, ncols, figsize=(4.2 * ncols, 3.2 * nrows), dpi=300, squeeze=False
+    )
     axes = axes.ravel()
     # shared y-limits so panels are comparable at a glance
     lo, hi = [], []
@@ -345,7 +409,7 @@ def plot_within_band(within: pd.DataFrame, out_dir: Path, title: str,
         hi.append(float((m + sd).max()))
     ylim = (min(lo + [0.0]) - 0.05, max(hi) + 0.05)
     n_full = int(max(int(v[2].max()) for v in stats.values()))
-    starred: list[str] = []          # panels whose family count falls short of n_full
+    starred: list[str] = []  # panels whose family count falls short of n_full
 
     ax0 = axes[0]
     for i, metric in enumerate(metrics):
@@ -361,8 +425,9 @@ def plot_within_band(within: pd.DataFrame, out_dir: Path, title: str,
     for i, metric in enumerate(metrics, start=1):
         ax, color = axes[i], colors[(i - 1) % len(colors)]
         m, sd, n = stats[metric]
-        ax.fill_between(m.index, m - sd, m + sd, color=color, alpha=0.20, lw=0,
-                        label="±1 SD across families")
+        ax.fill_between(
+            m.index, m - sd, m + sd, color=color, alpha=0.20, lw=0, label="±1 SD across families"
+        )
         ax.plot(m.index, m.values, "-o", ms=3, lw=1.8, color=color, label="mean over families")
         ax.axhline(0, color=acs.ZERO_LINE, lw=0.6, ls="--")
         ax.set_ylim(*ylim)
@@ -377,8 +442,9 @@ def plot_within_band(within: pd.DataFrame, out_dir: Path, title: str,
         else:
             # short panel -> "(n=47*)", with the * resolved in a footnote under the figure
             starred.append(metric)
-            ax.set_title(f"{metric}  (n={n_lo}*)" if n_lo == n_hi
-                         else f"{metric}  (n={n_lo}–{n_hi}*)")
+            ax.set_title(
+                f"{metric}  (n={n_lo}*)" if n_lo == n_hi else f"{metric}  (n={n_lo}–{n_hi}*)"
+            )
         ax.set_xlabel("layer")
         if i % ncols == 0:
             ax.set_ylabel("within-family Spearman ρ")
@@ -387,23 +453,38 @@ def plot_within_band(within: pd.DataFrame, out_dir: Path, title: str,
 
     for j in range(n_panels, len(axes)):
         axes[j].axis("off")
-    fig.suptitle(f"{title} — within-family ρ across layers (mean ± 1 SD over families)",
-                 fontsize=11, fontweight="bold", y=1.0)
+    fig.suptitle(
+        f"{title} — within-family ρ across layers (mean ± 1 SD over families)",
+        fontsize=11,
+        fontweight="bold",
+        y=1.0,
+    )
     fig.tight_layout()
     if starred:
         # Never leave the asterisk undefined: use the caller's note, else name the missing families.
-        note = footnote or ("; ".join(
-            f"{m}: missing " + ", ".join(sorted(
-                set(within.family.dropna().unique())
-                - set(within[(within.metric == m) & within.rho.notna()].family.unique())))
-            for m in starred))
-        fig.text(0.01, -0.01, f"* {note}", ha="left", va="top", fontsize=7, style="italic",
-                 wrap=True)
+        note = footnote or (
+            "; ".join(
+                f"{m}: missing "
+                + ", ".join(
+                    sorted(
+                        set(within.family.dropna().unique())
+                        - set(within[(within.metric == m) & within.rho.notna()].family.unique())
+                    )
+                )
+                for m in starred
+            )
+        )
+        fig.text(
+            0.01, -0.01, f"* {note}", ha="left", va="top", fontsize=7, style="italic", wrap=True
+        )
     _save(fig, out_dir, f"within_family_vs_layer{stem_suffix}_band")
 
 
 def _family_colors(families: list[str]) -> dict[str, str]:
-    """One colour per family from the panel's canonical chemistry-block palette, so a family keeps its colour across every figure."""
+    """
+    One colour per family from the panel's canonical chemistry-block palette, so a family keeps its
+    colour across every figure.
+    """
     for panel in ("human", "evo2"):
         try:
             panel_colors = family_colors(panel)
@@ -456,8 +537,13 @@ def _pub_family_label(family: str) -> str:
     return words[:1].upper() + words[1:]
 
 
-def plot_within(within: pd.DataFrame, out_dir: Path, title: str,
-                exclude: list[str] | None = None, stem_suffix: str = "") -> None:
+def plot_within(
+    within: pd.DataFrame,
+    out_dir: Path,
+    title: str,
+    exclude: list[str] | None = None,
+    stem_suffix: str = "",
+) -> None:
     if within.empty:
         print("  SKIP within figure: no within-family correlation CSVs found")
         return
@@ -470,17 +556,19 @@ def plot_within(within: pd.DataFrame, out_dir: Path, title: str,
     # stable colour per family across panels
     families = sorted(within["family"].dropna().unique())
     fam_color = _family_colors(families)
-    layers_sorted = sorted(within["layer"].unique())
+    sorted(within["layer"].unique())
 
     nrows, ncols = _balanced_grid(len(metrics))
     if pub.is_on():
         # A 48-family key down the right side would be ~960 pt tall against panels half that, and
         # eat a third of the width, so it goes underneath. Its height is measured, not guessed.
-        fig, axes = plt.subplots(nrows, ncols, dpi=300, squeeze=False,
-                                 figsize=pub.size(pub.FULL, PUB_PANEL_H * nrows))
+        fig, axes = plt.subplots(
+            nrows, ncols, dpi=300, squeeze=False, figsize=pub.size(pub.FULL, PUB_PANEL_H * nrows)
+        )
     else:
-        fig, axes = plt.subplots(nrows, ncols, figsize=(4.6 * ncols, 3.4 * nrows),
-                                 dpi=300, squeeze=False)
+        fig, axes = plt.subplots(
+            nrows, ncols, figsize=(4.6 * ncols, 3.4 * nrows), dpi=300, squeeze=False
+        )
     axes = axes.ravel()
     for i, metric in enumerate(metrics):
         ax = axes[i]
@@ -490,8 +578,7 @@ def plot_within(within: pd.DataFrame, out_dir: Path, title: str,
             fs = sub[sub["family"] == fam].sort_values("layer")
             if fs["rho"].notna().sum() == 0:
                 continue
-            ax.plot(fs["layer"], fs["rho"], "-o", ms=2.5, lw=1.0,
-                    color=fam_color[fam], label=fam)
+            ax.plot(fs["layer"], fs["rho"], "-o", ms=2.5, lw=1.0, color=fam_color[fam], label=fam)
             n_fam += 1
         ax.axhline(0, color=acs.ZERO_LINE, lw=0.6, ls="--")
         ax.set_title(f"{metric}  (n={n_fam} families)")
@@ -506,16 +593,33 @@ def plot_within(within: pd.DataFrame, out_dir: Path, title: str,
     handles = [plt.Line2D([0], [0], color=fam_color[f], lw=2) for f in families]
     if pub.is_on():
         panels_h = PUB_PANEL_H * nrows
-        _, key_h = pub.key_below(fig, handles, [_pub_family_label(f) for f in families],
-                                 title="Gene family", width=pub.FULL, cols=PUB_KEY_COLS)
+        _, key_h = pub.key_below(
+            fig,
+            handles,
+            [_pub_family_label(f) for f in families],
+            title="Gene family",
+            width=pub.FULL,
+            cols=PUB_KEY_COLS,
+        )
         total_h = panels_h + key_h
         fig.set_size_inches(pub.FULL / 72.0, total_h / 72.0)
         pub.tight(fig, bottom=key_h)
     else:
-        fig.legend(handles, families, frameon=False, fontsize=6,
-                   loc="center left", bbox_to_anchor=(1.0, 0.5), title="family")
-        fig.suptitle(f"{title} — within-family ρ across layers (per family)",
-                     fontsize=11, fontweight="bold", y=1.0)
+        fig.legend(
+            handles,
+            families,
+            frameon=False,
+            fontsize=6,
+            loc="center left",
+            bbox_to_anchor=(1.0, 0.5),
+            title="family",
+        )
+        fig.suptitle(
+            f"{title} — within-family ρ across layers (per family)",
+            fontsize=11,
+            fontweight="bold",
+            y=1.0,
+        )
         fig.tight_layout(rect=(0, 0, 0.88, 1))
     _save(fig, out_dir, f"within_family_vs_layer{stem_suffix}")
 
@@ -526,28 +630,38 @@ def plot_within(within: pd.DataFrame, out_dir: Path, title: str,
 # BETWEEN-family ground-truth distances (from the run dirs):
 BETWEEN_FILES = [
     "between_family_baseline_distances.csv",  # long-form: every baseline × every pair
-    "pfam_jsd_distances.csv",                 # F×F Pfam HMM JSD (homology)
+    "pfam_jsd_distances.csv",  # F×F Pfam HMM JSD (homology)
 ]
-BETWEEN_GLOB = "betweenfam_*_distances.csv"   # F×F per-baseline matrices
+BETWEEN_GLOB = "betweenfam_*_distances.csv"  # F×F per-baseline matrices
 # WITHIN-family gene-level ground-truth distance matrices (from the run dirs):
 WITHIN_GENELEVEL_FILES = [
-    "kmer_distance.npy",        # gene×gene k-mer distance (within k-mer baseline)
-    "taxonomic_distance.npy",   # gene×gene taxonomy distance (within taxonomy baseline)
+    "kmer_distance.npy",  # gene×gene k-mer distance (within k-mer baseline)
+    "taxonomic_distance.npy",  # gene×gene taxonomy distance (within taxonomy baseline)
 ]
 # WITHIN-family alignment distances live in a project-wide cache, not the run dirs.
 # <fam>.npy is renamed to <fam>.patristic.npy on copy.
-PATRISTIC_CACHE_FILES = [(".npy", ".patristic.npy"), (".seqid.npy", ".seqid.npy"),
-                         (".ids.json", ".ids.json")]
+PATRISTIC_CACHE_FILES = [
+    (".npy", ".patristic.npy"),
+    (".seqid.npy", ".seqid.npy"),
+    (".ids.json", ".ids.json"),
+]
 
 
 def _md5(path: Path) -> str:
     return hashlib.md5(path.read_bytes()).hexdigest()
 
 
-def _copy_layer_invariant(names: list[str], glob_pat: str | None,
-                          layers: list[tuple[int, Path]], dest: Path,
-                          manifest: list[str]) -> int:
-    """Copy each name into dest from the highest layer that has it (the donor lowest layer is the lone float-repr outlier)."""
+def _copy_layer_invariant(
+    names: list[str],
+    glob_pat: str | None,
+    layers: list[tuple[int, Path]],
+    dest: Path,
+    manifest: list[str],
+) -> int:
+    """
+    Copy each name into dest from the highest layer that has it (the donor lowest layer is the lone
+    float-repr outlier).
+    """
     all_names = list(names)
     if glob_pat:
         for _, run_dir in layers:
@@ -556,14 +670,17 @@ def _copy_layer_invariant(names: list[str], glob_pat: str | None,
     for name in sorted(set(all_names)):
         if any(f"betweenfam_{dep}_distances.csv" == name for dep in DEPRECATED_BASELINES):
             continue  # don't collect a deprecated baseline's matrix
-        present = [(layer, run_dir / name) for layer, run_dir in layers
-                   if (run_dir / name).exists()]
+        present = [
+            (layer, run_dir / name) for layer, run_dir in layers if (run_dir / name).exists()
+        ]
         if not present:
             continue
         hashes = {_md5(p) for _, p in present}
         if len(hashes) > 2:
-            print(f"  WARN {name}: {len(hashes)} distinct hashes across "
-                  f"{len(present)} layers — NOT layer-independent, skipping")
+            print(
+                f"  WARN {name}: {len(hashes)} distinct hashes across "
+                f"{len(present)} layers — NOT layer-independent, skipping"
+            )
             manifest.append(f"{dest.name}/{name}\t{len(present)}\t{len(hashes)}\tSKIPPED (varies)")
             continue
         src_layer, src = max(present, key=lambda t: t[0])
@@ -578,12 +695,12 @@ def _resolve_patristic_cache(glob_pattern: str, override: str | None) -> Path | 
     return Path(override) if override else None
 
 
-def collect_baselines(layers: list[tuple[int, Path]], within: pd.DataFrame,
-                      out_dir: Path, patristic_cache: Path) -> None:
+def collect_baselines(
+    layers: list[tuple[int, Path]], within: pd.DataFrame, out_dir: Path, patristic_cache: Path
+) -> None:
     """Store the layer-independent ground truth once under out_dir/baselines/."""
     # Only read completed layers, so this is safe to run against a live sweep.
-    layers = [(lay, d) for lay, d in layers
-              if (d / "between_family_baseline_scores.csv").exists()]
+    layers = [(lay, d) for lay, d in layers if (d / "between_family_baseline_scores.csv").exists()]
     if not layers:
         print("  SKIP baselines: no completed layers yet")
         return
@@ -594,10 +711,13 @@ def collect_baselines(layers: list[tuple[int, Path]], within: pd.DataFrame,
     between_dir.mkdir(parents=True, exist_ok=True)
     within_dir.mkdir(parents=True, exist_ok=True)
 
-    manifest = ["# Layer-independent ground-truth baselines (stored once).",
-                "# Copied by scripts/layer_sweep_summary.py from the all-layer sweep;",
-                "# identical across every layer (only the per-layer geodesic differs).",
-                "# columns: dir/file  n_layers_present  n_distinct_hashes  source", ""]
+    manifest = [
+        "# Layer-independent ground-truth baselines (stored once).",
+        "# Copied by scripts/layer_sweep_summary.py from the all-layer sweep;",
+        "# identical across every layer (only the per-layer geodesic differs).",
+        "# columns: dir/file  n_layers_present  n_distinct_hashes  source",
+        "",
+    ]
 
     n_btw = _copy_layer_invariant(BETWEEN_FILES, BETWEEN_GLOB, layers, between_dir, manifest)
     n_win = _copy_layer_invariant(WITHIN_GENELEVEL_FILES, None, layers, within_dir, manifest)
@@ -606,11 +726,15 @@ def collect_baselines(layers: list[tuple[int, Path]], within: pd.DataFrame,
     families = sorted(within["family"].dropna().unique()) if not within.empty else []
     n_cache = 0
     if patristic_cache is None:
-        print("  NOTE per-family patristic/seqid matrices not collected "
-              "(pass --patristic-cache DIR only if that cache belongs to THIS panel)")
+        print(
+            "  NOTE per-family patristic/seqid matrices not collected "
+            "(pass --patristic-cache DIR only if that cache belongs to THIS panel)"
+        )
     elif not patristic_cache.is_dir():
-        print(f"  NOTE within per-family cache absent: {patristic_cache} "
-              f"(skipping patristic/seqid matrices)")
+        print(
+            f"  NOTE within per-family cache absent: {patristic_cache} "
+            f"(skipping patristic/seqid matrices)"
+        )
     else:
         for fam in families:
             for src_suffix, dst_suffix in PATRISTIC_CACHE_FILES:
@@ -618,23 +742,38 @@ def collect_baselines(layers: list[tuple[int, Path]], within: pd.DataFrame,
                 if src.exists():
                     shutil.copy2(src, within_dir / f"{fam}{dst_suffix}")
                     n_cache += 1
-        manifest.append(f"within_family/<fam>.{{patristic,seqid}}.npy + .ids.json"
-                        f"\t-\t-\t{patristic_cache} ({len(families)} families)")
+        manifest.append(
+            f"within_family/<fam>.{{patristic,seqid}}.npy + .ids.json"
+            f"\t-\t-\t{patristic_cache} ({len(families)} families)"
+        )
 
     (bdir / "MANIFEST.txt").write_text("\n".join(manifest) + "\n")
-    print(f"  collected baselines → {bdir}/ "
-          f"(between_family: {n_btw}, within_family: {n_win} gene-level + "
-          f"{n_cache} per-family cache files; + MANIFEST.txt)")
+    print(
+        f"  collected baselines → {bdir}/ "
+        f"(between_family: {n_btw}, within_family: {n_win} gene-level + "
+        f"{n_cache} per-family cache files; + MANIFEST.txt)"
+    )
 
 
-def write_provenance(layers: list[tuple[int, Path]], between: pd.DataFrame,
-                     within: pd.DataFrame, out_dir: Path, glob_pat: str, title: str,
-                     exclude_within: list[str] | None = None,
-                     exclude_between: list[str] | None = None, stem_suffix: str = "",
-                 lead_per_baseline: bool = False) -> None:
+def write_provenance(
+    layers: list[tuple[int, Path]],
+    between: pd.DataFrame,
+    within: pd.DataFrame,
+    out_dir: Path,
+    glob_pat: str,
+    title: str,
+    exclude_within: list[str] | None = None,
+    exclude_between: list[str] | None = None,
+    stem_suffix: str = "",
+    lead_per_baseline: bool = False,
+) -> None:
     """Record where every number in this folder came from, as SOURCE.md."""
     root = {p.parent for _, p in layers}
-    n_between = between.groupby("layer")["baseline"].nunique() if not between.empty else pd.Series(dtype=int)
+    n_between = (
+        between.groupby("layer")["baseline"].nunique()
+        if not between.empty
+        else pd.Series(dtype=int)
+    )
     fam_per_layer, mtimes = {}, {}
     for layer, run_dir in layers:
         f = run_dir / "between_family_baseline_scores.csv"
@@ -645,11 +784,14 @@ def write_provenance(layers: list[tuple[int, Path]], between: pd.DataFrame,
             fam_per_layer[layer] = len(pd.read_csv(cen, index_col=0))
 
     lines = [
-        f"# {title}", "",
+        f"# {title}",
+        "",
         "Cross-layer roll-up. Every value in the CSVs and figures here was read out of the",
         "per-layer run dirs below — this folder derives from them and holds no primary results.",
-        "Written by `scripts/layer_sweep_summary.py`; re-running it regenerates this file.", "",
-        "## Source", "",
+        "Written by `scripts/layer_sweep_summary.py`; re-running it regenerates this file.",
+        "",
+        "## Source",
+        "",
         f"- glob: `{glob_pat}`",
         f"- per-layer results: {', '.join(f'`{r}/`' for r in sorted(map(str, root)))}",
         f"- layers: {len(layers)} ({layers[0][0]}..{layers[-1][0]}), dirs "
@@ -657,32 +799,50 @@ def write_provenance(layers: list[tuple[int, Path]], between: pd.DataFrame,
     ]
     if fam_per_layer:
         counts = sorted(set(fam_per_layer.values()))
-        lines.append(f"- families (centroid matrix): {counts[0]}" if len(counts) == 1
-                     else f"- families (centroid matrix): **MIXED** {counts} across layers")
+        lines.append(
+            f"- families (centroid matrix): {counts[0]}"
+            if len(counts) == 1
+            else f"- families (centroid matrix): **MIXED** {counts} across layers"
+        )
     if not within.empty:
-        lines.append(f"- within-family metrics: "
-                     + ", ".join(f"{m} ({within[within.metric == m].family.nunique()} families)"
-                                 for m in sorted(within["metric"].unique())))
+        lines.append(
+            "- within-family metrics: "
+            + ", ".join(
+                f"{m} ({within[within.metric == m].family.nunique()} families)"
+                for m in sorted(within["metric"].unique())
+            )
+        )
     if exclude_between:
-        lines += ["", f"- **between-family baselines excluded from the figure**: "
-                      f"{', '.join(repr(b) for b in exclude_between)}. They are still in "
-                      f"`between_axis_vs_layer{stem_suffix}.csv` and in the per-layer sources — only "
-                      f"the panels are suppressed, and any axis left only partially represented is "
-                      f"dropped from the lead axis-means panel rather than averaged over a subset. "
-                      f"Re-run with the same `--exclude-between` to reproduce this figure."]
+        lines += [
+            "",
+            f"- **between-family baselines excluded from the figure**: "
+            f"{', '.join(repr(b) for b in exclude_between)}. They are still in "
+            f"`between_axis_vs_layer{stem_suffix}.csv` and in the per-layer sources — only "
+            f"the panels are suppressed, and any axis left only partially represented is "
+            f"dropped from the lead axis-means panel rather than averaged over a subset. "
+            f"Re-run with the same `--exclude-between` to reproduce this figure.",
+        ]
     if exclude_within:
-        lines += ["", f"- **within panels excluded from the figure**: "
-                      f"{', '.join(repr(m) for m in exclude_within)}. The metric is still in "
-                      f"`within_family_vs_layer.csv` and in the per-layer sources — only the panel "
-                      f"is suppressed. Re-run with the same `--exclude-within` to reproduce this "
-                      f"figure; omit it to get every panel back."]
+        lines += [
+            "",
+            f"- **within panels excluded from the figure**: "
+            f"{', '.join(repr(m) for m in exclude_within)}. The metric is still in "
+            f"`within_family_vs_layer.csv` and in the per-layer sources — only the panel "
+            f"is suppressed. Re-run with the same `--exclude-within` to reproduce this "
+            f"figure; omit it to get every panel back.",
+        ]
     if lead_per_baseline:
-        lines += ["", "- **lead panel**: one line per between-family baseline (colour = axis, "
-                      "marker shape = baseline), NOT the per-axis mean. Reproduce with "
-                      "`--lead-per-baseline`; omit it for the axis-mean lead panel."]
+        lines += [
+            "",
+            "- **lead panel**: one line per between-family baseline (colour = axis, "
+            "marker shape = baseline), NOT the per-axis mean. Reproduce with "
+            "`--lead-per-baseline`; omit it for the axis-mean lead panel.",
+        ]
     lines += ["", "## Per-layer files read", "", "| file | supplies |", "|---|---|"]
     if not between.empty:
-        lines.append("| `between_family_baseline_scores.csv` | between_axis_vs_layer.{csv,png,pdf} |")
+        lines.append(
+            "| `between_family_baseline_scores.csv` | between_axis_vs_layer.{csv,png,pdf} |"
+        )
     present = set(within["metric"].unique()) if not within.empty else set()
     for label, filenames, _ in WITHIN_SPECS:  # only the specs that actually resolved on disk
         if label in present:
@@ -690,16 +850,23 @@ def write_provenance(layers: list[tuple[int, Path]], between: pd.DataFrame,
 
     warns = []
     if len(set(fam_per_layer.values())) > 1:
-        odd = {L: n for L, n in sorted(fam_per_layer.items())
-               if n != max(set(fam_per_layer.values()), key=list(fam_per_layer.values()).count)}
-        warns.append(f"Family count is not constant across layers — odd layers: {odd}. "
-                     "The curves mix panel sizes and are not comparable layer-to-layer.")
+        odd = {
+            L: n
+            for L, n in sorted(fam_per_layer.items())
+            if n != max(set(fam_per_layer.values()), key=list(fam_per_layer.values()).count)
+        }
+        warns.append(
+            f"Family count is not constant across layers — odd layers: {odd}. "
+            "The curves mix panel sizes and are not comparable layer-to-layer."
+        )
     if len(mtimes) > 1 and max(mtimes.values()) - min(mtimes.values()) > 86400:
         oldest, newest = min(mtimes, key=mtimes.get), max(mtimes, key=mtimes.get)
         span = (max(mtimes.values()) - min(mtimes.values())) / 86400
-        warns.append(f"Between-family source files span {span:.1f} days "
-                     f"(oldest layer {oldest}, newest layer {newest}) — if the sweep ran in one "
-                     "batch, the old ones are stale leftovers from a step that failed.")
+        warns.append(
+            f"Between-family source files span {span:.1f} days "
+            f"(oldest layer {oldest}, newest layer {newest}) — if the sweep ran in one "
+            "batch, the old ones are stale leftovers from a step that failed."
+        )
     if not n_between.empty and n_between.nunique() > 1:
         warns.append(f"Baseline count varies by layer: {n_between.value_counts().to_dict()}.")
     if warns:
@@ -711,74 +878,126 @@ def write_provenance(layers: list[tuple[int, Path]], between: pd.DataFrame,
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--glob", required=True,
-                    help="glob for the sweep run dirs, e.g. "
-                         "'results/2026-07-01_evo2-human-panel/blocks*'")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--glob",
+        required=True,
+        help="glob for the sweep run dirs, e.g. 'results/2026-07-01_evo2-human-panel/blocks*'",
+    )
     ap.add_argument("--out-dir", required=True, help="where to write the summary figures")
     ap.add_argument("--title", default="", help="figure title prefix")
-    ap.add_argument("--no-baselines", action="store_true",
-                    help="skip collecting the layer-independent baselines into baselines/")
-    ap.add_argument("--footnote", default=None, metavar="TEXT",
-                    help="text for the '*' under the band figure, marking any within panel scored "
-                         "on fewer families than the rest. Without it the footnote just names the "
-                         "missing families — factual, but it cannot say WHY, which is usually the "
-                         "part worth recording.")
-    ap.add_argument("--between-scores", default="between_family_baseline_scores.csv",
-                    metavar="FILE",
-                    help="per-layer between-family scores file. Use between_family_ot_scores.csv "
-                         "with --between-approach to draw the figure from an OT metric instead.")
-    ap.add_argument("--between-approach", default=None, metavar="NAME",
-                    help="filter --between-scores to one approach (geodesic / wasserstein / "
-                         "fgw_alpha0.25). Only meaningful for a file that has an 'approach' column.")
-    ap.add_argument("--within-file-suffix", default="", metavar="SUFFIX",
-                    help="read within_family_*<SUFFIX>.csv instead of the plain tables — "
-                         "'_angular' selects the graph-free within-family scoring.")
-    ap.add_argument("--kmer-k", type=int, default=None, metavar="K",
-                    help="annotate the k-mer panels as k-mer(k=K). The k is NOT recorded in the "
-                         "score CSVs (the column is just spearman_geodesic_kmer), and it differs "
-                         "between panels, so it must be asserted rather than inferred. The mammal "
-                         "arms use k=6 (mammal_between.kmer_between / mammal_score, both k=6).")
-    ap.add_argument("--exclude-within", nargs="*", default=[], metavar="LABEL",
-                    help="within-family baseline LABELs to drop from the figure (exact WITHIN_SPECS "
-                         "labels, e.g. 'sequence identity'). The CSV keeps every metric — this only "
-                         "controls which panels are drawn. Recorded in SOURCE.md so the figure is "
-                         "reproducible. Use when two baselines are near-redundant and showing both "
-                         "overstates how many independent baselines agree.")
-    ap.add_argument("--exclude-between", nargs="*", default=[], metavar="BASELINE",
-                    help="between-family BASELINE keys to drop from the between figure (exact "
-                         "BETWEEN_ORDER keys, e.g. cofactor ec_number go_mf). The CSV keeps every "
-                         "baseline. An axis left only partially represented is dropped from the "
-                         "lead axis-means panel rather than averaged over a subset of itself.")
-    ap.add_argument("--within-band", action="store_true",
-                    help="ALSO write within_family_vs_layer[SUFFIX]_band.{png,pdf}: the per-family "
-                         "lines collapsed to mean ± 1 SD across families, one panel per metric. "
-                         "The per-family figure is still written — the band is a companion, not a "
-                         "replacement, since ±1 SD hides families outside it.")
-    ap.add_argument("--lead-per-baseline", action="store_true",
-                    help="draw the between figure's lead panel as one line per BASELINE (colour = "
-                         "axis, marker shape = baseline) instead of one mean line per axis. "
-                         "Use when baselines inside one axis disagree — e.g. the gc_content and kmer "
-                         "composition controls, whose mean hides which of the two the geometry "
-                         "actually tracks.")
-    ap.add_argument("--stem-suffix", default="", metavar="SUFFIX",
-                    help="append SUFFIX to every output filename (e.g. '_v2'), so a restricted-"
-                         "baseline variant lands beside the full figure instead of overwriting it. "
-                         "Applies to the figures, the tidy CSVs and SOURCE.md.")
-    ap.add_argument("--patristic-cache", default=None,
-                    help="per-family alignment-distance cache dir to archive into baselines/. NOT "
-                         "inferred — pass it ONLY when that cache belongs to this panel, since the "
-                         "cache is keyed by family name and names collide across panels "
-                         "(data/cache/evo2_patristic = the cross-kingdom panel; "
-                         "data/cache/human_patristic = the human panel). "
-                         "Omitted = nothing archived.")
-    ap.add_argument("--pub", action="store_true",
-                    help="render at PUBLICATION geometry instead of the compact diagnostic scale: "
-                         "an exact 1,000 pt panel, the style guide's 15 pt type with monospaced "
-                         "numerals, panels stacked rather than widened, and no in-artwork title "
-                         "(the caption carries it). Writes into <out-dir>/pub/ so the diagnostic "
-                         "figures the results docs link to are left alone.")
+    ap.add_argument(
+        "--no-baselines",
+        action="store_true",
+        help="skip collecting the layer-independent baselines into baselines/",
+    )
+    ap.add_argument(
+        "--footnote",
+        default=None,
+        metavar="TEXT",
+        help="text for the '*' under the band figure, marking any within panel scored "
+        "on fewer families than the rest. Without it the footnote just names the "
+        "missing families — factual, but it cannot say WHY, which is usually the "
+        "part worth recording.",
+    )
+    ap.add_argument(
+        "--between-scores",
+        default="between_family_baseline_scores.csv",
+        metavar="FILE",
+        help="per-layer between-family scores file. Use between_family_ot_scores.csv "
+        "with --between-approach to draw the figure from an OT metric instead.",
+    )
+    ap.add_argument(
+        "--between-approach",
+        default=None,
+        metavar="NAME",
+        help="filter --between-scores to one approach (geodesic / wasserstein / "
+        "fgw_alpha0.25). Only meaningful for a file that has an 'approach' column.",
+    )
+    ap.add_argument(
+        "--within-file-suffix",
+        default="",
+        metavar="SUFFIX",
+        help="read within_family_*<SUFFIX>.csv instead of the plain tables — "
+        "'_angular' selects the graph-free within-family scoring.",
+    )
+    ap.add_argument(
+        "--kmer-k",
+        type=int,
+        default=None,
+        metavar="K",
+        help="annotate the k-mer panels as k-mer(k=K). The k is NOT recorded in the "
+        "score CSVs (the column is just spearman_geodesic_kmer), and it differs "
+        "between panels, so it must be asserted rather than inferred. The mammal "
+        "arms use k=6 (mammal_between.kmer_between / mammal_score, both k=6).",
+    )
+    ap.add_argument(
+        "--exclude-within",
+        nargs="*",
+        default=[],
+        metavar="LABEL",
+        help="within-family baseline LABELs to drop from the figure (exact WITHIN_SPECS "
+        "labels, e.g. 'sequence identity'). The CSV keeps every metric — this only "
+        "controls which panels are drawn. Recorded in SOURCE.md so the figure is "
+        "reproducible. Use when two baselines are near-redundant and showing both "
+        "overstates how many independent baselines agree.",
+    )
+    ap.add_argument(
+        "--exclude-between",
+        nargs="*",
+        default=[],
+        metavar="BASELINE",
+        help="between-family BASELINE keys to drop from the between figure (exact "
+        "BETWEEN_ORDER keys, e.g. cofactor ec_number go_mf). The CSV keeps every "
+        "baseline. An axis left only partially represented is dropped from the "
+        "lead axis-means panel rather than averaged over a subset of itself.",
+    )
+    ap.add_argument(
+        "--within-band",
+        action="store_true",
+        help="ALSO write within_family_vs_layer[SUFFIX]_band.{png,pdf}: the per-family "
+        "lines collapsed to mean ± 1 SD across families, one panel per metric. "
+        "The per-family figure is still written — the band is a companion, not a "
+        "replacement, since ±1 SD hides families outside it.",
+    )
+    ap.add_argument(
+        "--lead-per-baseline",
+        action="store_true",
+        help="draw the between figure's lead panel as one line per BASELINE (colour = "
+        "axis, marker shape = baseline) instead of one mean line per axis. "
+        "Use when baselines inside one axis disagree — e.g. the gc_content and kmer "
+        "composition controls, whose mean hides which of the two the geometry "
+        "actually tracks.",
+    )
+    ap.add_argument(
+        "--stem-suffix",
+        default="",
+        metavar="SUFFIX",
+        help="append SUFFIX to every output filename (e.g. '_v2'), so a restricted-"
+        "baseline variant lands beside the full figure instead of overwriting it. "
+        "Applies to the figures, the tidy CSVs and SOURCE.md.",
+    )
+    ap.add_argument(
+        "--patristic-cache",
+        default=None,
+        help="per-family alignment-distance cache dir to archive into baselines/. NOT "
+        "inferred — pass it ONLY when that cache belongs to this panel, since the "
+        "cache is keyed by family name and names collide across panels "
+        "(data/cache/evo2_patristic = the cross-kingdom panel; "
+        "data/cache/human_patristic = the human panel). "
+        "Omitted = nothing archived.",
+    )
+    ap.add_argument(
+        "--pub",
+        action="store_true",
+        help="render at PUBLICATION geometry instead of the compact diagnostic scale: "
+        "an exact 1,000 pt panel, the style guide's 15 pt type with monospaced "
+        "numerals, panels stacked rather than widened, and no in-artwork title "
+        "(the caption carries it). Writes into <out-dir>/pub/ so the diagnostic "
+        "figures the results docs link to are left alone.",
+    )
     args = ap.parse_args()
 
     if args.pub:
@@ -790,16 +1009,20 @@ def main() -> None:
     title = args.title or args.glob
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    print(f"{title}: {len(layers)} layers "
-          f"[{layers[0][0]}..{layers[-1][0]}]")
+    print(f"{title}: {len(layers)} layers [{layers[0][0]}..{layers[-1][0]}]")
 
     if args.kmer_k:
         # k is not in the score CSVs and differs between panels, so it is asserted on the command
         # line. Patch SPECS, not the loaded frame: panel order is matched against these labels.
         for i, (lab, files, col) in enumerate(WITHIN_SPECS):
             if lab.startswith("k-mer"):
-                WITHIN_SPECS[i] = (lab.replace(")", f", k={args.kmer_k})") if lab.endswith(")")
-                                   else f"{lab} (k={args.kmer_k})", files, col)
+                WITHIN_SPECS[i] = (
+                    lab.replace(")", f", k={args.kmer_k})")
+                    if lab.endswith(")")
+                    else f"{lab} (k={args.kmer_k})",
+                    files,
+                    col,
+                )
 
     between = load_between(layers, args.between_scores, args.between_approach)
     within = load_within(layers, args.within_file_suffix)
@@ -808,14 +1031,30 @@ def main() -> None:
         between.to_csv(out_dir / f"between_axis_vs_layer{sfx}.csv", index=False)
     if not within.empty:
         within.to_csv(out_dir / f"within_family_vs_layer{sfx}.csv", index=False)
-    plot_between(between, out_dir, title, args.exclude_between, sfx,
-                 args.lead_per_baseline, kmer_k=args.kmer_k)
+    plot_between(
+        between,
+        out_dir,
+        title,
+        args.exclude_between,
+        sfx,
+        args.lead_per_baseline,
+        kmer_k=args.kmer_k,
+    )
     plot_within(within, out_dir, title, args.exclude_within, sfx)
     if args.within_band:
-        plot_within_band(within, out_dir, title, args.exclude_within, sfx,
-                         args.footnote)
-    write_provenance(layers, between, within, out_dir, args.glob, title, args.exclude_within,
-                     args.exclude_between, sfx, args.lead_per_baseline)
+        plot_within_band(within, out_dir, title, args.exclude_within, sfx, args.footnote)
+    write_provenance(
+        layers,
+        between,
+        within,
+        out_dir,
+        args.glob,
+        title,
+        args.exclude_within,
+        args.exclude_between,
+        sfx,
+        args.lead_per_baseline,
+    )
     if not args.no_baselines:
         cache = _resolve_patristic_cache(args.glob, args.patristic_cache)
         collect_baselines(layers, within, out_dir, cache)

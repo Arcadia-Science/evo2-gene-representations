@@ -5,12 +5,20 @@ from __future__ import annotations
 import matplotlib as mpl
 from matplotlib.ticker import ScalarFormatter
 
-from .colors import BACKGROUNDS, BLACK, CHARCOAL, CHATEAU, palette, register_cmaps
+from .colors import BACKGROUNDS, BLACK, palette, register_cmaps
 from .fonts import MONO, NEXT, ensure_fonts
 
 __all__ = [
-    "apply", "RC", "SIZES", "MARGIN", "GAP",
-    "FONT_SIZE", "WEIGHT", "style_axes", "mono_ticks", "set_cycle",
+    "apply",
+    "RC",
+    "SIZES",
+    "MARGIN",
+    "GAP",
+    "FONT_SIZE",
+    "WEIGHT",
+    "style_axes",
+    "mono_ticks",
+    "set_cycle",
     "ArcadiaNumberFormatter",
 ]
 
@@ -22,7 +30,7 @@ SIZES = {
     "half_square": 490,
 }
 MARGIN = 30.0  # px from panel edge to the outermost chart element
-GAP = 20.0     # px between adjacent panels
+GAP = 20.0  # px between adjacent panels
 
 FONT_SIZE = {
     "panel_letter": 38.0,
@@ -34,11 +42,11 @@ FONT_SIZE = {
 }
 
 WEIGHT = {
-    "panel_letter": 400,   # Regular
-    "key_title": 600,      # SemiBold
-    "axis_title": 500,     # Medium
-    "body": 400,           # Regular
-    "annotation": 200,     # ExtraLight
+    "panel_letter": 400,  # Regular
+    "key_title": 600,  # SemiBold
+    "axis_title": 500,  # Medium
+    "body": 400,  # Regular
+    "annotation": 200,  # ExtraLight
 }
 
 LINE_WIDTH = {
@@ -48,7 +56,7 @@ LINE_WIDTH = {
     "key_underline": 1.5,
 }
 
-TICK_LEN = 5.0   # px
+TICK_LEN = 5.0  # px
 LABEL_PAD = 5.0  # px from axis to tick labels
 TITLE_PAD = 10.0  # px from tick labels to axis title
 
@@ -86,10 +94,15 @@ def _rc(background: str = "white") -> dict:
     return {
         # ---- type -------------------------------------------------------
         "font.family": "sans-serif",
-        "font.sans-serif": [NEXT, "Atkinson Hyperlegible", "Helvetica Neue",
-                            "Helvetica", "Arial", "DejaVu Sans"],
-        "font.monospace": [MONO, "Atkinson Hyperlegible Mono", "Menlo",
-                           "DejaVu Sans Mono"],
+        "font.sans-serif": [
+            NEXT,
+            "Atkinson Hyperlegible",
+            "Helvetica Neue",
+            "Helvetica",
+            "Arial",
+            "DejaVu Sans",
+        ],
+        "font.monospace": [MONO, "Atkinson Hyperlegible Mono", "Menlo", "DejaVu Sans Mono"],
         "font.size": body,
         "font.weight": WEIGHT["body"],
         "text.color": BLACK,
@@ -250,8 +263,9 @@ def mono_ticks(ax, axis: str = "both", comma: bool = True) -> None:
     for which, mpl_axis in (("x", ax.xaxis), ("y", ax.yaxis)):
         if axis not in ("both", which):
             continue
-        numeric = not any(t.get_text() and not _looks_numeric(t.get_text())
-                          for t in mpl_axis.get_ticklabels())
+        numeric = not any(
+            t.get_text() and not _looks_numeric(t.get_text()) for t in mpl_axis.get_ticklabels()
+        )
         if numeric:
             ax.tick_params(axis=which, labelfontfamily="monospace")
             if mpl_axis.get_scale() == "linear":
@@ -277,11 +291,17 @@ def style_axes(ax, mono: bool = True, ticks: str = "auto") -> None:
         ax.spines[side].set_linewidth(LINE_WIDTH["axis"])
         ax.spines[side].set_color(BLACK)
     ax.tick_params(
-        which="major", direction="out", length=TICK_LEN,
-        width=LINE_WIDTH["axis"], color=BLACK, labelcolor=BLACK, pad=LABEL_PAD,
+        which="major",
+        direction="out",
+        length=TICK_LEN,
+        width=LINE_WIDTH["axis"],
+        color=BLACK,
+        labelcolor=BLACK,
+        pad=LABEL_PAD,
     )
-    ax.tick_params(which="minor", direction="out", length=TICK_LEN * 0.6,
-                   width=LINE_WIDTH["axis"], color=BLACK)
+    ax.tick_params(
+        which="minor", direction="out", length=TICK_LEN * 0.6, width=LINE_WIDTH["axis"], color=BLACK
+    )
     if ticks == "auto":
         ax.tick_params(top=False, right=False)
     ax.xaxis.label.set_size(FONT_SIZE["axis_title"])

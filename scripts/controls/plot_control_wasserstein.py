@@ -1,6 +1,6 @@
 """Between-family control preservation: centroid geodesic vs centroid-free Wasserstein."""
-from __future__ import annotations
 
+from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
@@ -41,18 +41,24 @@ ORDER = ["gc_match", "dinuc_shuffle", "kmer4_shuffle", "kmer6_shuffle", "synonym
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--arm", default="transcript_cdsmask")
     ap.add_argument("--slug", default="mammalian-orthologs-cdsmask-48fam")
-    ap.add_argument("--title", default="Evo2 mammalian orthologs (transcript, CDS-masked, "
-                                       "24 mammals, 48 families)")
+    ap.add_argument(
+        "--title",
+        default="Evo2 mammalian orthologs (transcript, CDS-masked, 24 mammals, 48 families)",
+    )
     ap.add_argument("--out-dir", default="results/layer_sweep_summaries")
-    ap.add_argument("--pub", action="store_true",
-                    help="render at PUBLICATION geometry: an exact 1,000 pt panel, the style "
-                         "guide's 15 pt type with monospaced numerals, the two panels STACKED "
-                         "rather than side by side, and the key below them. Writes into "
-                         "<out-dir>/pub/.")
+    ap.add_argument(
+        "--pub",
+        action="store_true",
+        help="render at PUBLICATION geometry: an exact 1,000 pt panel, the style "
+        "guide's 15 pt type with monospaced numerals, the two panels STACKED "
+        "rather than side by side, and the key below them. Writes into "
+        "<out-dir>/pub/.",
+    )
     args = ap.parse_args()
 
     if args.pub:
@@ -60,13 +66,15 @@ def main() -> None:
 
     src = Path(f"results/_ot_control_preservation_{args.arm}.csv")
     if not src.exists():
-        sys.exit(f"missing {src} — run scripts/mammalian_orthologs/controls_score_graphfree.py --axis between first")
+        sys.exit(f"missing {src} — run controls_score_graphfree.py --axis between first")
     d = pd.read_csv(src).dropna(subset=["rho_wasserstein"])
     # Use graph-free angular preservation for within-family pairs.
     wsrc = Path(f"results/_angular_control_preservation_{args.arm}.csv")
     if not wsrc.exists():
-        sys.exit(f"missing {wsrc} — run scripts/mammalian_orthologs/controls_score_graphfree.py --axis within")
-    wdf = pd.read_csv(wsrc).rename(columns={"condition": "rung", "rho_within_angular": "rho_within"})
+        sys.exit(f"missing {wsrc} — run controls_score_graphfree.py --axis within")
+    wdf = pd.read_csv(wsrc).rename(
+        columns={"condition": "rung", "rho_within_angular": "rho_within"}
+    )
     d["rung"] = d["condition"].str.replace(f"{args.arm}_", "", regex=False)
     rungs = [r for r in ORDER if r in set(d.rung)]
     missing = [r for r in ORDER if r not in rungs]
@@ -77,16 +85,18 @@ def main() -> None:
     set_pub_style(title_size=10, tick_size=8)
     # Stack publication panels to give each plot the full chart width.
     if pub.is_on():
-        fig, axes = plt.subplots(2, 1, dpi=300, sharex=True,
-                                 figsize=pub.size(pub.FULL, PUB_PANEL_H * 2))
+        fig, axes = plt.subplots(
+            2, 1, dpi=300, sharex=True, figsize=pub.size(pub.FULL, PUB_PANEL_H * 2)
+        )
     else:
         fig, axes = plt.subplots(1, 2, figsize=(13, 4.6), dpi=300)
     label = (lambda r: PUB_RUNG_LABELS.get(r, r)) if pub.is_on() else (lambda r: r)
     ax = axes[0]
     for r in rungs:
         s_ = d[d.rung == r].sort_values("layer")
-        ax.plot(s_.layer, s_.rho_wasserstein, "-o", ms=3, lw=1.6, color=COLORS.get(r),
-                label=label(r))
+        ax.plot(
+            s_.layer, s_.rho_wasserstein, "-o", ms=3, lw=1.6, color=COLORS.get(r), label=label(r)
+        )
     ax.axhline(1.0, color=acs.REFERENCE_LINE, lw=1.2, label=label("natural"))
     ax.set_title("Between-family preservation (Wasserstein)", fontweight="bold")
     ax.set_ylabel("ρ (control vs natural)")

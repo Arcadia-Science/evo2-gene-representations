@@ -1,7 +1,6 @@
 """Per-family within-family ground truth from one protein alignment."""
 
 from __future__ import annotations
-
 import argparse
 import json
 import subprocess
@@ -14,24 +13,76 @@ import pandas as pd
 from scipy.stats import spearmanr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
-from geodesic_utils import upper_triangle  # noqa: E402
 
 EVO2_FASTA_DIR = Path("data/evo2_gene_families")
 HUMAN_CDS_JSON = Path("data/cache/cds_sequences.json")
 MIN_MEMBERS = 4  # below this a within-family rank correlation is meaningless
 
 _CODON = {  # standard genetic code; '*' = stop, 'X' = unknown/ambiguous
-    "TTT": "F", "TTC": "F", "TTA": "L", "TTG": "L", "CTT": "L", "CTC": "L",
-    "CTA": "L", "CTG": "L", "ATT": "I", "ATC": "I", "ATA": "I", "ATG": "M",
-    "GTT": "V", "GTC": "V", "GTA": "V", "GTG": "V", "TCT": "S", "TCC": "S",
-    "TCA": "S", "TCG": "S", "CCT": "P", "CCC": "P", "CCA": "P", "CCG": "P",
-    "ACT": "T", "ACC": "T", "ACA": "T", "ACG": "T", "GCT": "A", "GCC": "A",
-    "GCA": "A", "GCG": "A", "TAT": "Y", "TAC": "Y", "TAA": "*", "TAG": "*",
-    "CAT": "H", "CAC": "H", "CAA": "Q", "CAG": "Q", "AAT": "N", "AAC": "N",
-    "AAA": "K", "AAG": "K", "GAT": "D", "GAC": "D", "GAA": "E", "GAG": "E",
-    "TGT": "C", "TGC": "C", "TGA": "*", "TGG": "W", "CGT": "R", "CGC": "R",
-    "CGA": "R", "CGG": "R", "AGT": "S", "AGC": "S", "AGA": "R", "AGG": "R",
-    "GGT": "G", "GGC": "G", "GGA": "G", "GGG": "G",
+    "TTT": "F",
+    "TTC": "F",
+    "TTA": "L",
+    "TTG": "L",
+    "CTT": "L",
+    "CTC": "L",
+    "CTA": "L",
+    "CTG": "L",
+    "ATT": "I",
+    "ATC": "I",
+    "ATA": "I",
+    "ATG": "M",
+    "GTT": "V",
+    "GTC": "V",
+    "GTA": "V",
+    "GTG": "V",
+    "TCT": "S",
+    "TCC": "S",
+    "TCA": "S",
+    "TCG": "S",
+    "CCT": "P",
+    "CCC": "P",
+    "CCA": "P",
+    "CCG": "P",
+    "ACT": "T",
+    "ACC": "T",
+    "ACA": "T",
+    "ACG": "T",
+    "GCT": "A",
+    "GCC": "A",
+    "GCA": "A",
+    "GCG": "A",
+    "TAT": "Y",
+    "TAC": "Y",
+    "TAA": "*",
+    "TAG": "*",
+    "CAT": "H",
+    "CAC": "H",
+    "CAA": "Q",
+    "CAG": "Q",
+    "AAT": "N",
+    "AAC": "N",
+    "AAA": "K",
+    "AAG": "K",
+    "GAT": "D",
+    "GAC": "D",
+    "GAA": "E",
+    "GAG": "E",
+    "TGT": "C",
+    "TGC": "C",
+    "TGA": "*",
+    "TGG": "W",
+    "CGT": "R",
+    "CGC": "R",
+    "CGA": "R",
+    "CGG": "R",
+    "AGT": "S",
+    "AGC": "S",
+    "AGA": "R",
+    "AGG": "R",
+    "GGT": "G",
+    "GGC": "G",
+    "GGA": "G",
+    "GGG": "G",
 }
 
 
@@ -61,7 +112,9 @@ def load_sequences(seq_source: str) -> dict[str, str]:
     return seqs
 
 
-def align_members(ids: list[str], seqs: dict[str, str], workdir: Path) -> tuple[Path, dict[str, str]] | None:
+def align_members(
+    ids: list[str], seqs: dict[str, str], workdir: Path
+) -> tuple[Path, dict[str, str]] | None:
     """MAFFT-align translated members."""
     prot = workdir / "prot.fasta"
     with open(prot, "w") as fh:
@@ -69,8 +122,11 @@ def align_members(ids: list[str], seqs: dict[str, str], workdir: Path) -> tuple[
             fh.write(f">seq{i}\n{translate(seqs[g])}\n")
     aln = workdir / "aln.fasta"
     with open(aln, "w") as out:
-        r = subprocess.run(["mafft", "--auto", "--anysymbol", "--quiet", str(prot)],
-                           stdout=out, stderr=subprocess.DEVNULL)
+        r = subprocess.run(
+            ["mafft", "--auto", "--anysymbol", "--quiet", str(prot)],
+            stdout=out,
+            stderr=subprocess.DEVNULL,
+        )
     if r.returncode != 0:
         return None
     aligned: dict[str, str] = {}
@@ -115,8 +171,9 @@ def tree_patristic(aln: Path, ids: list[str], workdir: Path) -> np.ndarray | Non
     label2id = {f"seq{i}": g for i, g in enumerate(ids)}
     tree_nwk = workdir / "tree.nwk"
     with open(tree_nwk, "w") as out:
-        r = subprocess.run(["FastTree", "-quiet", "-nopr", str(aln)],
-                           stdout=out, stderr=subprocess.DEVNULL)
+        r = subprocess.run(
+            ["FastTree", "-quiet", "-nopr", str(aln)], stdout=out, stderr=subprocess.DEVNULL
+        )
     if r.returncode != 0 or tree_nwk.stat().st_size == 0:
         return None
 
@@ -168,8 +225,9 @@ def load_cached_within(cache_dir: Path, fam: str, members: list[str]):
     return D_pat, D_seq, "cache"
 
 
-def save_cached_within(cache_dir: Path, fam: str, members: list[str],
-                       D_pat: np.ndarray, D_seq: np.ndarray | None) -> None:
+def save_cached_within(
+    cache_dir: Path, fam: str, members: list[str], D_pat: np.ndarray, D_seq: np.ndarray | None
+) -> None:
     if D_pat is not None:
         np.save(cache_dir / f"{fam}.npy", D_pat)
         (cache_dir / f"{fam}.ids.json").write_text(json.dumps(members))
@@ -178,7 +236,9 @@ def save_cached_within(cache_dir: Path, fam: str, members: list[str],
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--seq-source", required=True, choices=["evo2", "human"])
     args = ap.parse_args()
@@ -192,10 +252,13 @@ def main() -> None:
     ids_all = df_geo.index.tolist()
     id_pos = {g: i for i, g in enumerate(ids_all)}
 
-    meta = pd.read_csv(run_dir / "metadata.csv") if (run_dir / "metadata.csv").exists() \
+    meta = (
+        pd.read_csv(run_dir / "metadata.csv")
+        if (run_dir / "metadata.csv").exists()
         else pd.read_csv(EVO2_FASTA_DIR / "embeddings" / "metadata.csv")
+    )
     id_col = "gene" if args.seq_source == "human" else "org_gene"
-    fam_of = dict(zip(meta[id_col], meta["family"]))
+    fam_of = dict(zip(meta[id_col], meta["family"], strict=False))
     seqs = load_sequences(args.seq_source)
 
     # The per-family patristic & seq-id distance MATRICES are layer-INDEPENDENT
@@ -243,25 +306,44 @@ def main() -> None:
             patr = score_within(geo_sub, D_pat)
             if seqid is not None:
                 rho, p, npairs = seqid
-                seqid_rows.append({"family": fam, "n_members": len(members), "n_pairs": npairs,
-                                   "spearman_geodesic_seqid": rho, "p_seqid": p})
+                seqid_rows.append(
+                    {
+                        "family": fam,
+                        "n_members": len(members),
+                        "n_pairs": npairs,
+                        "spearman_geodesic_seqid": rho,
+                        "p_seqid": p,
+                    }
+                )
             if patr is not None:
                 rho, p, npairs = patr
-                pat_rows.append({"family": fam, "n_members": len(members), "n_pairs": npairs,
-                                 "spearman_geodesic_patristic": rho, "p_patristic": p})
-            print(f"{fam:<26} {len(members):>4} "
-                  f"{(patr[0] if patr else float('nan')):>+12.3f} "
-                  f"{(seqid[0] if seqid else float('nan')):>+10.3f}  {src}")
+                pat_rows.append(
+                    {
+                        "family": fam,
+                        "n_members": len(members),
+                        "n_pairs": npairs,
+                        "spearman_geodesic_patristic": rho,
+                        "p_patristic": p,
+                    }
+                )
+            print(
+                f"{fam:<26} {len(members):>4} "
+                f"{(patr[0] if patr else float('nan')):>+12.3f} "
+                f"{(seqid[0] if seqid else float('nan')):>+10.3f}  {src}"
+            )
 
     pat_out = run_dir / "within_family_patristic.csv"
     seqid_out = run_dir / "within_family_seqid.csv"
     # Always write a header (even with 0 rows) so downstream pd.read_csv never hits
     # EmptyDataError — e.g. when every family reused a cached patristic matrix that
     # carried no seq-identity companion.
-    pd.DataFrame(pat_rows, columns=["family", "n_members", "n_pairs",
-                                    "spearman_geodesic_patristic", "p_patristic"]).to_csv(pat_out, index=False)
-    pd.DataFrame(seqid_rows, columns=["family", "n_members", "n_pairs",
-                                      "spearman_geodesic_seqid", "p_seqid"]).to_csv(seqid_out, index=False)
+    pd.DataFrame(
+        pat_rows,
+        columns=["family", "n_members", "n_pairs", "spearman_geodesic_patristic", "p_patristic"],
+    ).to_csv(pat_out, index=False)
+    pd.DataFrame(
+        seqid_rows, columns=["family", "n_members", "n_pairs", "spearman_geodesic_seqid", "p_seqid"]
+    ).to_csv(seqid_out, index=False)
     print(f"\nSaved {pat_out}")
     print(f"Saved {seqid_out}")
     print("Done.")

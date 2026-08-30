@@ -1,4 +1,6 @@
-"""Shared Evo2 embedding engine for the gene-panel analyses (paralog / ortholog + the layer sweep)."""
+"""
+Shared Evo2 embedding engine for the gene-panel analyses (paralog / ortholog + the layer sweep).
+"""
 
 from __future__ import annotations
 
@@ -53,7 +55,10 @@ def _forward_pool(seq: str, model, device: str, layer_names: list[str]) -> dict[
     input_ids = torch.tensor(model.tokenizer.tokenize(seq), dtype=torch.int).unsqueeze(0).to(device)
     with torch.no_grad():
         _, emb = model(input_ids, return_embeddings=True, layer_names=list(layer_names))
-    out = {ln: pool_second_half(emb[ln][0].float()).cpu().numpy().astype(np.float32) for ln in layer_names}
+    out = {
+        ln: pool_second_half(emb[ln][0].float()).cpu().numpy().astype(np.float32)
+        for ln in layer_names
+    }
     del input_ids, emb
     return out
 

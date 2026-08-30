@@ -1,7 +1,6 @@
 """Figure, panel, key, and annotation components from the Arcadia style guide."""
 
 from __future__ import annotations
-
 import re
 import warnings
 from pathlib import Path
@@ -12,13 +11,25 @@ from matplotlib.patches import Patch
 
 from .colors import BLACK, CHARCOAL, CHATEAU
 from .style import (
-    FONT_SIZE, GAP, LINE_WIDTH, MARGIN, SIZES, TICK_LEN, WEIGHT,
-    mono_ticks, style_axes,
+    FONT_SIZE,
+    GAP,
+    LINE_WIDTH,
+    MARGIN,
+    SIZES,
+    TICK_LEN,
+    WEIGHT,
 )
 
 __all__ = [
-    "figure", "panels", "panel_letter", "key", "colorbar_key",
-    "annotate", "save", "size_px", "PT",
+    "figure",
+    "panels",
+    "panel_letter",
+    "key",
+    "colorbar_key",
+    "annotate",
+    "save",
+    "size_px",
+    "PT",
 ]
 
 PT = 1.0 / 72.0  # one guide pixel, in inches
@@ -62,28 +73,38 @@ def _apply_layout(fig, width_pt: float, height_pt: float, margin: float, gap: fl
     return fig
 
 
-def figure(size="float", height: float | None = None, margin: float = MARGIN,
-           **kwargs):
+def figure(size="float", height: float | None = None, margin: float = MARGIN, **kwargs):
     """One-panel figure at a guide panel size. Returns (fig, ax)."""
     width = size_px(size)
     if height is None:
-        height = width * _DEFAULT_ASPECT.get(
-            size if isinstance(size, str) else "float", 0.72
-        )
+        height = width * _DEFAULT_ASPECT.get(size if isinstance(size, str) else "float", 0.72)
     if height > 1200:
         warnings.warn("The guide asks for panels under 1,200 px tall.", stacklevel=2)
     fig = plt.figure(figsize=(width * PT, height * PT), **kwargs)
     _apply_layout(fig, width, height, margin, GAP)
     ax = fig.add_subplot()
-    fig._arcadia = {"width": width, "height": height, "cells": {ax: (0.0, 0.0, width, height)},
-                    "keys": [], "panels": {}}
+    fig._arcadia = {
+        "width": width,
+        "height": height,
+        "cells": {ax: (0.0, 0.0, width, height)},
+        "keys": [],
+        "panels": {},
+    }
     fig.arcadia_panels = fig._arcadia["panels"]
     return fig, ax
 
 
-def panels(mosaic="AB", size="full_wide", height: float | None = None,
-           letters: bool = True, margin: float = MARGIN, gap: float = GAP,
-           width_ratios=None, height_ratios=None, **kwargs):
+def panels(
+    mosaic="AB",
+    size="full_wide",
+    height: float | None = None,
+    letters: bool = True,
+    margin: float = MARGIN,
+    gap: float = GAP,
+    width_ratios=None,
+    height_ratios=None,
+    **kwargs,
+):
     """Multi-panel figure laid out by mosaic string. Returns (fig, dict_of_axes)."""
     width = size_px(size)
     grid = _parse_mosaic(mosaic)
@@ -95,8 +116,7 @@ def panels(mosaic="AB", size="full_wide", height: float | None = None,
         warnings.warn("The guide asks for panels under 1,200 px tall.", stacklevel=2)
 
     fig = plt.figure(figsize=(width * PT, height * PT), **kwargs)
-    fig._arcadia = {"width": width, "height": height, "cells": {}, "keys": [],
-                    "panels": {}}
+    fig._arcadia = {"width": width, "height": height, "cells": {}, "keys": [], "panels": {}}
     fig.arcadia_panels = fig._arcadia["panels"]
 
     # Parent gridspec spans the whole artboard; wspace/hspace are fractions of
@@ -106,30 +126,33 @@ def panels(mosaic="AB", size="full_wide", height: float | None = None,
     panel_w = (width - gap * (ncols - 1)) / ncols
     panel_h = (height - gap * (nrows - 1)) / nrows
     gs = fig.add_gridspec(
-        nrows, ncols, left=0, right=1, bottom=0, top=1,
+        nrows,
+        ncols,
+        left=0,
+        right=1,
+        bottom=0,
+        top=1,
         wspace=gap / panel_w if ncols > 1 else 0,
         hspace=gap / panel_h if nrows > 1 else 0,
-        width_ratios=wr, height_ratios=hr,
+        width_ratios=wr,
+        height_ratios=hr,
     )
 
     # Subfigures inherit the parent's layout engine, so the margin is set once
     # on the figure and applied inside every panel: each chart lands `margin`
     # px inside its own panel, which puts `2 * margin + gap` between the charts
     # of neighboring panels -- the guide's 30/20/30.
-    fig.set_layout_engine("constrained", w_pad=margin * PT, h_pad=margin * PT,
-                          wspace=0, hspace=0)
+    fig.set_layout_engine("constrained", w_pad=margin * PT, h_pad=margin * PT, wspace=0, hspace=0)
 
     facecolor = plt.rcParams["figure.facecolor"]
     axd = {}
     for name, (rows, cols) in _mosaic_spans(grid).items():
-        subfig = fig.add_subfigure(gs[rows[0]:rows[1] + 1, cols[0]:cols[1] + 1])
+        subfig = fig.add_subfigure(gs[rows[0] : rows[1] + 1, cols[0] : cols[1] + 1])
         subfig.set_facecolor(facecolor)
         ax = subfig.add_subplot()
         axd[name] = ax
         fig._arcadia["panels"][name] = subfig
-        fig._arcadia["cells"][ax] = _cell_rect(
-            rows, cols, width, height, gap, wr, hr
-        )
+        fig._arcadia["cells"][ax] = _cell_rect(rows, cols, width, height, gap, wr, hr)
         if letters:
             panel_letter(ax, str(name))
     return fig, axd
@@ -165,8 +188,7 @@ def _mosaic_spans(grid) -> dict[str, tuple[tuple[int, int], tuple[int, int]]]:
                 spans[key][1][1] = max(spans[key][1][1], j)
     for key, ((r0, r1), (c0, c1)) in list(spans.items()):
         cells = {(i, j) for i in range(r0, r1 + 1) for j in range(c0, c1 + 1)}
-        actual = {(i, j) for i, row in enumerate(grid)
-                  for j, k in enumerate(row) if k == key}
+        actual = {(i, j) for i, row in enumerate(grid) for j, k in enumerate(row) if k == key}
         if cells != actual:
             raise ValueError(f"panel {key!r} is not a rectangle in the mosaic")
     return {k: ((v[0][0], v[0][1]), (v[1][0], v[1][1])) for k, v in spans.items()}
@@ -179,10 +201,10 @@ def _cell_rect(rows, cols, width, height, gap, wr, hr):
     avail_h = height - gap * (nrows - 1)
     widths = [avail_w * r / sum(wr) for r in wr]
     heights = [avail_h * r / sum(hr) for r in hr]
-    x0 = sum(widths[:cols[0]]) + gap * cols[0]
-    x1 = sum(widths[:cols[1] + 1]) + gap * cols[1]
-    y1 = height - (sum(heights[:rows[0]]) + gap * rows[0])
-    y0 = height - (sum(heights[:rows[1] + 1]) + gap * rows[1])
+    x0 = sum(widths[: cols[0]]) + gap * cols[0]
+    x1 = sum(widths[: cols[1] + 1]) + gap * cols[1]
+    y1 = height - (sum(heights[: rows[0]]) + gap * rows[0])
+    y0 = height - (sum(heights[: rows[1] + 1]) + gap * rows[1])
     return (x0, y0, x1, y1)
 
 
@@ -203,8 +225,11 @@ def _meta(obj) -> dict:
     fig = _root_figure(obj)
     if not hasattr(fig, "_arcadia"):
         fig._arcadia = {
-            "width": fig.get_figwidth() * 72, "height": fig.get_figheight() * 72,
-            "cells": {}, "keys": [], "panels": {},
+            "width": fig.get_figwidth() * 72,
+            "height": fig.get_figheight() * 72,
+            "cells": {},
+            "keys": [],
+            "panels": {},
         }
     return fig._arcadia
 
@@ -225,18 +250,31 @@ def panel_letter(ax, letter: str, dx: float = 10.0, dy: float = 10.0, **kwargs):
     cell = meta["cells"].get(ax, (0.0, 0.0, width, height))
     x0, _, _, y1 = cell
     return fig.text(
-        (x0 + dx) / width, (y1 - dy) / height, letter,
-        ha="left", va="top",
+        (x0 + dx) / width,
+        (y1 - dy) / height,
+        letter,
+        ha="left",
+        va="top",
         fontsize=kwargs.pop("fontsize", FONT_SIZE["panel_letter"]),
         fontweight=kwargs.pop("fontweight", WEIGHT["panel_letter"]),
-        color=kwargs.pop("color", CHATEAU), **kwargs,
+        color=kwargs.pop("color", CHATEAU),
+        **kwargs,
     )
 
 
 # Key (legend)
 
-def key(ax, title: str | None = None, entries=None, loc: str = "upper right",
-        kind: str = "auto", underline: bool = True, ncol: int = 1, **kwargs):
+
+def key(
+    ax,
+    title: str | None = None,
+    entries=None,
+    loc: str = "upper right",
+    kind: str = "auto",
+    underline: bool = True,
+    ncol: int = 1,
+    **kwargs,
+):
     """Draw a key in the Arcadia "Basic key" style and return the Legend."""
     handles, labels = [], []
     if entries is None:
@@ -273,11 +311,21 @@ def _swatch(style: str, color: str, spec):
     if style == "patch":
         return Patch(facecolor=color, edgecolor="none")
     if style == "line":
-        return Line2D([], [], color=color, linewidth=opts.get("linewidth", 1.5),
-                      linestyle=opts.get("linestyle", "-"))
-    return Line2D([], [], color=color, linestyle="none",
-                  marker=opts.get("marker", "o"),
-                  markersize=opts.get("markersize", 6))
+        return Line2D(
+            [],
+            [],
+            color=color,
+            linewidth=opts.get("linewidth", 1.5),
+            linestyle=opts.get("linestyle", "-"),
+        )
+    return Line2D(
+        [],
+        [],
+        color=color,
+        linestyle="none",
+        marker=opts.get("marker", "o"),
+        markersize=opts.get("markersize", 6),
+    )
 
 
 def _renderer(fig):
@@ -298,13 +346,17 @@ def _renderer(fig):
 def _add_title_rule(legend, pad: float = 3.0):
     """Attach the 1.5 pt Chateau rule under a key title."""
     owner = legend.figure  # the panel (SubFigure) or the figure itself
-    line = Line2D([0, 0], [0, 0], transform=owner.transFigure,
-                  color=CHATEAU, linewidth=LINE_WIDTH["key_underline"],
-                  solid_capstyle="butt", zorder=legend.get_zorder())
-    owner.add_artist(line)
-    _meta(legend)["keys"].append(
-        {"legend": legend, "line": line, "pad": pad, "owner": owner}
+    line = Line2D(
+        [0, 0],
+        [0, 0],
+        transform=owner.transFigure,
+        color=CHATEAU,
+        linewidth=LINE_WIDTH["key_underline"],
+        solid_capstyle="butt",
+        zorder=legend.get_zorder(),
     )
+    owner.add_artist(line)
+    _meta(legend)["keys"].append({"legend": legend, "line": line, "pad": pad, "owner": owner})
     sync_keys(legend)
     return line
 
@@ -326,21 +378,28 @@ def sync_keys(obj) -> None:
             continue
         pad = rec["pad"] * fig.dpi / 72.0
         inv = owner.transFigure.inverted()
-        (x0, y), (x1, _) = inv.transform([(box.x0, title.y0 - pad),
-                                          (box.x1, title.y0 - pad)])
+        (x0, y), (x1, _) = inv.transform([(box.x0, title.y0 - pad), (box.x1, title.y0 - pad)])
         line.set_data([x0, x1], [y, y])
 
 
-def colorbar_key(mappable, ax, title: str | None = None, loc: str = "upper right",
-                 width: float = 150.0, height: float = 12.0, pad: float = 10.0,
-                 **kwargs):
+def colorbar_key(
+    mappable,
+    ax,
+    title: str | None = None,
+    loc: str = "upper right",
+    width: float = 150.0,
+    height: float = 12.0,
+    pad: float = 10.0,
+    **kwargs,
+):
     """A gradient key for continuous color, sized and placed in px."""
     if loc in ("above", "above right", "above left", "top", "right"):
-        return _colorbar_outside(mappable, ax, title, loc, width, height, pad,
-                                 **kwargs)
+        return _colorbar_outside(mappable, ax, title, loc, width, height, pad, **kwargs)
     corners = {
-        "upper right": (1.0, 1.0, 1, 1), "upper left": (0.0, 1.0, 0, 1),
-        "lower right": (1.0, 0.0, 1, 0), "lower left": (0.0, 0.0, 0, 0),
+        "upper right": (1.0, 1.0, 1, 1),
+        "upper left": (0.0, 1.0, 0, 1),
+        "lower right": (1.0, 0.0, 1, 0),
+        "lower left": (0.0, 0.0, 0, 0),
     }
     if loc not in corners:
         raise KeyError(f"loc must be a panel corner, 'above*', or 'right', not {loc!r}")
@@ -360,13 +419,24 @@ def colorbar_key(mappable, ax, title: str | None = None, loc: str = "upper right
     cax = ax.inset_axes([x, y, w, h])
     cbar = ax.figure.colorbar(mappable, cax=cax, orientation="horizontal", **kwargs)
     cbar.outline.set_visible(False)
-    cax.tick_params(length=TICK_LEN * 0.6, width=LINE_WIDTH["axis"], pad=3,
-                    labelsize=FONT_SIZE["number"], labelfontfamily="monospace",
-                    color=BLACK, labelcolor=BLACK)
+    cax.tick_params(
+        length=TICK_LEN * 0.6,
+        width=LINE_WIDTH["axis"],
+        pad=3,
+        labelsize=FONT_SIZE["number"],
+        labelfontfamily="monospace",
+        color=BLACK,
+        labelcolor=BLACK,
+    )
     cax._arcadia_key_axes = True
     if title:
-        cax.set_title(title, fontsize=FONT_SIZE["key_title"],
-                      fontweight=WEIGHT["key_title"], color=BLACK, pad=6)
+        cax.set_title(
+            title,
+            fontsize=FONT_SIZE["key_title"],
+            fontweight=WEIGHT["key_title"],
+            color=BLACK,
+            pad=6,
+        )
     return cbar
 
 
@@ -387,8 +457,11 @@ def _colorbar_outside(mappable, ax, title, loc, width, height, pad, **kwargs):
     anchor = {"above left": (0.0, 0.0), "above right": (1.0, 0.0)}.get(loc, (0.5, 0.0))
 
     cbar = ax.figure.colorbar(
-        mappable, ax=ax, location="right" if vertical else "top",
-        shrink=shrink, aspect=max(span / thickness, 1.0),
+        mappable,
+        ax=ax,
+        location="right" if vertical else "top",
+        shrink=shrink,
+        aspect=max(span / thickness, 1.0),
         pad=pad / (ax_w if vertical else ax_h),
         anchor=anchor if not vertical else (0.0, 0.5),
         **kwargs,
@@ -400,23 +473,45 @@ def _colorbar_outside(mappable, ax, title, loc, width, height, pad, **kwargs):
         # Keep the guide's reading order: title, gradient, then numbers.
         cax.xaxis.set_ticks_position("bottom")
         cax.xaxis.set_label_position("bottom")
-    cax.tick_params(length=TICK_LEN * 0.6, width=LINE_WIDTH["axis"], pad=3,
-                    labelsize=FONT_SIZE["number"], labelfontfamily="monospace",
-                    color=BLACK, labelcolor=BLACK)
+    cax.tick_params(
+        length=TICK_LEN * 0.6,
+        width=LINE_WIDTH["axis"],
+        pad=3,
+        labelsize=FONT_SIZE["number"],
+        labelfontfamily="monospace",
+        color=BLACK,
+        labelcolor=BLACK,
+    )
     if title:
         if vertical:
-            cax.set_ylabel(title, fontsize=FONT_SIZE["key_title"],
-                           fontweight=WEIGHT["key_title"], color=BLACK)
+            cax.set_ylabel(
+                title, fontsize=FONT_SIZE["key_title"], fontweight=WEIGHT["key_title"], color=BLACK
+            )
         else:
-            cax.set_title(title, fontsize=FONT_SIZE["key_title"],
-                          fontweight=WEIGHT["key_title"], color=BLACK, pad=6)
+            cax.set_title(
+                title,
+                fontsize=FONT_SIZE["key_title"],
+                fontweight=WEIGHT["key_title"],
+                color=BLACK,
+                pad=6,
+            )
     return cbar
 
 
 # Annotation
 
-def annotate(ax, text: str, xy, xytext=None, arrow: bool = False,
-             leader: bool = True, ha: str = "left", va: str = "center", **kwargs):
+
+def annotate(
+    ax,
+    text: str,
+    xy,
+    xytext=None,
+    arrow: bool = False,
+    leader: bool = True,
+    ha: str = "left",
+    va: str = "center",
+    **kwargs,
+):
     """Callout label in the Annotation style, with an optional leader or arrow."""
     props = None
     if xytext is not None and (leader or arrow):
@@ -430,19 +525,32 @@ def annotate(ax, text: str, xy, xytext=None, arrow: bool = False,
         if arrow:
             props["mutation_scale"] = 12
     return ax.annotate(
-        text, xy=xy, xytext=xytext if xytext is not None else xy,
+        text,
+        xy=xy,
+        xytext=xytext if xytext is not None else xy,
         textcoords=kwargs.pop("textcoords", "data"),
         fontsize=kwargs.pop("fontsize", FONT_SIZE["annotation"]),
         fontweight=kwargs.pop("fontweight", WEIGHT["annotation"]),
         color=kwargs.pop("color", CHARCOAL),
-        ha=ha, va=va, arrowprops=kwargs.pop("arrowprops", props), **kwargs,
+        ha=ha,
+        va=va,
+        arrowprops=kwargs.pop("arrowprops", props),
+        **kwargs,
     )
 
 
 # Saving
 
-def save(fig, name, formats=("pdf", "png"), dpi: int = 300, directory=".",
-         check_name: bool = True, **kwargs):
+
+def save(
+    fig,
+    name,
+    formats=("pdf", "png"),
+    dpi: int = 300,
+    directory=".",
+    check_name: bool = True,
+    **kwargs,
+):
     """Save a figure at exactly its panel size, keeping text editable."""
     stem = Path(str(name)).stem
     if check_name and not _NAME_RE.match(stem):
@@ -453,8 +561,11 @@ def save(fig, name, formats=("pdf", "png"), dpi: int = 300, directory=".",
             stacklevel=2,
         )
     fig = _root_figure(fig)
-    titled = [ax.get_title() for ax in _all_axes(fig)
-              if ax.get_title() and not getattr(ax, "_arcadia_key_axes", False)]
+    titled = [
+        ax.get_title()
+        for ax in _all_axes(fig)
+        if ax.get_title() and not getattr(ax, "_arcadia_key_axes", False)
+    ]
     if titled:
         warnings.warn(
             "Axes titles are set (" + "; ".join(titled[:3]) + "). The guide puts "
@@ -468,7 +579,7 @@ def save(fig, name, formats=("pdf", "png"), dpi: int = 300, directory=".",
     out.mkdir(parents=True, exist_ok=True)
     written = []
     given_suffix = Path(str(name)).suffix.lstrip(".")
-    for ext in ([given_suffix] if given_suffix else list(formats)):
+    for ext in [given_suffix] if given_suffix else list(formats):
         path = out / f"{stem}.{ext}"
         fig.savefig(path, dpi=dpi, bbox_inches=None, **kwargs)
         written.append(path)

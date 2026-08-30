@@ -1,7 +1,6 @@
 """Reproducible cofactor annotations pulled from ChEBI (scaffold + active metal)."""
 
 from __future__ import annotations
-
 import argparse
 import json
 import re
@@ -16,39 +15,70 @@ CACHE = Path("data/cache/cofactor_annotations.json")
 # Derive scaffold and metal properties from these identifiers. Protein-contributed ligands are
 # not part of the cofactor structure.
 COFACTOR_CHEBI: dict[str, str] = {
-    "heme_b":          "CHEBI:26355",  # heme b
-    "heme_a":          "CHEBI:24479",  # heme a
+    "heme_b": "CHEBI:26355",  # heme b
+    "heme_a": "CHEBI:24479",  # heme a
     "heme_b_thiolate": "CHEBI:26355",  # heme b (thiolate ligand is protein-contributed)
-    "heme_substrate":  "CHEBI:26355",  # heme b (as substrate of heme oxygenase)
-    "nonheme_diiron":  "CHEBI:47411",  # mu-oxodiiron (oxo-bridged, non-heme, non-Fe/S)
-    "nickel_f430":     "CHEBI:28265",  # coenzyme F430
-    "femoco":          "CHEBI:30409",  # iron-sulfur-molybdenum cofactor (FeMoco)
-    "fe4s4":           "CHEBI:49883",  # tetra-mu3-sulfido-tetrairon ([4Fe-4S] core)
-    "iron":            "CHEBI:29033",  # iron(2+)
-    "copper":          "CHEBI:29036",  # copper(2+)
-    "zinc":            "CHEBI:29105",  # zinc(2+)
-    "magnesium":       "CHEBI:18420",  # magnesium(2+)
-    "bh4":             "CHEBI:15372",  # 5,6,7,8-tetrahydrobiopterin
-    "retinal":         "CHEBI:15035",  # retinal
+    "heme_substrate": "CHEBI:26355",  # heme b (as substrate of heme oxygenase)
+    "nonheme_diiron": "CHEBI:47411",  # mu-oxodiiron (oxo-bridged, non-heme, non-Fe/S)
+    "nickel_f430": "CHEBI:28265",  # coenzyme F430
+    "femoco": "CHEBI:30409",  # iron-sulfur-molybdenum cofactor (FeMoco)
+    "fe4s4": "CHEBI:49883",  # tetra-mu3-sulfido-tetrairon ([4Fe-4S] core)
+    "iron": "CHEBI:29033",  # iron(2+)
+    "copper": "CHEBI:29036",  # copper(2+)
+    "zinc": "CHEBI:29105",  # zinc(2+)
+    "magnesium": "CHEBI:18420",  # magnesium(2+)
+    "bh4": "CHEBI:15372",  # 5,6,7,8-tetrahydrobiopterin
+    "retinal": "CHEBI:15035",  # retinal
     # ── Redox and detoxification cofactors
-    "fad":             "CHEBI:16238",  # FAD (flavin; NOX/DUOX, FMO, STEAP)
-    "nad":             "CHEBI:15846",  # NAD+ (ALDH, alcohol dehydrogenase)
-    "nadp":            "CHEBI:18009",  # NADP+ (aldo-keto reductase)
-    "glutathione":     "CHEBI:16856",  # glutathione (GST, glutaredoxin)
+    "fad": "CHEBI:16238",  # FAD (flavin; NOX/DUOX, FMO, STEAP)
+    "nad": "CHEBI:15846",  # NAD+ (ALDH, alcohol dehydrogenase)
+    "nadp": "CHEBI:18009",  # NADP+ (aldo-keto reductase)
+    "glutathione": "CHEBI:16856",  # glutathione (GST, glutaredoxin)
 }
 
 # Metal / metalloid elements to recognise in a molecular formula. Anything here that appears
 # in a cofactor's ChEBI formula is counted as one of its catalytic metals.
-METAL_ELEMENTS: frozenset[str] = frozenset({
-    "Li", "Na", "K", "Rb", "Cs", "Be", "Mg", "Ca", "Sr", "Ba",
-    "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Mo", "W", "Tc", "Ru", "Rh",
-    "Pd", "Ag", "Cd", "Pt", "Au", "Hg", "Al", "Ga", "Sn", "Pb",
-})
+METAL_ELEMENTS: frozenset[str] = frozenset(
+    {
+        "Li",
+        "Na",
+        "K",
+        "Rb",
+        "Cs",
+        "Be",
+        "Mg",
+        "Ca",
+        "Sr",
+        "Ba",
+        "V",
+        "Cr",
+        "Mn",
+        "Fe",
+        "Co",
+        "Ni",
+        "Cu",
+        "Zn",
+        "Mo",
+        "W",
+        "Tc",
+        "Ru",
+        "Rh",
+        "Pd",
+        "Ag",
+        "Cd",
+        "Pt",
+        "Au",
+        "Hg",
+        "Al",
+        "Ga",
+        "Sn",
+        "Pb",
+    }
+)
 
 CHEBI_COMPOUND = "https://www.ebi.ac.uk/chebi/backend/api/public/compound/{num}/"
 OLS_ANCESTORS = (
-    "https://www.ebi.ac.uk/ols4/api/ontologies/chebi/terms/"
-    "{iri}/hierarchicalAncestors?size=500"
+    "https://www.ebi.ac.uk/ols4/api/ontologies/chebi/terms/{iri}/hierarchicalAncestors?size=500"
 )
 _HEADERS = {"User-Agent": "Mozilla/5.0 (research)", "Accept": "application/json"}
 
@@ -64,7 +94,7 @@ def _get_json(url: str, *, timeout: int = 20, retries: int = 4) -> dict:
         except Exception as err:  # noqa: BLE001 — network/HTTP/JSON, all retryable
             last_err = err
             if attempt < retries - 1:
-                time.sleep(2 ** attempt)  # 1s, 2s, 4s backoff
+                time.sleep(2**attempt)  # 1s, 2s, 4s backoff
     raise RuntimeError(f"failed after {retries} attempts: {url}") from last_err
 
 
@@ -133,8 +163,7 @@ def build_annotations(existing: dict[str, dict] | None = None) -> dict[str, dict
             "ancestors": ancestors,
         }
         _write_cache(out)  # persist progress before moving on
-        print(f"  {token:16s} {accession:12s} metals={metals or '—'} "
-              f"ancestors={len(ancestors)}")
+        print(f"  {token:16s} {accession:12s} metals={metals or '—'} ancestors={len(ancestors)}")
     return out
 
 
@@ -189,8 +218,7 @@ def _main() -> None:
     print(f"{'token':16s} {'chebi':12s} {'formula':22s} metals")
     for tok in COFACTOR_CHEBI:
         a = ann[tok]
-        print(f"{tok:16s} {a['chebi']:12s} {str(a['formula'] or '—'):22s} "
-              f"{a['metals'] or '—'}")
+        print(f"{tok:16s} {a['chebi']:12s} {str(a['formula'] or '—'):22s} {a['metals'] or '—'}")
 
     toks = list(COFACTOR_CHEBI)
     print("\nPairwise cofactor similarity (0.5·scaffold + 0.5·metal):")

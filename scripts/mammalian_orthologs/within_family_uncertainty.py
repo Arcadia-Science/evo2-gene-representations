@@ -1,7 +1,6 @@
 """Confidence intervals and permutation inference for the mammalian-ortholog within-family rho."""
 
 from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path
@@ -23,8 +22,8 @@ BASELINE_FILES = {
     "kmer": ("kmer_within_family_correlations.csv", "spearman_geodesic_kmer"),
     "gc": ("within_family_gc.csv", "spearman_geodesic_gc"),
 }
-MIN_GROUPS_CI = 3        # below this a percentile bootstrap over groups is not interpretable
-MIN_GROUPS_TEST = 6      # Wilcoxon signed-rank cannot reach p < 0.05 below ~6 pairs
+MIN_GROUPS_CI = 3  # below this a percentile bootstrap over groups is not interpretable
+MIN_GROUPS_TEST = 6  # Wilcoxon signed-rank cannot reach p < 0.05 below ~6 pairs
 
 
 # ── level 2: across groups (the published number)
@@ -33,9 +32,14 @@ MIN_GROUPS_TEST = 6      # Wilcoxon signed-rank cannot reach p < 0.05 below ~6 p
 def family_uncertainty(rhos: np.ndarray, n_boot: int, seed: int) -> dict:
     """Bootstrap CI + signed-rank test for one family × baseline × layer."""
     n = len(rhos)
-    out = {"n_groups": n, "rho_mean": float(np.mean(rhos)),
-           "rho_sd": float(np.std(rhos, ddof=1)) if n > 1 else np.nan,
-           "ci_lo": np.nan, "ci_hi": np.nan, "p_wilcoxon": np.nan}
+    out = {
+        "n_groups": n,
+        "rho_mean": float(np.mean(rhos)),
+        "rho_sd": float(np.std(rhos, ddof=1)) if n > 1 else np.nan,
+        "ci_lo": np.nan,
+        "ci_hi": np.nan,
+        "p_wilcoxon": np.nan,
+    }
     if n >= MIN_GROUPS_CI:
         rng = np.random.default_rng(seed)
         means = np.mean(rng.choice(rhos, size=(n_boot, n), replace=True), axis=1)
@@ -79,10 +83,14 @@ def mantel_group(G: np.ndarray, B: np.ndarray, n_perms: int, seed: int) -> dict 
         if abs(_rho_from_ranks(rankdata(pg), b_rank)) >= abs(obs):
             count += 1
     import math
-    return {"rho": float(obs), "p_mantel": (count + 1) / (n_perms + 1),
-            "p_floor": max(1.0 / (n_perms + 1),
-                           1.0 / math.factorial(n) if n <= 12 else 0.0),
-            "n_species": n, "n_pairs": int(ok.sum())}
+
+    return {
+        "rho": float(obs),
+        "p_mantel": (count + 1) / (n_perms + 1),
+        "p_floor": max(1.0 / (n_perms + 1), 1.0 / math.factorial(n) if n <= 12 else 0.0),
+        "n_species": n,
+        "n_pairs": int(ok.sum()),
+    }
 
 
 def run_mantel_layer(arm: str, layer: int, baselines: list[str], n_perms: int, seed: int):
@@ -100,8 +108,11 @@ def run_mantel_layer(arm: str, layer: int, baselines: list[str], n_perms: int, s
     kmeta = man[man.key.isin(set(keys))].set_index("key").loc[keys]
     pat = pd.read_csv(DATA / "tree" / "species_patristic.csv", index_col=0)
 
-    print(f"[mantel] loading {len(keys):,} loci at blocks.{layer} and rebuilding the geodesic "
-          f"(this is the slow part) ...", flush=True)
+    print(
+        f"[mantel] loading {len(keys):,} loci at blocks.{layer} and rebuilding the geodesic "
+        f"(this is the slow part) ...",
+        flush=True,
+    )
     stack, order = load_stack(arm, keys, [layer])
     _, W = find_min_connected_k(stack[0], k_min=3)
     geo = pd.DataFrame(compute_geodesic(W), index=order, columns=order)
@@ -109,26 +120,35 @@ def run_mantel_layer(arm: str, layer: int, baselines: list[str], n_perms: int, s
     rows = []
     groups = kmeta.reset_index().groupby(["family", "group"])
     for (fam, grp), sub in groups:
-        if len(sub) < 10:                       # MIN_SP in mammal_controls_score
+        if len(sub) < 10:  # MIN_SP in mammal_controls_score
             continue
         mem, sp = sub["key"].tolist(), sub["species"].tolist()
         r = mantel_group(geo.loc[mem, mem].values, pat.loc[sp, sp].values, n_perms, seed)
         if r:
-            rows.append({"family": fam, "group": grp, "baseline": "speciestree",
-                         "layer": layer, **r})
+            rows.append(
+                {"family": fam, "group": grp, "baseline": "speciestree", "layer": layer, **r}
+            )
     return pd.DataFrame(rows)
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--arm", default="transcript_cdsmask",
-                    choices=["transcript_cdsmask", "cds", "transcript"])
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--arm", default="transcript_cdsmask", choices=["transcript_cdsmask", "cds", "transcript"]
+    )
     ap.add_argument("--baselines", nargs="*", default=list(BASELINE_FILES))
-    ap.add_argument("--layers", nargs="*", type=int, default=None, help="default: every layer present")
+    ap.add_argument(
+        "--layers", nargs="*", type=int, default=None, help="default: every layer present"
+    )
     ap.add_argument("--n-boot", type=int, default=10000)
-    ap.add_argument("--mantel-layer", type=int, default=None,
-                    help="also run the per-group Mantel test at this layer (rebuilds the geodesic)")
+    ap.add_argument(
+        "--mantel-layer",
+        type=int,
+        default=None,
+        help="also run the per-group Mantel test at this layer (rebuilds the geodesic)",
+    )
     ap.add_argument("--n-perms", type=int, default=999)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--report-layer", type=int, default=15, help="layer printed to stdout")
@@ -141,8 +161,10 @@ def main() -> None:
     pg = pd.read_csv(per_group_p)
     layers = args.layers if args.layers is not None else sorted(pg.layer.unique())
     baselines = [b for b in args.baselines if b in set(pg.baseline)]
-    print(f"{run_root.name}: {pg.group.nunique()} groups, {pg.family.nunique()} families, "
-          f"{len(layers)} layers, baselines {baselines}\n")
+    print(
+        f"{run_root.name}: {pg.group.nunique()} groups, {pg.family.nunique()} families, "
+        f"{len(layers)} layers, baselines {baselines}\n"
+    )
 
     rows = []
     for L in layers:
@@ -150,9 +172,15 @@ def main() -> None:
         for base in baselines:
             sub = sub_l[sub_l.baseline == base]
             for fam, g in sub.groupby("family"):
-                rows.append({"arm": args.arm, "layer": L, "baseline": base, "family": fam,
-                             **family_uncertainty(g["rho"].to_numpy(), args.n_boot,
-                                                  args.seed + L)})
+                rows.append(
+                    {
+                        "arm": args.arm,
+                        "layer": L,
+                        "baseline": base,
+                        "family": fam,
+                        **family_uncertainty(g["rho"].to_numpy(), args.n_boot, args.seed + L),
+                    }
+                )
     t = pd.DataFrame(rows)
 
     # ── the published value must be reproduced exactly
@@ -174,10 +202,14 @@ def main() -> None:
                 mismatch += 1
                 print(f"  [MISMATCH] blocks{L}/{fname}: max |published − recomputed| = {d:.2e}")
     if mismatch:
-        sys.exit(f"aborting: {mismatch} published table(s) do not match the per-group means — "
-                 f"this tool would be annotating a number the paper does not report")
-    print(f"[check] {checked:,} published family values reproduced exactly from the per-group "
-          f"scores (max deviation < 1e-9)\n")
+        sys.exit(
+            f"aborting: {mismatch} published table(s) do not match the per-group means — "
+            f"this tool would be annotating a number the paper does not report"
+        )
+    print(
+        f"[check] {checked:,} published family values reproduced exactly from the per-group "
+        f"scores (max deviation < 1e-9)\n"
+    )
 
     out = run_root / f"within_family_uncertainty_{args.arm}.csv"
     t.to_csv(out, index=False)
@@ -188,12 +220,16 @@ def main() -> None:
         for base, g in rl.groupby("baseline"):
             ok = g[g.n_groups >= MIN_GROUPS_CI]
             tst = g[g.n_groups >= MIN_GROUPS_TEST]
-            print(f"{base:<12} {len(g):>2} families | mean ρ {g.rho_mean.mean():+.3f} | "
-                  f"CI excludes 0: {int(g.ci_excludes_zero.sum())}/{len(ok)} testable | "
-                  f"Wilcoxon p<0.05: {int((tst.p_wilcoxon < 0.05).sum())}/{len(tst)}")
+            print(
+                f"{base:<12} {len(g):>2} families | mean ρ {g.rho_mean.mean():+.3f} | "
+                f"CI excludes 0: {int(g.ci_excludes_zero.sum())}/{len(ok)} testable | "
+                f"Wilcoxon p<0.05: {int((tst.p_wilcoxon < 0.05).sum())}/{len(tst)}"
+            )
         small = rl[rl.n_groups < MIN_GROUPS_CI].family.nunique()
-        print(f"\n{small} famil(ies) have < {MIN_GROUPS_CI} ortholog groups — no interval is "
-              f"reported for them (their ρ is a mean over 1-2 genes).")
+        print(
+            f"\n{small} famil(ies) have < {MIN_GROUPS_CI} ortholog groups — no interval is "
+            f"reported for them (their ρ is a mean over 1-2 genes)."
+        )
 
     if args.mantel_layer is not None:
         m = run_mantel_layer(args.arm, args.mantel_layer, baselines, args.n_perms, args.seed)
@@ -202,8 +238,10 @@ def main() -> None:
             m.to_csv(mp, index=False)
             testable = m[m.p_floor < 0.05]
             print(f"\n── per-group Mantel at blocks.{args.mantel_layer} (speciestree) ──")
-            print(f"{len(m)} groups | mean ρ {m.rho.mean():+.3f} | "
-                  f"p_mantel < 0.05: {int((testable.p_mantel < 0.05).sum())}/{len(testable)}")
+            print(
+                f"{len(m)} groups | mean ρ {m.rho.mean():+.3f} | "
+                f"p_mantel < 0.05: {int((testable.p_mantel < 0.05).sum())}/{len(testable)}"
+            )
             print(f"Saved {mp}")
     print(f"\nSaved {out}")
 

@@ -1,7 +1,6 @@
 """Score whether within-group Evo2 geodesics recover mammalian evolutionary distances."""
 
 from __future__ import annotations
-
 import argparse
 import sys
 import tempfile
@@ -17,7 +16,9 @@ sys.path.insert(0, str(ROOT / "scripts" / "baselines"))
 from geodesic_utils import compute_geodesic, find_min_connected_k  # noqa: E402
 from kmer_sequence_divergence import kmer_distance_matrix  # noqa: E402
 from protein_alignment_patristic_seqid import (  # noqa: E402  reuse MAFFT/FastTree seq baselines
-    align_members, seqid_distance_matrix, tree_patristic,
+    align_members,
+    seqid_distance_matrix,
+    tree_patristic,
 )
 
 OUT = ROOT / "data" / "mammalian_orthologs"
@@ -36,10 +37,12 @@ BASELINES = {
 def gc_distance_matrix(seqs: list[str]) -> np.ndarray:
     """|GC_i - GC_j| over a group's CDS -- the mononucleotide control, matching what
     between_family_baselines.gc_matrix does at the family level (there on family-mean GC)."""
-    gc = np.array([
-        (sum(c in "GCgc" for c in s) / n) if (n := sum(c in "ACGTacgt" for c in s)) else np.nan
-        for s in seqs
-    ])
+    gc = np.array(
+        [
+            (sum(c in "GCgc" for c in s) / n) if (n := sum(c in "ACGTacgt" for c in s)) else np.nan
+            for s in seqs
+        ]
+    )
     return np.abs(gc[:, None] - gc[None, :])
 
 
@@ -51,7 +54,8 @@ def load_embedded(arm: str):
     for _, r in man.iterrows():
         p = cache / f"{r['key']}.npy"
         if p.exists():
-            vecs.append(np.load(p)); rows.append(r)
+            vecs.append(np.load(p))
+            rows.append(r)
     return np.stack(vecs, axis=1), pd.DataFrame(rows).reset_index(drop=True)
 
 
@@ -63,7 +67,9 @@ def load_cds() -> dict[str, str]:
             if line.startswith(">"):
                 if hid:
                     seqs[hid] = "".join(chunk)
-                parts = line[1:].split("|"); hid = f"{parts[0]}__{parts[1]}"; chunk = []
+                parts = line[1:].split("|")
+                hid = f"{parts[0]}__{parts[1]}"
+                chunk = []
             elif line.strip():
                 chunk.append(line.strip())
         if hid:
@@ -72,18 +78,24 @@ def load_cds() -> dict[str, str]:
 
 
 def group_ground_truths(meta: pd.DataFrame, cds: dict, pat: pd.DataFrame) -> dict:
-    """Per group (>=MIN_SP embedded species): the 4 layer-INDEPENDENT distance matrices over its embedded members, in a fixed member order."""
+    """Per group (>=MIN_SP embedded species): the 4 layer-INDEPENDENT distance matrices over its
+    embedded members, in a fixed member order.
+    """
     gt = {}
     for (fam, group), sub in meta.groupby(["family", "group"]):
-        members = sub["key"].tolist()          # group__species
+        members = sub["key"].tolist()  # group__species
         species = sub["species"].tolist()
         if len(members) < MIN_SP:
             continue
         n = len(members)
-        d = {"family": fam, "members": members, "n": n,
-             "speciestree": pat.loc[species, species].values,
-             "kmer": kmer_distance_matrix([cds[m] for m in members], k=6),
-             "gc": gc_distance_matrix([cds[m] for m in members])}
+        d = {
+            "family": fam,
+            "members": members,
+            "n": n,
+            "speciestree": pat.loc[species, species].values,
+            "kmer": kmer_distance_matrix([cds[m] for m in members], k=6),
+            "gc": gc_distance_matrix([cds[m] for m in members]),
+        }
         with tempfile.TemporaryDirectory() as tmp:
             res = align_members(members, {m: cds[m] for m in members}, Path(tmp))
             if res:
@@ -121,13 +133,15 @@ def score_all_layers(stack, meta, gt, layers, arm, distance="geodesic"):
                 ok = np.isfinite(g) & np.isfinite(b)
                 if ok.sum() >= 6 and np.ptp(g[ok]) > 0 and np.ptp(b[ok]) > 0:
                     rho = spearmanr(g[ok], b[ok]).statistic
-                    rows.append({"family": d["family"], "group": group, "baseline": base, "rho": rho})
+                    rows.append(
+                        {"family": d["family"], "group": group, "baseline": base, "rho": rho}
+                    )
                     per_group_rows.append({**rows[-1], "layer": L})
         df = pd.DataFrame(rows)
         run = sweep_root / f"blocks{L}"
         run.mkdir(parents=True, exist_ok=True)
         for base, (fname, col) in BASELINES.items():
-            fam_mean = (df[df.baseline == base].groupby("family")["rho"].mean().reset_index())
+            fam_mean = df[df.baseline == base].groupby("family")["rho"].mean().reset_index()
             fam_mean.columns = ["family", col]
             # angular writes alongside the geodesic tables, never over them
             out = fname if distance == "geodesic" else fname.replace(".csv", "_angular.csv")
@@ -137,22 +151,33 @@ def score_all_layers(stack, meta, gt, layers, arm, distance="geodesic"):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--arm", default="transcript",
-                    choices=["transcript", "cds", "transcript_cdsmask"])
+    ap.add_argument(
+        "--arm", default="transcript", choices=["transcript", "cds", "transcript_cdsmask"]
+    )
     ap.add_argument("--layers", nargs="*", type=int, default=list(range(32)))
-    ap.add_argument("--distance", default="geodesic", choices=["geodesic", "angular"],
-                    help="geodesic = k-NN shortest path (default, what every existing table uses); "
-                         "angular = direct pairwise angular distance, no graph. angular writes "
-                         "within_family_*_angular.csv beside the geodesic tables.")
+    ap.add_argument(
+        "--distance",
+        default="geodesic",
+        choices=["geodesic", "angular"],
+        help="geodesic = k-NN shortest path (default, what every existing table uses); "
+        "angular = direct pairwise angular distance, no graph. angular writes "
+        "within_family_*_angular.csv beside the geodesic tables.",
+    )
     args = ap.parse_args()
 
     stack, meta = load_embedded(args.arm)
     pat = pd.read_csv(OUT / "tree" / "species_patristic.csv", index_col=0)
     cds = load_cds()
-    print(f"{stack.shape[1]} embedded loci ({args.arm}); building per-group ground truths "
-          f"(MAFFT/FastTree, once)...", flush=True)
+    print(
+        f"{stack.shape[1]} embedded loci ({args.arm}); building per-group ground truths "
+        f"(MAFFT/FastTree, once)...",
+        flush=True,
+    )
     gt = group_ground_truths(meta, cds, pat)
-    print(f"{len(gt)} analyzable groups (>=+{MIN_SP} species); scoring {len(args.layers)} layers", flush=True)
+    print(
+        f"{len(gt)} analyzable groups (>=+{MIN_SP} species); scoring {len(args.layers)} layers",
+        flush=True,
+    )
 
     res, sweep_root = score_all_layers(stack, meta, gt, args.layers, args.arm, args.distance)
     suffix = "" if args.distance == "geodesic" else "_angular"

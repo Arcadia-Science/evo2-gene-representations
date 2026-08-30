@@ -1,7 +1,6 @@
 """Readable results digest for one mammalian-ortholog arm, printed as soon as that arm finishes."""
 
 from __future__ import annotations
-
 import argparse
 import glob
 import re
@@ -46,12 +45,19 @@ def digest(arm: str) -> str:
         col = "spearman_geodesic_speciestree"
         per_layer = st.groupby("layer")[col].agg(["mean", "median", "count"]).round(3)
         best = per_layer["mean"].idxmax()
-        out += [f"**{int(per_layer['count'].iloc[0])} families scored.** "
-                f"Best layer by mean rho: **block {best}** (mean {per_layer.loc[best,'mean']:.3f}).", ""]
+        out += [
+            f"**{int(per_layer['count'].iloc[0])} families scored.** "
+            f"Best layer by mean rho: **block {best}** (mean {per_layer.loc[best, 'mean']:.3f}).",
+            "",
+        ]
         out += ["| layer | mean rho | median rho |", "|---|---|---|"]
-        for L in [x for x in KEY_LAYERS if x in per_layer.index] + ([best] if best not in KEY_LAYERS else []):
+        for L in [x for x in KEY_LAYERS if x in per_layer.index] + (
+            [best] if best not in KEY_LAYERS else []
+        ):
             r = per_layer.loc[L]
-            out.append(f"| {L}{' **(best)**' if L == best else ''} | {r['mean']:.3f} | {r['median']:.3f} |")
+            out.append(
+                f"| {L}{' **(best)**' if L == best else ''} | {r['mean']:.3f} | {r['median']:.3f} |"
+            )
         top = st[st.layer == best].nlargest(8, col)[["family", col]]
         out += ["", f"Top families at block {best}:", ""]
         out += ["| family | rho |", "|---|---|"]
@@ -64,10 +70,18 @@ def digest(arm: str) -> str:
         out += ["_(no between_family_baseline_scores.csv yet)_"]
     else:
         hom = bf[bf.baseline == "pfam_jsd"]
-        best = int(hom.loc[hom.spearman_rho.idxmax(), "layer"]) if not hom.empty else int(bf.layer.min())
+        best = (
+            int(hom.loc[hom.spearman_rho.idxmax(), "layer"])
+            if not hom.empty
+            else int(bf.layer.min())
+        )
         sub = bf[bf.layer == best].sort_values("axis")
-        out += [f"At the homology-peak layer **block {best}**:", "",
-                "| baseline | axis | rho | Mantel p |", "|---|---|---|---|"]
+        out += [
+            f"At the homology-peak layer **block {best}**:",
+            "",
+            "| baseline | axis | rho | Mantel p |",
+            "|---|---|---|---|",
+        ]
         for r in sub.itertuples():
             p = getattr(r, "p_mantel", float("nan"))
             out.append(f"| {r.baseline} | {r.axis} | {r.spearman_rho:+.3f} | {p:.3f} |")
@@ -76,7 +90,10 @@ def digest(arm: str) -> str:
         if cen:
             n_fam = len(pd.read_csv(cen[0], index_col=0))
         if n_fam:
-            out += ["", f"({n_fam} family nodes in the centroid graph — was 9 before the expansion.)"]
+            out += [
+                "",
+                f"({n_fam} family nodes in the centroid graph — was 9 before the expansion.)",
+            ]
 
     # ── 3. composition controls
     out += ["", "## 3. Composition-control preservation (rho vs the natural geometry)", ""]
@@ -88,33 +105,49 @@ def digest(arm: str) -> str:
         piv = cb.pivot_table(index="layer", columns="condition", values="rho_vs_natural_centroid")
         keep = [L for L in KEY_LAYERS if L in piv.index]
         out += ["Between-family. Low = real structure beyond that composition level.", ""]
-        out += ["| layer | " + " | ".join(piv.columns) + " |",
-                "|---" * (len(piv.columns) + 1) + "|"]
+        out += [
+            "| layer | " + " | ".join(piv.columns) + " |",
+            "|---" * (len(piv.columns) + 1) + "|",
+        ]
         for L in keep:
-            out.append(f"| {L} | " + " | ".join(f"{piv.loc[L, c]:.3f}" if pd.notna(piv.loc[L, c]) else "–"
-                                               for c in piv.columns) + " |")
+            out.append(
+                f"| {L} | "
+                + " | ".join(
+                    f"{piv.loc[L, c]:.3f}" if pd.notna(piv.loc[L, c]) else "–" for c in piv.columns
+                )
+                + " |"
+            )
         band = piv.loc[[L for L in piv.index if 8 <= L <= 24]].mean().round(3)
-        out += ["", "Mean over blocks 8-24: " + ", ".join(f"**{c}** {band[c]:.3f}" for c in band.index)]
+        out += [
+            "",
+            "Mean over blocks 8-24: " + ", ".join(f"**{c}** {band[c]:.3f}" for c in band.index),
+        ]
         if "written_at" in cb.columns and cb.written_at.nunique() > 1:
-            out += ["", f"> NOTE mixed provenance: rows written on {sorted(cb.written_at.unique())} "
-                        "— this table spans more than one methods state."]
+            out += [
+                "",
+                f"> NOTE mixed provenance: rows written on {sorted(cb.written_at.unique())} "
+                "— this table spans more than one methods state.",
+            ]
 
     cw = _controls(run, "within")
     if not cw.empty and "rho_geodesic_speciestree" in cw.columns:
         cw = cw[cw.condition != "natural"]
         p2 = cw.pivot_table(index="layer", columns="condition", values="rho_geodesic_speciestree")
         band = p2.loc[[L for L in p2.index if 8 <= L <= 24]].mean().round(3)
-        out += ["", "Within-group RECOVERY under each control (geodesic vs species tree), "
-                "mean over blocks 8-24 — does the shuffle still recover phylogeny?", "",
-                ", ".join(f"**{c}** {band[c]:.3f}" for c in band.index)]
+        out += [
+            "",
+            "Within-group RECOVERY under each control (geodesic vs species tree), "
+            "mean over blocks 8-24 — does the shuffle still recover phylogeny?",
+            "",
+            ", ".join(f"**{c}** {band[c]:.3f}" for c in band.index),
+        ]
 
     return "\n".join(out) + "\n"
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--arm", required=True,
-                    choices=["transcript", "cds", "transcript_cdsmask"])
+    ap.add_argument("--arm", required=True, choices=["transcript", "cds", "transcript_cdsmask"])
     args = ap.parse_args()
     text = digest(args.arm)
     run = ROOT / "results" / f"2026-07-16_mammalian-orthologs-{args.arm}"

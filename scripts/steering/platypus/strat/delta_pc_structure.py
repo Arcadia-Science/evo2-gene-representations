@@ -1,6 +1,8 @@
-"""What are the principal components of the per-gene steering delta, beyond the GC axis? CPU only."""
-from __future__ import annotations
+"""
+What are the principal components of the per-gene steering delta, beyond the GC axis? CPU only.
+"""
 
+from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
@@ -32,16 +34,19 @@ def gene_features(run: Path, genes: list[str]) -> pd.DataFrame:
     f = pd.read_csv(run / "composition_profile" / "features_per_gene.csv.gz")
     h = f[f.condition == HUMAN_REF].set_index("gene")
     p = f[f.condition == PLAT_REF].set_index("gene")
-    scal = [c for c in ("gc", "gc1", "gc2", "gc3", "cpg_oe", "f_A", "f_C", "f_G", "f_T")
-            if c in h.columns]
+    scal = [
+        c
+        for c in ("gc", "gc1", "gc2", "gc3", "cpg_oe", "f_A", "f_C", "f_G", "f_T")
+        if c in h.columns
+    ]
     rho = [c for c in h.columns if c.startswith("rho_")]
     out = pd.DataFrame(index=pd.Index(genes, name="gene"))
     for c in scal + rho:
-        out[f"d_{c}"] = (p[c] - h[c]).reindex(genes)          # platypus minus human
+        out[f"d_{c}"] = (p[c] - h[c]).reindex(genes)  # platypus minus human
     for c in scal:
-        out[f"human_{c}"] = h[c].reindex(genes)               # the starting point itself
+        out[f"human_{c}"] = h[c].reindex(genes)  # the starting point itself
     for c in [c for c in p.columns if c.startswith("HP_")]:
-        out[c] = p[c].reindex(genes)                          # per-gene between-species JSD
+        out[c] = p[c].reindex(genes)  # per-gene between-species JSD
     if "n_tokens" in h.columns:
         out["window_bp"] = h["n_tokens"].reindex(genes)
 
@@ -70,36 +75,47 @@ def gene_features(run: Path, genes: list[str]) -> pd.DataFrame:
     return out
 
 
-def analyse_layer(X: np.ndarray, ip: int, ih: int, vecs, layer: int,
-                  genes: list[str], feats: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def analyse_layer(
+    X: np.ndarray, ip: int, ih: int, vecs, layer: int, genes: list[str], feats: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     D = (X[:, ip, layer, :] - X[:, ih, layer, :]).astype(np.float64)
     Dc = D - D.mean(axis=0, keepdims=True)
 
     refs = {}
-    for name, key in (("gc_axis", f"gc_axis_L{layer}"), ("v_pooled", f"v_pooled_L{layer}"),
-                      ("muhat", f"muhat_L{layer}")):
+    for name, key in (
+        ("gc_axis", f"gc_axis_L{layer}"),
+        ("v_pooled", f"v_pooled_L{layer}"),
+        ("muhat", f"muhat_L{layer}"),
+    ):
         if key in vecs:
             refs[name] = unit(vecs[key].astype(np.float64))
 
     rows = []
     for centred, Dm in (("centred", Dc), ("uncentred", D)):
         _U, S, Vt = np.linalg.svd(Dm, full_matrices=False)
-        var = S ** 2
+        var = S**2
         frac = var / var.sum()
         # participation ratio: the effective number of directions the cloud occupies
-        pr = float((var.sum() ** 2) / np.sum(var ** 2))
-        scores = Dm @ Vt.T                     # (genes, components)
+        pr = float((var.sum() ** 2) / np.sum(var**2))
+        scores = Dm @ Vt.T  # (genes, components)
         for k in range(min(N_PC, Vt.shape[0])):
-            row = {"layer": layer, "basis": centred, "pc": k + 1,
-                   "var_frac": float(frac[k]), "cum_var_frac": float(frac[:k + 1].sum()),
-                   "participation_ratio": pr}
+            row = {
+                "layer": layer,
+                "basis": centred,
+                "pc": k + 1,
+                "var_frac": float(frac[k]),
+                "cum_var_frac": float(frac[: k + 1].sum()),
+                "participation_ratio": pr,
+            }
             for name, r in refs.items():
                 row[f"abs_cos_{name}"] = abs(float(Vt[k] @ r))
             rows.append(row)
         if centred == "centred":
-            sc = pd.DataFrame(scores[:, :N_PC],
-                              columns=[f"PC{k + 1}" for k in range(min(N_PC, Vt.shape[1]))],
-                              index=pd.Index(genes, name="gene"))
+            sc = pd.DataFrame(
+                scores[:, :N_PC],
+                columns=[f"PC{k + 1}" for k in range(min(N_PC, Vt.shape[1]))],
+                index=pd.Index(genes, name="gene"),
+            )
     spectrum = pd.DataFrame(rows)
 
     # ---- what does each PC track across genes? ------------------------------------------------
@@ -111,22 +127,29 @@ def analyse_layer(X: np.ndarray, ip: int, ih: int, vecs, layer: int,
             if ok.sum() < 30:
                 continue
             r = float(a[ok].rank().corr(b[ok].rank()))
-            cors.append({"layer": layer, "pc": pc, "feature": feat, "spearman": r,
-                         "n": int(ok.sum())})
+            cors.append(
+                {"layer": layer, "pc": pc, "feature": feat, "spearman": r, "n": int(ok.sum())}
+            )
     return spectrum, pd.DataFrame(cors)
 
 
 def figure(spec: pd.DataFrame, cors: pd.DataFrame, out: Path, layer: int) -> None:
     set_pub_style(title_size=8.5, tick_size=6.5)
-    fig, axes = plt.subplots(1, 3, figsize=(12.4, 3.5),
-                             gridspec_kw={"width_ratios": [1, 1, 1.5]})
+    fig, axes = plt.subplots(1, 3, figsize=(12.4, 3.5), gridspec_kw={"width_ratios": [1, 1, 1.5]})
     s = spec[spec.layer == layer]
 
     ax = axes[0]
     for basis, col in (("uncentred", acs.SERIES_NULL), ("centred", acs.SERIES_PRIMARY)):
         d = s[s.basis == basis]
-        ax.plot(d.pc, 100 * d.var_frac, "o-", color=col, lw=1.2, ms=4,
-                label=f"{basis} (PR = {d.participation_ratio.iloc[0]:.1f})")
+        ax.plot(
+            d.pc,
+            100 * d.var_frac,
+            "o-",
+            color=col,
+            lw=1.2,
+            ms=4,
+            label=f"{basis} (PR = {d.participation_ratio.iloc[0]:.1f})",
+        )
     ax.set_xlabel("principal component")
     ax.set_ylabel("variance explained (%)")
     ax.set_title(f"Scree — per-gene delta at blocks.{layer}")
@@ -151,8 +174,15 @@ def figure(spec: pd.DataFrame, cors: pd.DataFrame, out: Path, layer: int) -> Non
     ax.set_yticks(range(len(cols)), [c.replace("abs_cos_", "") for c in cols], fontsize=6.5)
     for i in range(M.shape[0]):
         for j in range(M.shape[1]):
-            ax.text(j, i, f"{M[i, j]:.2f}", ha="center", va="center", fontsize=5.5,
-                    color="white" if M[i, j] < 0.6 else "black")
+            ax.text(
+                j,
+                i,
+                f"{M[i, j]:.2f}",
+                ha="center",
+                va="center",
+                fontsize=5.5,
+                color="white" if M[i, j] < 0.6 else "black",
+            )
     ax.set_xlabel("principal component (centred cloud)")
     ax.set_title("|cos| with the pipeline's reference directions")
     fig.colorbar(im, ax=ax, fraction=0.035, pad=0.02)
@@ -163,8 +193,9 @@ def figure(spec: pd.DataFrame, cors: pd.DataFrame, out: Path, layer: int) -> Non
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--run", type=Path, required=True)
     ap.add_argument("--layers", type=int, nargs="*", default=[27, 24])
     ap.add_argument("--rep-dir", default="stage3_cds_mean")
@@ -178,8 +209,9 @@ def main() -> None:
     X = pooled["cds_mean"]
     genes_all = [str(g) for g in pooled["genes"]]
     sp = [str(x) for x in pooled["species"]]
-    ip = next(i for i, s in enumerate(sp)
-              if s.lower().startswith("plat") or s.lower().startswith("orn"))
+    ip = next(
+        i for i, s in enumerate(sp) if s.lower().startswith("plat") or s.lower().startswith("orn")
+    )
     ih = 1 - ip
     vecs = np.load(args.run / args.rep_dir / "loo_vectors.npz", allow_pickle=True)
 
@@ -205,9 +237,12 @@ def main() -> None:
         for basis in ("uncentred", "centred"):
             d = spec[spec.basis == basis]
             print(f"\n{basis} cloud (participation ratio {d.participation_ratio.iloc[0]:.1f}):")
-            print(d[["pc", "var_frac", "cum_var_frac"]
-                    + [c for c in d.columns if c.startswith("abs_cos_")]]
-                  .to_string(index=False, float_format=lambda z: f"{z:.3f}"))
+            print(
+                d[
+                    ["pc", "var_frac", "cum_var_frac"]
+                    + [c for c in d.columns if c.startswith("abs_cos_")]
+                ].to_string(index=False, float_format=lambda z: f"{z:.3f}")
+            )
         print(f"\ntop {args.top} sequence correlates of each PC (centred cloud, Spearman):")
         for pc, g in cors.groupby("pc", sort=False):
             g = g.reindex(g.spearman.abs().sort_values(ascending=False).index).head(args.top)

@@ -1,4 +1,6 @@
-"""Pfam-HMM Jensen-Shannon-divergence between-family homology baseline: shared kernel + run-dir CLI."""
+"""
+Pfam-HMM Jensen-Shannon-divergence between-family homology baseline: shared kernel + run-dir CLI.
+"""
 
 import gzip
 import io
@@ -48,6 +50,7 @@ def compute_pfam_jsd(family_order: list[str], accessions: dict[str, str]) -> np.
 # ── run-dir wrapper (CLI)
 # Wrapper-only below. Situational/heavy imports are local to keep the kernel import cheap.
 
+
 def accession_map() -> dict[str, str]:
     """Return the configured Pfam accession for each family."""
     import sys
@@ -86,14 +89,22 @@ def main() -> None:
     import pandas as pd
     from scipy.stats import spearmanr
 
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--run-dir", required=True)
-    ap.add_argument("--compare-csv", default=None,
-                    help="Optional Pfam JSD CSV to cross-check shared families against.")
-    ap.add_argument("--distances-from", default=None,
-                    help="Reuse the Pfam-JSD matrix (pfam_jsd_distances.csv) from this donor "
-                         "run dir instead of fetching HMM emissions. The JSD is sequence/"
-                         "annotation-derived and layer-independent — for an all-layer sweep.")
+    ap.add_argument(
+        "--compare-csv",
+        default=None,
+        help="Optional Pfam JSD CSV to cross-check shared families against.",
+    )
+    ap.add_argument(
+        "--distances-from",
+        default=None,
+        help="Reuse the Pfam-JSD matrix (pfam_jsd_distances.csv) from this donor "
+        "run dir instead of fetching HMM emissions. The JSD is sequence/"
+        "annotation-derived and layer-independent — for an all-layer sweep.",
+    )
     args = ap.parse_args()
     run = Path(args.run_dir)
 
@@ -119,8 +130,10 @@ def main() -> None:
         if len(shared) >= 2:
             diff = np.abs(out.loc[shared, shared].values - ref.loc[shared, shared].values).max()
             status = "✓ identical" if diff < 1e-6 else "⚠ DIFFERS"
-            print(f"Cross-check vs {Path(args.compare_csv).parent.name}: "
-                  f"{len(shared)} shared families, max|Δ JSD|={diff:.2e}  {status}")
+            print(
+                f"Cross-check vs {Path(args.compare_csv).parent.name}: "
+                f"{len(shared)} shared families, max|Δ JSD|={diff:.2e}  {status}"
+            )
 
     # If the run has a centroid-geodesic matrix, report the between-family ρ against it.
     cen = list(run.glob("*_centroid_distances.csv"))

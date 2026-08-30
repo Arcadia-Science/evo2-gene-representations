@@ -72,7 +72,7 @@ def find_min_connected_k(embeddings: np.ndarray, k_min: int = 3) -> tuple[int, n
         return n_components == 1, W
 
     # Phase 1 — double until connected, to bracket the answer in (lo, hi].
-    lo, hi = k_min, k_min          # invariant: lo-1 known disconnected (or lo == k_min)
+    lo, hi = k_min, k_min  # invariant: lo-1 known disconnected (or lo == k_min)
     ok, W_hi = connected(hi)
     while not ok:
         if hi >= N - 1:
@@ -111,8 +111,9 @@ def family_centroids(
     groups: np.ndarray,
     group_order: list[str],
 ) -> np.ndarray:
-    """Per-family centroid = mean of the L2-normalized members, so a family collapses to one direction
-        independent of its size.
+    """
+    Per-family centroid = mean of the L2-normalized members, so a family collapses to one direction
+    independent of its size.
     """
     cents = []
     for g in group_order:
@@ -134,7 +135,6 @@ def centroid_graph_k(F: int, k_min: int = 3) -> int:
     return int(min(max(k_min, math.ceil(math.sqrt(F))), F - 1))
 
 
-
 def compute_centroid_geodesic(
     embeddings: np.ndarray,
     groups: np.ndarray,
@@ -142,7 +142,7 @@ def compute_centroid_geodesic(
     k_min: int = 3,
 ) -> np.ndarray:
     """Between-family geodesic over family centroids rather than member genes, so each family is one
-        node and the result is independent of membership counts.
+    node and the result is independent of membership counts.
     """
     # See `centroid_graph_k` above for why k is not raised here.
     cents = family_centroids(embeddings, groups, group_order)
@@ -158,7 +158,7 @@ def k_sweep_correlations(
     present_mask: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """Sweep k and correlate the resulting geodesic against `reference`, one row per k.
-        Finite pairs only, since an unconnected graph leaves some geodesics infinite.
+    Finite pairs only, since an unconnected graph leaves some geodesics infinite.
     """
     # The k-NN graph and connectivity are always over ALL points; only the correlation
     # is restricted to present_mask (so connectivity reflects the real graph).
@@ -269,8 +269,10 @@ def uniform_distance_pair_indices(
     rng: np.random.Generator,
     edges: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Indices of pairs sampled ~uniformly along the reference distance axis. Underfilled bins contribute
-        what they have rather than padding with replacement.
+    """
+    Indices of pairs sampled ~uniformly along the reference distance axis. Underfilled bins
+    contribute
+    what they have rather than padding with replacement.
     """
     if edges is None:
         edges = uniform_distance_bin_edges(ref_flat, n_bins)
@@ -292,8 +294,9 @@ def uniform_distance_bin_occupancy(
     per_bin: int,
     edges: np.ndarray | None = None,
 ) -> pd.DataFrame:
-    """Per-bin pair counts and how many a `per_bin` draw can take — underfilled near-zero bins mean the
-        design is uniform only over the range the species sample covers.
+    """
+    Per-bin pair counts and how many a `per_bin` draw can take — underfilled near-zero bins mean the
+    design is uniform only over the range the species sample covers.
     """
     if edges is None:
         edges = uniform_distance_bin_edges(ref_flat, n_bins)
@@ -321,7 +324,9 @@ def uniform_pair_correlations(
     seed: int = 42,
     edges: np.ndarray | None = None,
 ) -> dict:
-    """Pearson / Spearman / xi over pairs sampled uniformly in `ref_flat`, averaged over `n_boot` draws."""
+    """Pearson / Spearman / xi over pairs sampled uniformly in `ref_flat`, averaged over `n_boot`
+    draws.
+    """
     x_flat = np.asarray(x_flat, dtype=np.float64)
     ref_flat = np.asarray(ref_flat, dtype=np.float64)
     finite = np.isfinite(x_flat) & np.isfinite(ref_flat)
@@ -367,7 +372,7 @@ def within_between_analysis(
     seed: int = 42,
 ) -> tuple[np.ndarray, np.ndarray, float, float]:
     """Within-group vs between-group geodesic distances by permutation test.
-        Returns (within, between, ratio, p_value).
+    Returns (within, between, ratio, p_value).
     """
     N = len(groups)
     pairs_i, pairs_j = np.triu_indices(N, k=1)
@@ -412,7 +417,7 @@ def within_preservation_rho(
     min_members: int = 4,
 ) -> tuple[list[tuple[str, int, float]], float]:
     """Per-family Spearman between two per-gene geodesics sharing the same gene order.
-        Families below `min_members` or with zero variance are skipped.
+    Families below `min_members` or with zero variance are skipped.
     """
     order = family_order if family_order is not None else sorted(set(map(str, families)))
     rows: list[tuple[str, int, float]] = []

@@ -1,13 +1,11 @@
 """Stage 5b — branch lengths on a FIXED species topology, and the rate predictors. CPU, parallel."""
 
 from __future__ import annotations
-
 import argparse
 import json
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -19,7 +17,7 @@ IQTREE = ROOT / "data" / "tools" / "iqtree2"
 TRIMAL = ROOT / "data" / "tools" / "trimal"
 SPECIES_TREE = ROOT / "data" / "mammalian_orthologs" / "tree" / "species_tree.nwk"
 HUMAN, PLATYPUS = "homo_sapiens", "ornithorhynchus_anatinus"
-MODEL = "LG+G4"   # fixed across genes on purpose: comparability between genes beats per-gene fit
+MODEL = "LG+G4"  # fixed across genes on purpose: comparability between genes beats per-gene fit
 
 
 def read_fasta(path: Path) -> dict[str, str]:
@@ -52,8 +50,10 @@ def pruned_topology(taxa: list[str], out: Path) -> int:
     t.retain_taxa_with_labels(keep)
     for e in t.edges():
         e.length = None
-    out.write_text(t.as_string(schema="newick", suppress_rooting=True,
-                               unquoted_underscores=True).strip() + "\n")
+    out.write_text(
+        t.as_string(schema="newick", suppress_rooting=True, unquoted_underscores=True).strip()
+        + "\n"
+    )
     return len(t.leaf_nodes())
 
 
@@ -67,8 +67,9 @@ def tree_stats(tree_path: Path) -> dict:
     pdm = t.phylogenetic_distance_matrix()
     tax = {lf.taxon.label: lf.taxon for lf in t.leaf_node_iter()}
     pair = [pdm(a, b) for a in tax.values() for b in tax.values() if a is not b]
-    internal = float(sum(e.length for e in t.edges()
-                         if e.length is not None and e.head_node.child_nodes()))
+    internal = float(
+        sum(e.length for e in t.edges() if e.length is not None and e.head_node.child_nodes())
+    )
     term = {lf.taxon.label: float(lf.edge.length or 0.0) for lf in t.leaf_node_iter()}
 
     def dist(a: str, b: str) -> float | None:
@@ -119,16 +120,20 @@ def one_gene(fa: Path, outdir: Path) -> dict:
                 fh.write(f">{sp}\n{p}\n")
         aln_raw = gd / "aln_mafft.fasta"
         with aln_raw.open("w") as fh:
-            r = subprocess.run(["mafft", "--auto", "--quiet", str(praw)], stdout=fh,
-                               stderr=subprocess.PIPE)
+            r = subprocess.run(
+                ["mafft", "--auto", "--quiet", str(praw)], stdout=fh, stderr=subprocess.PIPE
+            )
         if r.returncode != 0:
             return {**rec, "status": "fail", "reason": f"mafft: {r.stderr.decode()[:200]}"}
         a0 = read_fasta(aln_raw)
         rec["aln_len_raw"] = len(next(iter(a0.values())))
 
         trimmed = gd / "aln.fasta"
-        r = subprocess.run([str(TRIMAL), "-in", str(aln_raw), "-out", str(trimmed), "-gappyout"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        r = subprocess.run(
+            [str(TRIMAL), "-in", str(aln_raw), "-out", str(trimmed), "-gappyout"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
         if r.returncode != 0 or not trimmed.exists():
             shutil.copy(aln_raw, trimmed)
             rec["trimal"] = "failed_used_raw"
@@ -140,13 +145,34 @@ def one_gene(fa: Path, outdir: Path) -> dict:
         topo = gd / "topology.nwk"
         n_leaf = pruned_topology(sorted(a1), topo)
         if n_leaf != len(a1):
-            return {**rec, "status": "fail",
-                    "reason": f"topology has {n_leaf} leaves for {len(a1)} taxa"}
+            return {
+                **rec,
+                "status": "fail",
+                "reason": f"topology has {n_leaf} leaves for {len(a1)} taxa",
+            }
 
         pre = gd / "iq"
-        r = subprocess.run([str(IQTREE), "-s", str(trimmed), "-st", "AA", "-m", MODEL,
-                            "-te", str(topo), "-pre", str(pre), "-T", "1", "-quiet",
-                            "-redo"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        r = subprocess.run(
+            [
+                str(IQTREE),
+                "-s",
+                str(trimmed),
+                "-st",
+                "AA",
+                "-m",
+                MODEL,
+                "-te",
+                str(topo),
+                "-pre",
+                str(pre),
+                "-T",
+                "1",
+                "-quiet",
+                "-redo",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
         tf = Path(f"{pre}.treefile")
         if r.returncode != 0 or not tf.exists():
             return {**rec, "status": "fail", "reason": f"iqtree: {r.stderr.decode()[:200]}"}
@@ -156,8 +182,9 @@ def one_gene(fa: Path, outdir: Path) -> dict:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--run", type=Path, required=True)
     ap.add_argument("--jobs", type=int, default=14)
     ap.add_argument("--outdir", type=Path, default=None)
@@ -183,13 +210,32 @@ def main() -> None:
     if len(df) > len(ok):
         print(df[df.status != "ok"][["gene", "status", "reason"]].to_string(index=False))
     if len(ok):
-        cols = ["n_taxa_tree", "tree_len", "diameter", "focal_target_dist", "mean_target_dist",
-                "treeness", "human_branch", "platypus_branch", "background_rate"]
+        cols = [
+            "n_taxa_tree",
+            "tree_len",
+            "diameter",
+            "focal_target_dist",
+            "mean_target_dist",
+            "treeness",
+            "human_branch",
+            "platypus_branch",
+            "background_rate",
+        ]
         print("\n" + ok[cols].describe().loc[["min", "50%", "max"]].round(4).to_string())
-    (s5 / "stage5b_config.json").write_text(json.dumps(
-        {"model": MODEL, "topology": "fixed (-te), VertLife MamPhy pruned per gene, lengths stripped",
-         "trim": "trimAl -gappyout", "aligner": "mafft --auto", "iqtree": "2.3.6",
-         "n_ok": int(len(ok)), "n_total": int(len(df))}, indent=2))
+    (s5 / "stage5b_config.json").write_text(
+        json.dumps(
+            {
+                "model": MODEL,
+                "topology": "fixed (-te), VertLife MamPhy pruned per gene, lengths stripped",
+                "trim": "trimAl -gappyout",
+                "aligner": "mafft --auto",
+                "iqtree": "2.3.6",
+                "n_ok": int(len(ok)),
+                "n_total": int(len(df)),
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

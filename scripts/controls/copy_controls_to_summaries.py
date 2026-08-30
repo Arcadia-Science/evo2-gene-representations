@@ -1,7 +1,6 @@
 """Copy the per-layer composition-control score tables into their layer-sweep summary folder."""
 
 from __future__ import annotations
-
 import argparse
 import datetime as dt
 import re
@@ -9,8 +8,6 @@ import shutil
 import sys
 from collections import defaultdict
 from pathlib import Path
-
-import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from control_tables import audit_control_table  # noqa: E402
@@ -23,7 +20,8 @@ FIGURES = ("control_preservation.png", "control_preservation.pdf")
 COPIED = TABLES + FIGURES
 
 # `ot-*/` roll-ups are built from the SAME run dirs as a main folder, so copying controls into them
-# would duplicate bytes and give the same numbers two homes. Value = the folder that does carry them.
+# would duplicate bytes and give the same numbers two homes. Value = the folder that does carry
+# them.
 OT_COVERED_BY = {
     "ot-evo2-human-cds": "evo2-human-cds-9fam",
     "ot-evo2-human-cds-48fam": "evo2-human-cds-48fam",
@@ -75,8 +73,8 @@ def _manifest(folder: Path, glob: str, copied: list[tuple[int, str, Path]]) -> s
         "# Copied by scripts/controls/copy_controls_to_summaries.py from the run dir named in",
         "# SOURCE.md. The per-layer dirs are regenerated in place and results/ is gitignored, so",
         "# this is the only copy that stays put beside the roll-up it backs.",
-        f"# The cross-layer view of the same numbers is ../controls_layer_summary_{folder.name}.png.",
-        f"# Copied {dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d')} (UTC).",
+        f"# Cross-layer view: ../controls_layer_summary_{folder.name}.png.",
+        f"# Copied {dt.datetime.now(dt.UTC).strftime('%Y-%m-%d')} (UTC).",
         "",
         f"source glob: {glob}",
         f"layers: {n_layers} ({layers_all[0]}..{layers_all[-1]})",
@@ -87,8 +85,12 @@ def _manifest(folder: Path, glob: str, copied: list[tuple[int, str, Path]]) -> s
     for name in COPIED:
         got = sorted(by_file.get(name, []))
         if not got:
-            why = (" — this arm's scorer never wrote per-layer figures; regenerable from the tables,"
-                   " see the module docstring" if name in FIGURES else "")
+            why = (
+                " — this arm's scorer never wrote per-layer figures; regenerable from the tables,"
+                " see the module docstring"
+                if name in FIGURES
+                else ""
+            )
             lines.append(f"{name}\t0 — ABSENT in every source layer dir{why}")
         else:
             miss = sorted(set(layers_all) - set(got))
@@ -123,7 +125,7 @@ def _manifest(folder: Path, glob: str, copied: list[tuple[int, str, Path]]) -> s
             spread[(tuple(a["written_at"]), tuple(a["generator"]))].append(layer)
         lines += [
             "",
-            "# PROVENANCE SPREAD ACROSS LAYERS — the tables are individually consistent but were not",
+            "# PROVENANCE VARIES BY LAYER — each table is internally consistent, but they were not",
             "# all written in one state; check the boundary before comparing layers to each other:",
         ]
         for (d, g), ls in sorted(spread.items(), key=lambda kv: min(kv[1])):
@@ -182,7 +184,9 @@ def main() -> None:
             print(f"[skip] {name}: no such folder")
             continue
         if name in OT_COVERED_BY and not args.folders:
-            print(f"[skip] {name}: same run dirs as {OT_COVERED_BY[name]}/, which carries the copies")
+            print(
+                f"[skip] {name}: same run dirs as {OT_COVERED_BY[name]}/, which carries the copies"
+            )
             continue
         status, detail = copy_folder(folder, dry_run=args.dry_run)
         tag = ("[dry]" if args.dry_run else "[ok]") if status == "ok" else "[skip]"

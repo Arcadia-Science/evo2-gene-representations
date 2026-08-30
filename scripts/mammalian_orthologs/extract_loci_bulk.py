@@ -1,7 +1,6 @@
 """Local (no-REST) locus extraction from Ensembl release-116 bulk files."""
 
 from __future__ import annotations
-
 import argparse
 import gzip
 import json
@@ -37,13 +36,13 @@ def _fast_gid(attr: str) -> str | None:
     if i < 0:
         return None
     j = attr.find('"', i + 9)
-    return attr[i + 9:j] if j > 0 else None
+    return attr[i + 9 : j] if j > 0 else None
 
 
 def parse_gtf(gtf_path: Path, needed: set[str]):
     """One pass over a species GTF."""
     # per gene: collect candidate transcripts -> pick canonical/longest at the end
-    cand: dict[str, dict] = {}          # gene_id -> {tx_id -> record}
+    cand: dict[str, dict] = {}  # gene_id -> {tx_id -> record}
     all_genes: dict[str, list] = {}
     op = gzip.open if gtf_path.suffix == ".gz" else open
     with op(gtf_path, "rt") as fh:
@@ -57,27 +56,42 @@ def parse_gtf(gtf_path: Path, needed: set[str]):
             if feat == "gene":
                 a = _attrs(attr)
                 all_genes.setdefault(f[0], []).append(
-                    (int(f[3]), int(f[4]), a.get("gene_id"), a.get("gene_biotype", "")))
+                    (int(f[3]), int(f[4]), a.get("gene_id"), a.get("gene_biotype", ""))
+                )
                 continue
             if feat not in ("transcript", "CDS", "start_codon", "stop_codon"):
                 continue
-            gid = _fast_gid(attr)               # cheap filter before the expensive full parse
+            gid = _fast_gid(attr)  # cheap filter before the expensive full parse
             if gid not in needed:
                 continue
             chrom, start, end, strand = f[0], int(f[3]), int(f[4]), f[6]
             a = _attrs(attr)
             tid = a.get("transcript_id")
             if feat == "transcript":
-                rec = cand.setdefault(gid, {}).setdefault(tid, {
-                    "chrom": chrom, "strand": strand, "tx_start": start, "tx_end": end,
-                    "cds": [], "has_start": False, "has_stop": False,
-                    "biotype": a.get("transcript_biotype", ""), "tx_id": tid,
-                    "canonical": "Ensembl_canonical" in attr})
+                rec = cand.setdefault(gid, {}).setdefault(
+                    tid,
+                    {
+                        "chrom": chrom,
+                        "strand": strand,
+                        "tx_start": start,
+                        "tx_end": end,
+                        "cds": [],
+                        "has_start": False,
+                        "has_stop": False,
+                        "biotype": a.get("transcript_biotype", ""),
+                        "tx_id": tid,
+                        "canonical": "Ensembl_canonical" in attr,
+                    },
+                )
                 rec["tx_start"], rec["tx_end"] = start, end
             elif feat == "CDS":
-                cand.setdefault(gid, {}).setdefault(tid, _blank(chrom, strand, tid))["cds"].append((start, end))
+                cand.setdefault(gid, {}).setdefault(tid, _blank(chrom, strand, tid))["cds"].append(
+                    (start, end)
+                )
             elif feat == "start_codon":
-                cand.setdefault(gid, {}).setdefault(tid, _blank(chrom, strand, tid))["has_start"] = True
+                cand.setdefault(gid, {}).setdefault(tid, _blank(chrom, strand, tid))[
+                    "has_start"
+                ] = True
             elif feat == "stop_codon":
                 # Ensembl GTF EXCLUDES the stop codon from CDS features — add it so the derived CDS
                 # is complete (ends in a stop, length %3 == 0).
@@ -88,24 +102,42 @@ def parse_gtf(gtf_path: Path, needed: set[str]):
     for gid, txs in cand.items():
         # prefer the canonical transcript; else the one with the longest CDS
         canon = [t for t in txs.values() if t.get("canonical")]
-        pick = canon[0] if canon else max(
-            txs.values(), key=lambda t: sum(e - s + 1 for s, e in t["cds"]))
+        pick = (
+            canon[0]
+            if canon
+            else max(txs.values(), key=lambda t: sum(e - s + 1 for s, e in t["cds"]))
+        )
         pick["cds"] = sorted(pick["cds"])
         models[gid] = pick
     return models, all_genes
 
 
 def _blank(chrom, strand, tid):
-    return {"chrom": chrom, "strand": strand, "tx_start": None, "tx_end": None, "cds": [],
-            "has_start": False, "has_stop": False, "biotype": "", "tx_id": tid, "canonical": False}
+    return {
+        "chrom": chrom,
+        "strand": strand,
+        "tx_start": None,
+        "tx_end": None,
+        "cds": [],
+        "has_start": False,
+        "has_stop": False,
+        "biotype": "",
+        "tx_id": tid,
+        "canonical": False,
+    }
 
 
 def _count_overlap(all_genes, chrom, gid, s, e) -> int:
-    return sum(1 for gs, ge, ggid, bt in all_genes.get(chrom, [])
-               if ggid != gid and bt == "protein_coding" and gs <= e and ge >= s)
+    return sum(
+        1
+        for gs, ge, ggid, bt in all_genes.get(chrom, [])
+        if ggid != gid and bt == "protein_coding" and gs <= e and ge >= s
+    )
 
 
-def extract_species(sp: str, prov: dict, needed_ids: dict[str, str], res_rows: pd.DataFrame) -> None:
+def extract_species(
+    sp: str, prov: dict, needed_ids: dict[str, str], res_rows: pd.DataFrame
+) -> None:
     """needed_ids: gene_id -> group(human_gene) for this species. res_rows: rows for this species
     (family/clade). Writes loci/<group>__<sp>.json for each."""
     d = GENOMES / sp
@@ -127,23 +159,35 @@ def extract_species(sp: str, prov: dict, needed_ids: dict[str, str], res_rows: p
         rec = {"family": fam, "human_gene": group, "species": sp, "clade": clade}
         if m is None or not m["cds"] or m["chrom"] not in fa:
             rec["error"] = "no_model" if m is None else "no_cds_or_chrom"
-            key.write_text(json.dumps(rec)); continue
+            key.write_text(json.dumps(rec))
+            continue
         chrom, strand = m["chrom"], m["strand"]
         # transcript-span locus (5'UTR+introns+exons+3'UTR)
-        locus = fa[chrom][m["tx_start"] - 1:m["tx_end"]].seq.upper()
+        locus = fa[chrom][m["tx_start"] - 1 : m["tx_end"]].seq.upper()
         # spliced CDS: concat coding exons in genomic order, revcomp whole if minus strand
-        cds = "".join(fa[chrom][s - 1:e].seq.upper() for s, e in m["cds"])
+        cds = "".join(fa[chrom][s - 1 : e].seq.upper() for s, e in m["cds"])
         if strand == "-":
             locus = str(Seq(locus).reverse_complement())
             cds = str(Seq(cds).reverse_complement())
-        rec.update({
-            "gene_id": gid, "transcript_id": m["tx_id"], "chrom": chrom,
-            "tx_start": m["tx_start"], "tx_end": m["tx_end"], "strand": strand,
-            "biotype": m["biotype"], "n_exons": None,
-            "locus_seq": locus, "cds_seq": cds,
-            "has_start_codon": m["has_start"], "has_stop_codon": m["has_stop"],
-            "n_overlap_genes": _count_overlap(all_genes, chrom, gid, m["tx_start"], m["tx_end"]),
-        })
+        rec.update(
+            {
+                "gene_id": gid,
+                "transcript_id": m["tx_id"],
+                "chrom": chrom,
+                "tx_start": m["tx_start"],
+                "tx_end": m["tx_end"],
+                "strand": strand,
+                "biotype": m["biotype"],
+                "n_exons": None,
+                "locus_seq": locus,
+                "cds_seq": cds,
+                "has_start_codon": m["has_start"],
+                "has_stop_codon": m["has_stop"],
+                "n_overlap_genes": _count_overlap(
+                    all_genes, chrom, gid, m["tx_start"], m["tx_end"]
+                ),
+            }
+        )
         key.write_text(json.dumps(rec))
     print(f"  {sp}: {len(needed_ids)} loci written", flush=True)
 
@@ -185,7 +229,9 @@ def main() -> None:
             rows = res  # for family/clade lookup by group
         else:
             sub = res[res["species"] == sp]
-            needed = {r.ortholog_gene_id: r.human_gene for r in sub.itertuples() if r.ortholog_gene_id}
+            needed = {
+                r.ortholog_gene_id: r.human_gene for r in sub.itertuples() if r.ortholog_gene_id
+            }
             rows = sub
         if not needed:
             continue

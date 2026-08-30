@@ -1,7 +1,6 @@
 """Publication geometry and type, on top of the Arcadia 2026 style guide."""
 
 from __future__ import annotations
-
 import os
 import sys
 from pathlib import Path
@@ -78,11 +77,28 @@ def setup() -> None:
 
 # Spell unsupported Greek glyphs and arrows instead of allowing font substitution.
 GREEK_IN_LATIN = {
-    "α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta", "ε": "epsilon",
-    "ζ": "zeta", "η": "eta", "θ": "theta", "ι": "iota", "κ": "kappa",
-    "λ": "lambda", "ν": "nu", "ξ": "xi", "ο": "omicron", "ρ": "rho",
-    "σ": "sigma", "τ": "tau", "υ": "upsilon", "φ": "phi", "χ": "chi",
-    "ψ": "psi", "ω": "omega",
+    "α": "alpha",
+    "β": "beta",
+    "γ": "gamma",
+    "δ": "delta",
+    "ε": "epsilon",
+    "ζ": "zeta",
+    "η": "eta",
+    "θ": "theta",
+    "ι": "iota",
+    "κ": "kappa",
+    "λ": "lambda",
+    "ν": "nu",
+    "ξ": "xi",
+    "ο": "omicron",
+    "ρ": "rho",
+    "σ": "sigma",
+    "τ": "tau",
+    "υ": "upsilon",
+    "φ": "phi",
+    "χ": "chi",
+    "ψ": "psi",
+    "ω": "omega",
     "→": "to",
 }
 
@@ -92,10 +108,26 @@ GREEK_IN_LATIN = {
 # reads "log10". Handled separately from GREEK_IN_LATIN because that map inserts a space
 # before the word it substitutes, which would turn "log₁₀" into "log 1 0".
 DIRECT_SUBSTITUTES = {
-    "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
-    "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
-    "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
-    "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+    "₀": "0",
+    "₁": "1",
+    "₂": "2",
+    "₃": "3",
+    "₄": "4",
+    "₅": "5",
+    "₆": "6",
+    "₇": "7",
+    "₈": "8",
+    "₉": "9",
+    "⁰": "0",
+    "¹": "1",
+    "²": "2",
+    "³": "3",
+    "⁴": "4",
+    "⁵": "5",
+    "⁶": "6",
+    "⁷": "7",
+    "⁸": "8",
+    "⁹": "9",
     "‖": "||",
 }
 
@@ -258,8 +290,16 @@ def drop_titles(fig, keep_axes: bool = True) -> None:
 # ── Geometry
 
 
-def key_below(fig, handles, labels, title: str, width: float = FULL,
-              max_cols: int = 6, pad: float = 24.0, cols: int | None = None):
+def key_below(
+    fig,
+    handles,
+    labels,
+    title: str,
+    width: float = FULL,
+    max_cols: int = 6,
+    pad: float = 24.0,
+    cols: int | None = None,
+):
     """A shared key UNDER the panels, in as many columns as actually fit the panel width."""
     fig.canvas.draw()  # a renderer has to exist before anything can be measured
     renderer = fig.canvas.get_renderer()
@@ -270,10 +310,19 @@ def key_below(fig, handles, labels, title: str, width: float = FULL,
     for ncol in tries:
         if legend is not None:
             legend.remove()
-        legend = fig.legend(handles, labels, frameon=False, loc="lower left",
-                            bbox_to_anchor=(0.0, 0.0), ncol=ncol, title=title,
-                            handlelength=1.2, columnspacing=0.9, handletextpad=0.5,
-                            borderaxespad=0.0)
+        legend = fig.legend(
+            handles,
+            labels,
+            frameon=False,
+            loc="lower left",
+            bbox_to_anchor=(0.0, 0.0),
+            ncol=ncol,
+            title=title,
+            handlelength=1.2,
+            columnspacing=0.9,
+            handletextpad=0.5,
+            borderaxespad=0.0,
+        )
         for text in legend.get_texts():
             text.set_fontsize(arc.FONT_SIZE["body"])
         legend.get_title().set_fontsize(arc.FONT_SIZE["key_title"])
@@ -285,8 +334,10 @@ def key_below(fig, handles, labels, title: str, width: float = FULL,
             break
     got = box.width * 72.0 / fig.dpi
     if got > inner:  # only reachable when `cols` was forced
-        print(f"    WARNING: key at {ncol} columns is {got:.0f} pt wide, over the {inner:.0f} pt "
-              f"panel — it will overhang. Drop a column or shorten the longest label.")
+        print(
+            f"    WARNING: key at {ncol} columns is {got:.0f} pt wide, over the {inner:.0f} pt "
+            f"panel — it will overhang. Drop a column or shorten the longest label."
+        )
     # `tight` re-anchors these once the figure has its final height: the anchor is a FIGURE
     # FRACTION, so a key pinned at y=0 now would still be pinned to the very bottom edge after
     # the figure grows, with no margin under it.
@@ -299,12 +350,18 @@ def tight(fig, bottom: float = 0.0, margin: float = arc.MARGIN) -> None:
     w, h = fig.get_size_inches() * 72.0
     for legend in getattr(fig, "_arcadia_bottom_keys", []):
         legend.set_bbox_to_anchor((margin / w, margin / h), transform=fig.transFigure)
-    fig.tight_layout(rect=(margin / w, (bottom + margin) / h,
-                           1.0 - margin / w, 1.0 - margin / h))
+    fig.tight_layout(rect=(margin / w, (bottom + margin) / h, 1.0 - margin / w, 1.0 - margin / h))
 
 
-def place(fig, width: float, height: float, margin: float = arc.MARGIN,
-          gap: float = arc.GAP, right: float | None = None, top: float | None = None) -> None:
+def place(
+    fig,
+    width: float,
+    height: float,
+    margin: float = arc.MARGIN,
+    gap: float = arc.GAP,
+    right: float | None = None,
+    top: float | None = None,
+) -> None:
     """Resize `fig` to an exact panel and lay its existing axes out on the guide's grid."""
     fig.set_size_inches(width / 72.0, height / 72.0)
     fig.subplots_adjust(
@@ -317,8 +374,9 @@ def place(fig, width: float, height: float, margin: float = arc.MARGIN,
     )
 
 
-def finish(fig, name: str, directory: Path | str | None = None,
-           formats=("pdf", "png"), dpi: int = 300) -> None:
+def finish(
+    fig, name: str, directory: Path | str | None = None, formats=("pdf", "png"), dpi: int = 300
+) -> None:
     """Type-check, then save at exactly the size the figure was given."""
     enforce_type(fig)
     # A key's Chateau rule is positioned in FIGURE coordinates against the rendered width of

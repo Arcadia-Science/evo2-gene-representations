@@ -1,7 +1,8 @@
-"""Assemble the analysis datasets from the QC'd loci manifest, per the locked decisions: - EXCLUDE qc-fail AND length_outlier loci (partial/truncated models)."""
+"""Assemble the analysis datasets from the QC'd loci manifest, per the locked decisions: - EXCLUDE
+qc-fail AND length_outlier loci (partial/truncated models).
+"""
 
 from __future__ import annotations
-
 import json
 import random
 from pathlib import Path
@@ -13,8 +14,8 @@ LOCI = OUT / "loci"
 CAP = 600
 MIN_SP = 10
 SEED = 17
-LARGE = {"cytochrome_p450", "hox"}          # >CAP, capped in core (Ras 536 < CAP -> kept whole)
-OR_FAM = "olfactory_receptors"              # separate capped track
+LARGE = {"cytochrome_p450", "hox"}  # >CAP, capped in core (Ras 536 < CAP -> kept whole)
+OR_FAM = "olfactory_receptors"  # separate capped track
 MEDIUM_KEEPALL = {"globins", "opsins", "carbonic_anhydrase"}
 ANCHORS = {"nitric_oxide_synthase", "heme_oxygenase"}
 
@@ -33,7 +34,7 @@ def _cap_by_groups(df: pd.DataFrame, cap: int, seed: int) -> pd.DataFrame:
     sizes = df.groupby("group").size()
     groups = list(sizes.index)
     rng.shuffle(groups)
-    groups.sort(key=lambda g: sizes[g], reverse=True)   # stable: more-species groups first
+    groups.sort(key=lambda g: sizes[g], reverse=True)  # stable: more-species groups first
     kept, n = [], 0
     for g in groups:
         if n >= cap:
@@ -75,8 +76,11 @@ def main() -> None:
     # summary
     print("\n=== dataset sizes (loci | groups | analyzable groups) ===")
     for name, d in [("complete", keep), ("balanced_core", core), ("or_track", or_track)]:
-        ag = d[d["analyzable"]]["group"].nunique() if "analyzable" in d else \
-            (d.groupby("group")["species"].nunique() >= MIN_SP).sum()
+        ag = (
+            d[d["analyzable"]]["group"].nunique()
+            if "analyzable" in d
+            else (d.groupby("group")["species"].nunique() >= MIN_SP).sum()
+        )
         print(f"  {name:15} {len(d):>5} | {d['group'].nunique():>4} | {ag:>4}")
         print(d.groupby("family").size().to_string().replace("\n", "\n     "))
 
