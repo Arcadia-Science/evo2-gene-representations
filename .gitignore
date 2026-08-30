@@ -96,10 +96,19 @@ project_overview.txt
 # One-off diagnostics / sweeps / scale-up experiments (not part of the pipeline)
 scripts/evo2/troubleshooting/
 
-# Local deprecated/parked scripts (not maintained)
+# Local deprecated/parked scripts (not maintained). Archived by the 2026-08-28
+# cleanup -- see deprecated/README.md. Intentionally kept OUT of git.
 deprecated/
+# Local notes / historical write-ups (not part of the pipeline)
+notes/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+
 
 # Large reference binaries — keep out of git (papers + Goodfire reproduction bundle)
 evo2.pdf
 gpnstar.pdf
 tree_of_life_reproduction_goodfire/
+.venv/
