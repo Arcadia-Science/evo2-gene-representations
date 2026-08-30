@@ -22,49 +22,31 @@ esac
 
 PY="uv run --no-sync python"
 R=results/2026-08-08_platypus-strat-400
-PAIRED=results/2026-07-28_evo2-platypus-paired/stage2_cds_mean
+PAIR_RUN=results/2026-07-28_evo2-platypus-paired
+PAIR_EMBED=$PAIR_RUN/stage6_representation
+PAIRED=$PAIR_RUN/stage2_cds_mean
 S=scripts/steering/platypus
 ARM=stage4_cds_mean_blocks27
 OUT=pub/figures
-mkdir -p "$OUT"
-OK=0; FAILED=0; SKIPPED=0; declare -a FAIL_LIST=()
-
-say() { echo; echo "══ $*"; }
-
-stage() {
-  local cost="$1" desc="$2"; shift 2
-  echo; echo "── $desc   [$cost]"; echo "   $*"
-  [ "$MODE" = run ] || return 0
-  "$@" && echo "   ok" || { echo "   FAILED — chain stopped"; exit 1; }
-}
-
-need() {
-  local label="$1"; shift
-  for p in "$@"; do
-    compgen -G "$p" > /dev/null || {
-      SKIPPED=$((SKIPPED+1)); echo "── $label"; echo "   SKIP — missing $p"; return 1; }
-  done
-}
-
-fig() {
-  local label="$1"; shift
-  echo "── $label"
-  [ "$MODE" = plan ] && { echo "   $*"; return 0; }
-  if "$@" > /tmp/exp3_fig.log 2>&1; then
-    OK=$((OK+1)); grep -E '^\s+pub: ' /tmp/exp3_fig.log | sed 's/^/   /'
-  else
-    FAILED=$((FAILED+1)); FAIL_LIST+=("$label")
-    echo "   FAILED:"; tail -6 /tmp/exp3_fig.log | sed 's/^/   | /'
-  fi
-}
-
-collect() { for e in png pdf; do [ -f "$1.$e" ] && cp -p "$1.$e" "$OUT/$2.$e"; done; return 0; }
+source experiments/_helpers.sh
+init_experiment exp3
 
 echo "Experiment 3 — platypus steering (figures 5-11)"
 [ "$MODE" = plan ]    && echo "DRY RUN — nothing will execute."
 [ "$MODE" = figures ] && echo "FIGURES ONLY — re-rendering from artifacts on disk."
 
 if [ "$MODE" != figures ]; then
+say "Paired-panel direction geometry (figure 6)"
+
+stage "~15 min, CPU" "P1. build the paired 103-gene human/platypus panel" \
+  $PY $S/dataset.py --out-dir $PAIR_RUN/stage1
+stage "~2 h, GPU"   "P2. full-CDS mean pooling across 32 blocks" \
+  $PY $S/strat/stage2_embed.py --stage1 $PAIR_RUN/stage1 --out $PAIR_EMBED
+stage "~20 min"     "P3. paired-panel leave-one-out and magnitude statistics" \
+  $PY $S/delta_stats.py --stage1-dir $PAIR_RUN/stage1 --pooled \
+     --pooled-npz $PAIR_EMBED/pooled_representations.npz --representation cds_mean \
+     --out-dir $PAIRED
+
 say "Panel and reference data"
 
 # The 24-mammal ortholog CDS that defines which platypus bases count as "private". Figures 7-10 are
@@ -133,7 +115,12 @@ fi
 
 say "Figures 5-11"
 
-if need "figs 5 + 11: strata composition, rate matrix" "$R/stage5" "$R/stage3_cds_mean"; then
+if need "figs 5 + 11: strata composition, rate matrix" \
+        "$R/stage1/pairs.csv" "$R/stage1/attrition.csv" \
+        "$R/stage2/aligned_coverage.csv" "$R/geom_cds_mean/per_gene_by_layer.csv" \
+        "$R/stage5/tree_stats.csv" "$R/stage5/dnds.csv" \
+        "$R/stage5/rate_vs_direction.csv" "$R/stage5/rate_vs_direction_shape.csv" \
+        "$R/$ARM/stage4_scores_nt.csv"; then
   fig "figs 5 + 11: strata composition, rate matrix" \
     $PY $S/strat/hypothesis_figures.py --run "$R" --only 5 8 --pub
   collect "$R/figures/pub/8b_strata_composition_frame" fig05_stratum_composition
@@ -141,7 +128,9 @@ if need "figs 5 + 11: strata composition, rate matrix" "$R/stage5" "$R/stage3_cd
 fi
 
 # Figures 6a/6b come from the ~100-gene paired panel, not the n=400 one.
-if need "figs 6a/6b: LOO cosine, magnitude spread" "$PAIRED/layer_stats.csv"; then
+if need "figs 6a/6b: LOO cosine, magnitude spread" \
+        "$PAIRED/layer_stats.csv" "$PAIRED/per_gene_by_layer.csv" \
+        "$PAIRED/null_distributions.npz"; then
   fig "figs 6a/6b: LOO cosine, magnitude spread" $PY $S/figures.py \
     --stage2-dir "$PAIRED" --structure-suffix _cds_mean --label 'CDS mean' --pub
   collect "$PAIRED/figures/pub/1_loo_median_by_layer" fig06a_leave_one_out_cosine_by_block
@@ -181,19 +170,13 @@ if [ "$MODE" = plan ]; then
   exit 0
 fi
 
-echo; echo "══ $OK ok, $FAILED failed, $SKIPPED skipped"
-[ ${#FAIL_LIST[@]} -gt 0 ] && printf '   FAILED: %s\n' "${FAIL_LIST[@]}"
-echo; echo "══ panel geometry (published panels are exactly 1000 or 500 pt wide)"
-$PY - <<'EOF'
-from PIL import Image
-import glob, os, sys
-bad = 0
-for f in sorted(glob.glob("pub/figures/fig0[5-9]*.png") + glob.glob("pub/figures/fig1[01]*.png")):
-    im = Image.open(f)
-    dpi = im.info.get("dpi", (300, 300))[0]
-    w, h = (d / (dpi / 72) for d in im.size)
-    flag = "" if round(w) in (500, 1000) else "   <-- OFF-SPEC"
-    bad += bool(flag)
-    print(f"   {round(w):>5} x {round(h):<5} pt   {os.path.basename(f)}{flag}")
-sys.exit(1 if bad else 0)
-EOF
+finish_figures \
+  fig05_stratum_composition \
+  fig06a_leave_one_out_cosine_by_block \
+  fig06b_delta_magnitude_spread_by_block \
+  fig07_steering_delta_by_stratum \
+  fig08_dose_response_by_stratum \
+  fig09a_leave_human_vs_platypus_choice_private \
+  fig09b_leave_human_vs_platypus_choice_loose \
+  fig10_gc_by_codon_position \
+  fig11_rate_predictor_outcome_matrix

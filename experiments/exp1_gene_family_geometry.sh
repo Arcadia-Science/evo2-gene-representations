@@ -26,42 +26,8 @@ PY="uv run --no-sync python"
 RUN=results/2026-07-16_mammalian-orthologs-transcript_cdsmask
 GF=results/layer_sweep_summaries/mammalian-orthologs-cdsmask-48fam
 OUT=pub/figures
-mkdir -p "$OUT"
-OK=0; FAILED=0; SKIPPED=0; declare -a FAIL_LIST=()
-
-say() { echo; echo "══ $*"; }
-
-# Print a stage; run it only under --run, and stop the chain if it fails.
-stage() {
-  local cost="$1" desc="$2"; shift 2
-  echo; echo "── $desc   [$cost]"; echo "   $*"
-  [ "$MODE" = run ] || return 0
-  "$@" && echo "   ok" || { echo "   FAILED — chain stopped"; exit 1; }
-}
-
-# Skip a figure unless every input glob matches.
-need() {
-  local label="$1"; shift
-  for p in "$@"; do
-    compgen -G "$p" > /dev/null || {
-      SKIPPED=$((SKIPPED+1)); echo "── $label"; echo "   SKIP — missing $p"; return 1; }
-  done
-}
-
-# Render a figure, recording the outcome instead of aborting.
-fig() {
-  local label="$1"; shift
-  echo "── $label"
-  [ "$MODE" = plan ] && { echo "   $*"; return 0; }
-  if "$@" > /tmp/exp1_fig.log 2>&1; then
-    OK=$((OK+1)); grep -E '^\s+pub: ' /tmp/exp1_fig.log | sed 's/^/   /'
-  else
-    FAILED=$((FAILED+1)); FAIL_LIST+=("$label")
-    echo "   FAILED:"; tail -6 /tmp/exp1_fig.log | sed 's/^/   | /'
-  fi
-}
-
-collect() { for e in png pdf; do [ -f "$1.$e" ] && cp -p "$1.$e" "$OUT/$2.$e"; done; return 0; }
+source experiments/_helpers.sh
+init_experiment exp1
 
 echo "Experiment 1 — gene-family geometry (figures 1-3)"
 [ "$MODE" = plan ]    && echo "DRY RUN — nothing will execute."
@@ -88,9 +54,12 @@ stage "~15 min"     "A7. per-locus CDS-position masks" \
 
 say "Embedding and scoring"
 
+FAMS='<families from complete_manifest.csv>'
+if [ "$MODE" = run ]; then
 FAMS=$($PY -c "
 import pandas as pd; print(' '.join(sorted(pd.read_csv('data/mammalian_orthologs/complete_manifest.csv').family.unique())))" 2>/dev/null) \
   || FAMS='<families from complete_manifest.csv>'
+fi
 
 # Safe to interrupt: each locus is written to a .tmp.npy and atomically renamed, so a restart skips
 # what is done and loses at most the in-flight locus. --mirror-arm cds pins the locus set to the
@@ -121,7 +90,9 @@ fi
 say "Figures 1-3"
 
 # Publication panels use angular within-family scoring and the configured baseline exclusions.
-if need "figs 1-2: between/within rho by layer" "$RUN/blocks*"; then
+if need "figs 1-2: between/within rho by layer" \
+        "$RUN/blocks*/between_family_baseline_scores.csv" \
+        "$RUN/blocks*/within_family_patristic_angular.csv"; then
   fig "figs 1-2: between/within rho by layer" $PY scripts/layer_sweep_summary.py \
     --glob "$RUN/blocks*" \
     --out-dir "$GF" \
@@ -145,19 +116,7 @@ if [ "$MODE" = plan ]; then
   exit 0
 fi
 
-echo; echo "══ $OK ok, $FAILED failed, $SKIPPED skipped"
-[ ${#FAIL_LIST[@]} -gt 0 ] && printf '   FAILED: %s\n' "${FAIL_LIST[@]}"
-echo; echo "══ panel geometry (published panels are exactly 1000 or 500 pt wide)"
-$PY - <<'EOF'
-from PIL import Image
-import glob, os, sys
-bad = 0
-for f in sorted(glob.glob("pub/figures/fig0[123]*.png")):
-    im = Image.open(f)
-    dpi = im.info.get("dpi", (300, 300))[0]
-    w, h = (d / (dpi / 72) for d in im.size)
-    flag = "" if round(w) in (500, 1000) else "   <-- OFF-SPEC"
-    bad += bool(flag)
-    print(f"   {round(w):>5} x {round(h):<5} pt   {os.path.basename(f)}{flag}")
-sys.exit(1 if bad else 0)
-EOF
+finish_figures \
+  fig01_between_family_rho_by_layer \
+  fig02_within_family_rho_by_layer \
+  fig03_within_family_three_families
