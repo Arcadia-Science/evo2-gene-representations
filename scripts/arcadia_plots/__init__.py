@@ -1,0 +1,38 @@
+"""arcadia_style -- matplotlib implementation of the 2026 Arcadia Style Guide."""
+
+from .colors import (  # noqa: F401
+    BACKGROUNDS, BICOLOR, BLACK, CHARCOAL, CHATEAU, COLORS, DIVERGING,
+    GRADIENT_STOPS, GRADIENTS, HEATMAP_GRADIENTS, HIGHLIGHT, NEUTRALS, PALETTES,
+    PARCHMENT, PRIMARY, SECONDARY, SHADES, WHITE, cmap, color, gradient,
+    gradient_colors, palette, pycolor_available, register_cmaps,
+)
+from .components import (  # noqa: F401
+    PT, annotate, colorbar_key, figure, key, panel_letter, panels, save,
+    size_px, sync_keys,
+)
+from .fonts import MONO, NEXT, available as fonts_available, ensure_fonts  # noqa: F401
+from .fonts import fetch as fetch_fonts  # noqa: F401
+from .fonts import report as font_report  # noqa: F401
+from .style import (  # noqa: F401
+    FONT_SIZE, GAP, MARGIN, RC, SIZES, WEIGHT, ArcadiaNumberFormatter, apply,
+    mono_ticks, set_cycle, style_axes,
+)
+
+__version__ = "1.0.0"
+
+__all__ = [
+    # setup
+    "apply", "set_cycle", "style_axes", "mono_ticks", "ensure_fonts",
+    "fonts_available", "font_report", "fetch_fonts",
+    # layout
+    "figure", "panels", "panel_letter", "save", "size_px", "sync_keys",
+    "SIZES", "MARGIN", "GAP", "PT", "FONT_SIZE", "WEIGHT", "RC",
+    # marks
+    "key", "colorbar_key", "annotate", "ArcadiaNumberFormatter",
+    # color
+    "color", "palette", "gradient", "cmap", "gradient_colors", "register_cmaps",
+    "COLORS", "PALETTES", "SHADES", "GRADIENTS", "HEATMAP_GRADIENTS",
+    "pycolor_available",
+    "BICOLOR", "HIGHLIGHT", "PRIMARY", "SECONDARY", "NEUTRALS", "BACKGROUNDS",
+    "BLACK", "WHITE", "CHARCOAL", "CHATEAU", "PARCHMENT",
+]
