@@ -1,29 +1,4 @@
-"""Single source of truth for gene-family SELECTION, shared by both models.
-
-This module is the one place that knows which gene families exist, what's in them, and how to
-(re)build their membership over the network — for BOTH panels:
-
-  * "human"  — GPN-Star human paralog families (HGNC gene groups; genome-anchored, hg38 only).
-  * "evo2"   — Evo2 cross-kingdom families (KEGG Orthology; sequence-native, all of life).
-
-It holds three things:
-
-  1. DEFINITIONS / metadata — per-panel family order, the membership source ids (HGNC gene groups
-     for the human panel, KEGG KOs for the cross-kingdom panel), a single union Pfam-accession map
-     (the two panels agree on every shared family), and per-panel plot colors.
-  2. BUILDERS — build_human_paralogs() resolves HGNC groups -> families_data.json; build_orthologs()
-     resolves KEGG KOs -> per-family CDS FASTA + manifest.csv. All network/subprocess work is inside
-     these functions, so importing this module for the metadata/accessors stays cheap.
-  3. ACCESSORS — family_members(panel), family_order(panel), family_colors(panel); plus the
-     PFAM_ACCESSIONS constant. Both pipelines import from here instead of keeping their own copies.
-
-(Supersedes the old scripts/gpnstar/build_families.py + scripts/gpnstar/families.py + the duplicated
-Pfam/color tables in scripts/evo2/, and scripts/evo2/build_gene_families_evo2.py.)
-
-CLI:
-    uv run python scripts/gene_families.py build-human-paralog
-    uv run python scripts/gene_families.py build-ortholog [--target 400] [--no-dedup] [--families ...]
-"""
+"""Single source of truth for gene-family SELECTION, shared by both models."""
 
 from __future__ import annotations
 
@@ -31,7 +6,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FAMILIES_DATA_JSON = ROOT / "scripts" / "gpnstar" / "families_data.json"  # human membership artifact
+FAMILIES_DATA_JSON = ROOT / "scripts" / "families_data.json"  # human membership artifact
 EVO2_DATA_DIR = ROOT / "data" / "evo2_gene_families"  # evo2 FASTA + manifest live here
 
 # ── HTTP / build constants ──────────────────────────────────────────────────────
@@ -70,19 +45,83 @@ HGNC_FAMILY_SPEC: dict[str, dict] = {
         "group_ids": [1000, 1001, 1002, 1003, 1005, 1006, 1007, 1008, 1009, 1010, 1011, 1012, 1013,
                       1014, 1015, 1016, 1017],
     },
-    # ── well-separated positive controls (kept from the original set) ──
+    # ── Well-separated positive controls
     "hox": {"group_ids": [518], "symbol_prefix": "HOX"},  # HOXL subclass -> 39 canonical HOX genes
     "ras_gtpases": {"group_ids": [389]},  # RAS type GTPase family
-    # ── gas-sensing additions (human paralog families; 2026-06-19) ──
+    # ── Gas-sensing paralog families
     # The cross-kingdom gas panel is Evo2-only; in human only these have paralog expansions.
     "carbonic_anhydrase": {"group_ids": [460]},  # alpha class: CA1-14 + CA-related
     "nitric_oxide_synthase": {"group_ids": [3878]},  # NOS1/2/3
     "heme_oxygenase": {"group_ids": [3873]},  # HMOX1/2
+    # ── Redox-homeostasis paralog families
+    # Families must meet the four-paralog minimum for within-family analysis.
+    "peroxiredoxin": {"group_ids": [953]},  # Peroxiredoxins (PRDX1-6)
+    "glutathione_peroxidase": {"group_ids": [3475]},  # Glutathione peroxidase family (GPX1-8)
+    # Glutaredoxin domain-containing group is heterogeneous (GRXCR*, PTGES2, TXNRD*); restrict
+    # to the true glutaredoxins GLRX/GLRX2/GLRX3/GLRX5 via the symbol prefix.
+    "glutaredoxin": {"group_ids": [1468], "symbol_prefix": "GLRX"},
+    "peroxidase": {"group_ids": [3476]},  # Heme peroxidase family (EPX/LPO/MPO/PXDN/PXDNL/TPO)
+    # ── Redox and detoxification metabolism
+    # Broadens the between-family chemistry axis with clean HGNC paralog families (all ≥4
+    # protein-coding members). Enzyme oxidoreductases + phase-I/II detox conjugation.
+    "glutathione_s_transferase": {"group_ids": [567]},  # Soluble GSTs (GSTA/M/P/T/O/Z/K + HPGDS)
+    "aldehyde_dehydrogenase": {"group_ids": [398]},  # ALDH superfamily (NAD(P)+ oxidoreductase)
+    # AKR group lumps in KCNAB1/2/3 (K+-channel beta subunits with an AKR fold but not
+    # metabolic reductases); restrict to the true aldo-keto reductases via the symbol prefix.
+    "aldo_keto_reductase": {"group_ids": [399], "symbol_prefix": "AKR"},
+    "sulfotransferase": {"group_ids": [762]},  # Cytosolic sulfotransferases (SULT; phase-II)
+    "udp_glucuronosyltransferase": {"group_ids": [363]},  # UGT (phase-II glucuronidation)
+    "nadph_oxidase": {"group_ids": [3535]},  # NOX/DUOX (heme+FAD, O2 -> superoxide/H2O2)
+    "arachidonate_lipoxygenase": {"group_ids": [407]},  # ALOX (non-heme Fe + O2)
+    "flavin_monooxygenase": {"group_ids": [1667]},  # FMO1-5 (FAD monooxygenase)
+    "steap_metalloreductase": {"group_ids": [1324]},  # STEAP (metalloreductase, Fe/Cu)
+    # ── Zinc and metal metalloenzymes
+    "matrix_metalloproteinase": {"group_ids": [891]},  # M10 matrixins (Zn endopeptidase)
+    "adam_metallopeptidase": {"group_ids": [47]},  # ADAM (M12B reprolysin Zn protease)
+    "adamts_metallopeptidase": {"group_ids": [50]},  # ADAMTS (M12B + thrombospondin repeats)
+    "m14_carboxypeptidase": {"group_ids": [1321]},  # M14 Zn carboxypeptidases
+    "alcohol_dehydrogenase": {"group_ids": [397]},  # Zn-binding ADH (NAD oxidoreductase)
+    "metallothionein": {"group_ids": [638]},  # Zn/Cu-binding metallothioneins
+    "alkaline_phosphatase": {"group_ids": [1072]},  # Zn/Mg alkaline phosphatases
+    "histone_deacetylase_classI": {"group_ids": [989]},  # Zn-dependent class-I HDACs
+    "ectonucleotide_pyrophosphatase": {"group_ids": [1821]},  # ENPP (Zn nucleotide PDE)
+    "phosphodiesterase": {"group_ids": [681]},  # cyclic-nucleotide PDEs (bimetal Zn/Mn)
+    # ── Tier 3: Fe / Fe-S
+    "ferritin": {"group_ids": [1455]},  # ferritin chains (Fe storage, ferroxidase)
+    # ── Tier 4: P-loop GTPase superfamily (nested homology vs ras_gtpases) ──
+    "rab_gtpase": {"group_ids": [388]},  # RAB small GTPases (Ras superfamily)
+    "arf_gtpase": {"group_ids": [357]},  # ARF/ARL small GTPases
+    "rho_gtpase": {"group_ids": [390]},  # RHO family GTPases
+    "guanylate_binding_protein": {"group_ids": [1825]},  # GBP large IFN-inducible GTPases
+    # ── Tier 5: GPCR / receptor superfamily (within-7TM structure vs opsins/ORs) ──
+    "taste2_receptor": {"group_ids": [1162]},  # TAS2R bitter-taste (class-A-like)
+    "serotonin_receptor": {"group_ids": [170]},  # 5-HT GPCRs (HTR1/2/4/5/6/7; class A)
+    "adrenoceptor": {"group_ids": [169]},  # adrenergic receptors (class A)
+    "glutamate_metabotropic": {"group_ids": [281]},  # mGluR (class-C GPCR outgroup)
+    "dopamine_receptor": {"group_ids": [181]},  # dopamine receptors (class A)
+    "muscarinic_receptor": {"group_ids": [180]},  # muscarinic ACh receptors (class A)
+    "histamine_receptor": {"group_ids": [187]},  # histamine receptors (class A)
+    "p2y_receptor": {"group_ids": [213]},  # P2Y purinergic receptors (class A)
+    "cxc_chemokine_receptor": {"group_ids": [1094]},  # CXC chemokine receptors (class A)
+    # ── Tier 6: mechanism contrast + distant controls ──
+    "serine_protease": {"group_ids": [738]},  # trypsin/chymotrypsin-like (proteolysis, non-metal)
+    "histone_h4": {"group_ids": [1939]},  # H4 histones (near-identical paralogs; DNA packaging)
 }
 
 HUMAN_FAMILY_ORDER: list[str] = [
     "globins", "opsins", "olfactory_receptors", "cytochrome_p450", "hox",
     "ras_gtpases", "carbonic_anhydrase", "nitric_oxide_synthase", "heme_oxygenase",
+    "peroxiredoxin", "glutathione_peroxidase", "glutaredoxin", "peroxidase",
+    "glutathione_s_transferase", "aldehyde_dehydrogenase", "aldo_keto_reductase",
+    "sulfotransferase", "udp_glucuronosyltransferase", "nadph_oxidase",
+    "arachidonate_lipoxygenase", "flavin_monooxygenase", "steap_metalloreductase",
+    "matrix_metalloproteinase", "adam_metallopeptidase", "adamts_metallopeptidase",
+    "m14_carboxypeptidase", "alcohol_dehydrogenase", "metallothionein",
+    "alkaline_phosphatase", "histone_deacetylase_classI", "ectonucleotide_pyrophosphatase",
+    "phosphodiesterase", "ferritin", "rab_gtpase", "arf_gtpase", "rho_gtpase",
+    "guanylate_binding_protein", "taste2_receptor", "serotonin_receptor", "adrenoceptor",
+    "glutamate_metabotropic", "dopamine_receptor", "muscarinic_receptor", "histamine_receptor",
+    "p2y_receptor", "cxc_chemokine_receptor", "serine_protease", "histone_h4",
 ]
 
 # ── Evo2 panel (cross-kingdom): KEGG Orthology spec ──────────────────────────────
@@ -116,7 +155,7 @@ FAMILY_KOS: dict[str, dict[str, str]] = {
     },
     # Control: small-GTPase RAS family (eukaryotic, tight, well understood).
     "ras_gtpases": {"K07827": "KRAS", "K02833": "HRAS"},
-    # ── Gas-sensing / gas-metabolism expansion (2026-06-19) ─────────────────────
+    # ── Gas sensing and metabolism─
     # Convergent O2 carrier: hemerythrin binds O2 with a non-heme di-iron centre — a DIFFERENT fold
     # from the globin heme pocket (functional-but-not-sequence analog).
     "hemerythrin": {"K07216": "hr"},
@@ -143,8 +182,7 @@ FAMILY_KOS: dict[str, dict[str, str]] = {
 EVO2_FAMILY_ORDER: list[str] = list(FAMILY_KOS)
 
 # ── Pfam accession per family (single union map; family-intrinsic homology id) ───────
-# Keys span both panels; the two source panels agree on every shared family by construction, so this
-# one map serves both. Consumed by pfam_hmm_jsd.py (Pfam-JSD) and between_family_baselines.py (GO).
+# Keys span both panels, which agree on shared-family accessions.
 PFAM_ACCESSIONS: dict[str, str] = {
     # human + shared
     "globins": "PF00042",  # Globin
@@ -156,6 +194,52 @@ PFAM_ACCESSIONS: dict[str, str] = {
     "carbonic_anhydrase": "PF00194",  # alpha carbonic anhydrase (human panel name)
     "nitric_oxide_synthase": "PF02898",  # NO_synthase oxygenase domain
     "heme_oxygenase": "PF01126",  # Heme_oxygenase
+    # redox-homeostasis additions (human)
+    "peroxiredoxin": "PF00578",  # AhpC/TSA (peroxiredoxin)
+    "glutathione_peroxidase": "PF00255",  # Glutathione peroxidase
+    "glutaredoxin": "PF00462",  # Glutaredoxin
+    "peroxidase": "PF03098",  # Animal haem peroxidase (MPO/LPO/EPX/TPO/PXDN)
+    # Tier 1 — redox / detox metabolism
+    "glutathione_s_transferase": "PF02798",  # GST N-terminal (thioredoxin-like)
+    "aldehyde_dehydrogenase": "PF00171",  # Aldedh
+    "aldo_keto_reductase": "PF00248",  # Aldo_ket_red
+    "sulfotransferase": "PF00685",  # Sulfotransfer_1
+    "udp_glucuronosyltransferase": "PF00201",  # UDPGT
+    "nadph_oxidase": "PF01794",  # Ferric_reduct (NOX/DUOX)
+    "arachidonate_lipoxygenase": "PF00305",  # Lipoxygenase
+    "flavin_monooxygenase": "PF00743",  # FMO-like
+    "steap_metalloreductase": "PF03807",  # F420_oxidored (STEAP oxidoreductase)
+    # Tier 2 — Zn / metal metalloenzymes
+    "matrix_metalloproteinase": "PF00413",  # Peptidase_M10 (Matrixin)
+    "adam_metallopeptidase": "PF01421",  # Reprolysin (Peptidase_M12B)
+    "adamts_metallopeptidase": "PF01421",  # Reprolysin (M12B; shares catalytic domain w/ ADAM)
+    "m14_carboxypeptidase": "PF00246",  # Peptidase_M14 (Zn carboxypeptidase)
+    "alcohol_dehydrogenase": "PF00107",  # ADH_zinc_N
+    "metallothionein": "PF00131",  # Metallothionein
+    "alkaline_phosphatase": "PF00245",  # Alk_phosphatase
+    "histone_deacetylase_classI": "PF00850",  # Hist_deacetyl
+    "ectonucleotide_pyrophosphatase": "PF01663",  # Phosphodiest (Type I PDE/nucleotidase)
+    "phosphodiesterase": "PF00233",  # PDEase_I (cyclic-nucleotide)
+    # Tier 3 — Fe / Fe-S
+    "ferritin": "PF00210",  # Ferritin-like domain
+    # Tier 4 — P-loop GTPase superfamily
+    "rab_gtpase": "PF00071",  # Ras (Rab is a Ras-superfamily GTPase)
+    "arf_gtpase": "PF00025",  # Arf
+    "rho_gtpase": "PF00071",  # Ras (Rho family)
+    "guanylate_binding_protein": "PF02263",  # GBP N-terminal
+    # Tier 5 — GPCR / receptor superfamily
+    "taste2_receptor": "PF05296",  # TAS2R
+    "serotonin_receptor": "PF00001",  # 7tm_1 (class-A GPCR)
+    "adrenoceptor": "PF00001",  # 7tm_1
+    "glutamate_metabotropic": "PF00003",  # 7tm_3 (class-C GPCR)
+    "dopamine_receptor": "PF00001",  # 7tm_1
+    "muscarinic_receptor": "PF00001",  # 7tm_1
+    "histamine_receptor": "PF00001",  # 7tm_1
+    "p2y_receptor": "PF00001",  # 7tm_1
+    "cxc_chemokine_receptor": "PF00001",  # 7tm_1
+    # Tier 6 — mechanism contrast + controls
+    "serine_protease": "PF00089",  # Trypsin (chymotrypsin-like serine protease)
+    "histone_h4": "PF00125",  # Core histone fold
     # evo2 cross-kingdom-only
     "heme_copper_oxidase": "PF00115",  # COX1 (cytochrome c / quinol oxidase subunit I)
     "hemerythrin": "PF01814",  # Hemerythrin (non-heme di-iron O2 carrier)
@@ -167,22 +251,60 @@ PFAM_ACCESSIONS: dict[str, str] = {
     "methane_monooxygenase": "PF02332",  # sMMO mmoX representative (family also mixes pMMO)
 }
 
-# ── Per-panel plot colors (the two panels deliberately use different palettes) ───────
+# ── Per-panel plot colors ────────────────────────────────────────────────────────
+# Store Arcadia color names so this module remains importable without matplotlib.
+# Hue identifies chemistry blocks; lightness orders families within each block.
 FAMILY_COLORS: dict[str, dict[str, str]] = {
     "human": {
-        "globins": "#E63946", "opsins": "#F4A261", "olfactory_receptors": "#2A9D8F",
-        "cytochrome_p450": "#457B9D", "hox": "#6A4C93", "ras_gtpases": "#E9C46A",
-        "carbonic_anhydrase": "#1B998B", "nitric_oxide_synthase": "#9B5DE5",
-        "heme_oxygenase": "#F15BB5",
+        # Heme / O2 chemistry — red_shades
+        "globins": "cinnabar", "cytochrome_p450": "dragon",
+        "nitric_oxide_synthase": "amber", "heme_oxygenase": "tangerine",
+        "peroxidase": "melon",
+        # Thiol / peroxide redox — yellow_shades
+        "peroxiredoxin": "umber", "glutathione_peroxidase": "mustard",
+        "glutaredoxin": "canary", "glutathione_s_transferase": "sun",
+        "nadph_oxidase": "oat",
+        # Phase-I / phase-II detox — pink_shades
+        "aldehyde_dehydrogenase": "azalea", "aldo_keto_reductase": "candy",
+        "sulfotransferase": "rose", "udp_glucuronosyltransferase": "dress",
+        "flavin_monooxygenase": "putty",
+        # Non-heme Fe — the rust anchors, darkest first
+        "arachidonate_lipoxygenase": "redwood", "steap_metalloreductase": "terracotta",
+        "ferritin": "tumbleweed",
+        # Zn / metal-dependent enzymes — purple_shades then teal_shades
+        "carbonic_anhydrase": "concord", "matrix_metalloproteinase": "tanzanite",
+        "adam_metallopeptidase": "aster", "adamts_metallopeptidase": "wish",
+        "m14_carboxypeptidase": "iris", "alcohol_dehydrogenase": "depths",
+        "metallothionein": "asparagus", "alkaline_phosphatase": "seaweed",
+        "histone_deacetylase_classI": "teal", "ectonucleotide_pyrophosphatase": "glass",
+        "phosphodiesterase": "mint",
+        # P-loop GTPases — green_shades
+        "ras_gtpases": "yucca", "rab_gtpase": "fern", "arf_gtpase": "matcha",
+        "rho_gtpase": "lime", "guanylate_binding_protein": "edamame",
+        # GPCRs — blue_shades then cool_gray_shades
+        "opsins": "dusk", "olfactory_receptors": "lapis", "taste2_receptor": "aegean",
+        "serotonin_receptor": "vital", "adrenoceptor": "sky",
+        "glutamate_metabotropic": "steel", "dopamine_receptor": "marine",
+        "muscarinic_receptor": "cloud", "histamine_receptor": "dove",
+        "p2y_receptor": "ice", "cxc_chemokine_receptor": "denim",
+        # Structural / positive controls — neutrals, so they read as "not a chemistry block"
+        "hox": "charcoal", "serine_protease": "bark", "histone_h4": "stone",
     },
     "evo2": {
-        "globins": "#D1495B", "heme_copper_oxidase": "#E76F51", "cytochrome_p450": "#EDAE49",
-        "olfactory_receptors": "#66A182", "opsins": "#2E86AB", "ras_gtpases": "#8E7DBE",
-        "hemerythrin": "#A4243B", "carbonic_anhydrase_alpha": "#1B998B",
-        "carbonic_anhydrase_beta": "#3D5A80", "carbonic_anhydrase_gamma": "#7FB3D5",
-        "nitrogenase": "#6A994E", "methyl_coenzyme_m_reductase": "#9C6644",
-        "nitric_oxide_synthase": "#9B5DE5", "heme_oxygenase": "#F15BB5",
-        "methane_monooxygenase": "#CA6702",
+        # Heme / O2 chemistry — red_shades, then canary for the sixth
+        "globins": "cinnabar", "hemerythrin": "dragon", "heme_copper_oxidase": "amber",
+        "cytochrome_p450": "tangerine", "nitric_oxide_synthase": "melon",
+        "heme_oxygenase": "canary",
+        # Carbonic anhydrases — teal_shades, in class order (the axis is α → β → γ)
+        "carbonic_anhydrase_alpha": "depths", "carbonic_anhydrase_beta": "asparagus",
+        "carbonic_anhydrase_gamma": "seaweed",
+        # Sensory GPCRs — blue
+        "opsins": "dusk", "olfactory_receptors": "vital",
+        # GTPase
+        "ras_gtpases": "matcha",
+        # C1 / N2 metabolism — purple_shades
+        "nitrogenase": "concord", "methyl_coenzyme_m_reductase": "tanzanite",
+        "methane_monooxygenase": "aster",
     },
 }
 
@@ -209,17 +331,14 @@ def family_order(panel: str) -> list[str]:
 
 
 def family_colors(panel: str) -> dict[str, str]:
-    """Per-family plot colors for a panel."""
-    return dict(FAMILY_COLORS[panel])
+    """Per-family plot colors for a panel, as Arcadia HexCodes."""
+    import arcadia_style  # noqa: PLC0415 - deliberately lazy; see docstring
+
+    return {fam: arcadia_style.resolve(name) for fam, name in FAMILY_COLORS[panel].items()}
 
 
 def family_members(panel: str = "human") -> dict[str, list[str]]:
-    """Family -> member gene list.
-
-    'human': the HGNC-resolved gene symbols loaded (and cached) from families_data.json — the
-    artifact written by build_human_paralogs(). 'evo2': org:gene members read from the per-family
-    manifest written by build_orthologs().
-    """
+    """Family -> member gene list."""
     if panel == "human":
         global _HUMAN_MEMBERS
         if _HUMAN_MEMBERS is None:
@@ -463,12 +582,7 @@ def build_orthologs(
     no_dedup: bool = False,
     seed: int = SUBSAMPLE_SEED,
 ) -> None:
-    """Resolve the KEGG KOs in FAMILY_KOS -> per-family CDS FASTA + manifest.csv (data/evo2_gene_families/).
-
-    For each family: gather KO members across all KEGG organisms, map org -> (domain, group) via the
-    BRITE taxonomy, stratified-subsample across taxa to ~target, batch-fetch CDS, optional MMseqs2
-    dedup, write per-family FASTA + a combined manifest row.
-    """
+    """Resolve the KEGG KOs in FAMILY_KOS -> per-family CDS FASTA + manifest.csv (data/evo2_gene_families/)."""
     import csv
     import sys
 
