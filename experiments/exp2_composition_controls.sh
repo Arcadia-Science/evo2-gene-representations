@@ -47,7 +47,7 @@ for C in synonymous_recode gc_match dinuc_shuffle kmer4_shuffle kmer6_shuffle; d
   stage "~16-27 h, GPU" "C1. embed control rung: $C" \
     env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONUNBUFFERED=1 \
     $PY scripts/mammalian_orthologs/embed_cds_masked_mammal.py \
-      --families $FAMS --mirror-arm cds --control "$C"
+      --families $FAMS --control "$C"
 done
 
 # The two arms of figure 12. Both edit codon position 3 at the same rate; only one keeps the
@@ -57,19 +57,17 @@ for ARM in paired_p3_syn paired_p3_missense; do
   stage "~19 h, GPU"  "C2. embed matched-pair arm: $ARM" \
     env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONUNBUFFERED=1 \
     $PY scripts/mammalian_orthologs/embed_cds_masked_mammal.py \
-      --families $FAMS --mirror-arm cds --control "$ARM"
+      --families $FAMS --control "$ARM"
 done
 
 say "Scoring"
 
 # Preservation rho is measured against the natural geometry, so a rung is scored only once its
 # embedding cache is complete; partial rungs are skipped rather than scored on a subset.
-stage "~4 h, CPU"   "D1. control preservation, graph-based (within geodesic + between centroid)" \
+stage "~4 h, CPU"   "D1. control preservation and Figure 12 source tables" \
   $PY scripts/mammalian_orthologs/mammal_controls_score.py --arm transcript_cdsmask
 stage "~2 h, CPU"   "D2. control preservation, graph-free — the input to figure 4" \
   $PY scripts/mammalian_orthologs/controls_score_graphfree.py --axis both
-stage "~30 min"     "D3. how much source sequence each control retains (identity confound check)" \
-  $PY scripts/controls/control_sequence_identity.py --panel mammal_cdsmask
 fi
 
 say "Figures 4 and 12"
@@ -87,7 +85,7 @@ if need "fig 12: paired p3, protein vs nucleotide" \
         "$RUN/blocks*/controls/control_within_scores.csv" \
         "$RUN/control_rho_by_layer.csv"; then
   fig "fig 12: paired p3, protein vs nucleotide" \
-    $PY scripts/mammalian_orthologs/paired_p3_figure.py --skip-identity --pub
+    $PY scripts/mammalian_orthologs/paired_p3_figure.py --pub
   collect "$RUN/pub/paired_p3_protein_vs_nucleotide" fig12_paired_p3_protein_vs_nucleotide
 fi
 

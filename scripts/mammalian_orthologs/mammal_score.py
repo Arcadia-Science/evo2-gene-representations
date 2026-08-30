@@ -33,8 +33,7 @@ BASELINES = {
 
 
 def gc_distance_matrix(seqs: list[str]) -> np.ndarray:
-    """|GC_i - GC_j| over a group's CDS -- the mononucleotide control, matching what
-    between_family_baselines.gc_matrix does at the family level (there on family-mean GC)."""
+    """Return pairwise absolute GC-fraction differences for a group's CDS sequences."""
     gc = np.array(
         [
             (sum(c in "GCgc" for c in s) / n) if (n := sum(c in "ACGTacgt" for c in s)) else np.nan
@@ -153,11 +152,10 @@ def main() -> None:
     ap.add_argument("--layers", nargs="*", type=int, default=list(range(32)))
     ap.add_argument(
         "--distance",
-        default="geodesic",
-        choices=["geodesic", "angular"],
-        help="geodesic = k-NN shortest path (default, what every existing table uses); "
-        "angular = direct pairwise angular distance, no graph. angular writes "
-        "within_family_*_angular.csv beside the geodesic tables.",
+        default="both",
+        choices=["geodesic", "angular", "both"],
+        help="distance metric to score; both reuses one alignment pass and writes geodesic "
+        "tables plus the _angular tables used by publication figures",
     )
     args = ap.parse_args()
 
@@ -175,13 +173,15 @@ def main() -> None:
         flush=True,
     )
 
-    res, sweep_root = score_all_layers(stack, meta, gt, args.layers, args.arm, args.distance)
-    suffix = "" if args.distance == "geodesic" else "_angular"
-    res.to_csv(sweep_root / f"per_group_scores_{args.arm}{suffix}.csv", index=False)
-    print("\n=== mean within-group rho by baseline (best layer) ===")
-    best = res.groupby("layer")["rho"].mean().idxmax()
-    print(res[res.layer == best].groupby("baseline")["rho"].mean().round(3).to_string())
-    print(f"best layer={best}; per-layer run dirs -> {sweep_root}/blocks<L>/")
+    distances = ["geodesic", "angular"] if args.distance == "both" else [args.distance]
+    for distance in distances:
+        res, sweep_root = score_all_layers(stack, meta, gt, args.layers, args.arm, distance)
+        suffix = "" if distance == "geodesic" else "_angular"
+        res.to_csv(sweep_root / f"per_group_scores_{args.arm}{suffix}.csv", index=False)
+        best = res.groupby("layer")["rho"].mean().idxmax()
+        print(f"\n=== {distance}: mean within-group rho at best layer {best} ===")
+        print(res[res.layer == best].groupby("baseline")["rho"].mean().round(3).to_string())
+    print(f"per-layer run dirs -> {sweep_root}/blocks<L>/")
 
 
 if __name__ == "__main__":

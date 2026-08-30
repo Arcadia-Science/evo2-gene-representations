@@ -111,6 +111,63 @@ def _w2_task(task):
     return (cond, layer), between_ut_w2(_W2_STACKS[cond][j], *_W2_ARGS)
 
 
+def write_control_summary(sweep_root: Path) -> Path:
+    """Aggregate per-family control preservation for Figure 12."""
+    rows = []
+    for block_dir in sorted(sweep_root.glob("blocks*")):
+        layer_text = block_dir.name.removeprefix("blocks")
+        if not layer_text.isdigit():
+            continue
+        layer = int(layer_text)
+        table = block_dir / "controls" / "control_within_scores.csv"
+        if not table.exists():
+            continue
+        scores = pd.read_csv(table)
+        recovery_col = "rho_geodesic_speciestree"
+        for condition, group in scores.groupby("condition"):
+            rows.append(
+                {
+                    "panel": "mammal_cdsmask",
+                    "layer": layer,
+                    "condition": condition,
+                    "n_families": int(group["family"].nunique()),
+                    "rho_preservation": group["rho_geodesic_vs_natural"].mean(),
+                    "rho_recovery": group[recovery_col].mean(),
+                }
+            )
+
+        natural_path = block_dir / "within_family_speciestree.csv"
+        natural_recovery = np.nan
+        if natural_path.exists():
+            natural = pd.read_csv(natural_path)
+            families = set(scores["family"])
+            natural_recovery = natural.loc[
+                natural["family"].isin(families), "spearman_geodesic_speciestree"
+            ].mean()
+        layer_rows = [row for row in rows if row["layer"] == layer]
+        natural_row = next((row for row in layer_rows if row["condition"] == "natural"), None)
+        if natural_row:
+            if not np.isfinite(natural_row["rho_recovery"]):
+                natural_row["rho_recovery"] = natural_recovery
+        else:
+            rows.append(
+                {
+                    "panel": "mammal_cdsmask",
+                    "layer": layer,
+                    "condition": "natural",
+                    "n_families": int(scores["family"].nunique()),
+                    "rho_preservation": 1.0,
+                    "rho_recovery": natural_recovery,
+                }
+            )
+
+    if not rows:
+        raise RuntimeError(f"no control score tables under {sweep_root}")
+    out = sweep_root / "control_rho_by_layer.csv"
+    pd.DataFrame(rows).to_csv(out, index=False)
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     # Cache and result paths share the arm name.
@@ -375,6 +432,8 @@ def main() -> None:
         f"wrote controls/ scores to {len(args.layers)} run dirs ({ready}) -> {sweep_root}",
         flush=True,
     )
+    summary = write_control_summary(sweep_root)
+    print(f"wrote {summary}", flush=True)
 
 
 if __name__ == "__main__":

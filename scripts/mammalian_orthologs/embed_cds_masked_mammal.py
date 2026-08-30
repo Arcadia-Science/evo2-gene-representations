@@ -19,12 +19,25 @@ sys.path.insert(0, str(ROOT / "scripts" / "evo2"))
 sys.path.insert(
     0, str(ROOT / "scripts" / "controls")
 )  # composition-shuffle fns (make_control_sequences)
-from embed_and_geodesic_paralog import EMBED_DIM, EVO2_WINDOW, N_BLOCKS, load_model  # noqa: E402
-from embed_cds_masked_transcript import _forward_positions  # noqa: E402  (per-position forward)
+from evo2_embedding import (  # noqa: E402
+    LAYER_NAMES,
+    N_BLOCKS,
+    forward_positions,
+    load_model,
+)
+from make_control_sequences import dinuc_shuffle, gc_match, klet_shuffle  # noqa: E402
 
 LOCI_DIR = ROOT / "data" / "mammalian_orthologs" / "loci"
 CDS_POS = ROOT / "data" / "cache" / "mammal_cds_positions.json"
 CACHE = ROOT / "data" / "cache" / "mammal_embed" / "transcript_cdsmask"
+EMBED_DIM = 4096
+EVO2_WINDOW = 8000
+CONTROL_FNS = {
+    "gc_match": gc_match,
+    "dinuc_shuffle": dinuc_shuffle,
+    "kmer4_shuffle": lambda seq, rng: klet_shuffle(seq, 4, rng),
+    "kmer6_shuffle": lambda seq, rng: klet_shuffle(seq, 6, rng),
+}
 # The CDS mask adds frame-aware controls to the shared genomic control ladder.
 # `missense_subset` changes a strict subset of the bases changed by `synonymous_recode`.
 CDSMASK_CONTROLS = [
@@ -54,13 +67,11 @@ DEFAULT_FAMILIES = [
     "nitric_oxide_synthase",
     "heme_oxygenase",
 ]
-MAX_WINDOWS = 24  # matches mammal_embed.MAX_WINDOWS (bounds forwards/locus for long spans)
+MAX_WINDOWS = 24
 
 
 def _window_bounds(L: int, window: int = EVO2_WINDOW, max_windows: int = MAX_WINDOWS):
-    """
-    The exact window set mammal_embed.embed_capped uses, so coverage matches the transcript arm.
-    """
+    """Return contiguous windows, capped by evenly spaced sampling for long loci."""
     if L <= window:
         return [(0, L)]
     n = math.ceil(L / window)
@@ -76,8 +87,6 @@ def embed_cds_masked(
     """(N_BLOCKS, H): CDS-position hidden states in transcript order across the (capped) windows,
     second half mean-pooled.
     """
-    from evo2_embedding import LAYER_NAMES
-
     L = len(seq)
     cds = np.array(sorted(p for p in cds_pos if 0 <= p < L))
     collected = {ln: [] for ln in LAYER_NAMES}
@@ -87,7 +96,7 @@ def embed_cds_masked(
         if not in_win:
             continue
         seen.update(in_win)
-        got = _forward_positions(seq[a:b], model, device, [p - a for p in in_win])
+        got = forward_positions(seq[a:b], model, device, [p - a for p in in_win])
         for ln in LAYER_NAMES:
             collected[ln].append(got[ln])
     out = np.zeros((N_BLOCKS, EMBED_DIM), dtype=np.float32)
@@ -121,8 +130,6 @@ def shuffle_coding_in_place(
     fam_usage: dict[str, dict] | None = None,
 ) -> str:
     """The locus span with ONLY its coding positions replaced by shuffled coding content."""
-    from embed_and_geodesic_paralog import CONTROL_FNS  # noqa: E402  (lazy: keeps import light)
-
     pos = sorted(p for p in cds_pos if 0 <= p < len(seq))
     coding = "".join(seq[i] for i in pos)
     if control.startswith("paired_p3_"):
@@ -167,28 +174,16 @@ def shuffle_coding_in_place(
     return "".join(span)
 
 
-# Mirror another arm's locus set so comparisons differ only in input and pooling.
-# `transcript` compares readouts; `cds` isolates genomic context.
-MIRROR_CACHE = {
-    "transcript": ROOT / "data" / "cache" / "mammal_embed" / "transcript",
-    "cds": ROOT / "data" / "cache" / "mammal_embed" / "cds",
-}
-
-
-def load_target_loci(families: list[str], keys_from: str | None = None, mirror: str = "transcript"):
-    """Load masked loci shared with the selected mirror arm."""
+def load_target_loci(families: list[str], keys_from: str | None = None):
+    """Load masked loci selected by the assembled manifest."""
     positions = json.loads(CDS_POS.read_text())
-    transcript_loci = {p.stem for p in MIRROR_CACHE[mirror].glob("*__*.npy")}
-    allowed = None
-    if keys_from:
-        m = pd.read_csv(ROOT / "data" / "mammalian_orthologs" / keys_from)
-        allowed = set(m.group + "__" + m.species)
+    manifest = keys_from or "complete_manifest.csv"
+    selected = pd.read_csv(ROOT / "data" / "mammalian_orthologs" / manifest)
+    allowed = set(selected.group + "__" + selected.species)
     rows = []
     for f in sorted(LOCI_DIR.glob("*.json")):
         key = f.stem
-        if key not in positions or key not in transcript_loci:
-            continue
-        if allowed is not None and key not in allowed:
+        if key not in positions or key not in allowed:
             continue
         d = json.loads(f.read_text())
         if d.get("family") not in families:
@@ -208,13 +203,6 @@ def main() -> None:
         "complete_manifest_cap400.csv for the 400/family cap)",
     )
     ap.add_argument(
-        "--mirror-arm",
-        default="transcript",
-        choices=sorted(MIRROR_CACHE),
-        help="cover the locus set embedded by this arm (comparability reference). Use "
-        "cds when the transcript arm is not being run.",
-    )
-    ap.add_argument(
         "--control",
         default=None,
         choices=CDSMASK_CONTROLS,
@@ -223,7 +211,7 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    rows = load_target_loci(args.families, args.keys_from, args.mirror_arm)
+    rows = load_target_loci(args.families, args.keys_from)
     cache = CACHE.with_name(f"{CACHE.name}_{args.control}") if args.control else CACHE
     cache.mkdir(parents=True, exist_ok=True)
     todo = [r for r in rows if not (cache / f"{r[0]}.npy").exists()]

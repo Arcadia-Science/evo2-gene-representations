@@ -62,29 +62,27 @@ import pandas as pd; print(' '.join(sorted(pd.read_csv('data/mammalian_orthologs
 fi
 
 # Safe to interrupt: each locus is written to a .tmp.npy and atomically renamed, so a restart skips
-# what is done and loses at most the in-flight locus. --mirror-arm cds pins the locus set to the
-# CDS arm's.
+# completed loci and loses at most the in-flight locus.
 stage "~34 h, GPU"  "B1. embed 11,288 loci x 32 blocks, CDS-masked" \
-  $PY scripts/mammalian_orthologs/embed_cds_masked_mammal.py --families $FAMS --mirror-arm cds
+  $PY scripts/mammalian_orthologs/embed_cds_masked_mammal.py --families $FAMS
 
 # B2 computes the MAFFT/FastTree patristic and k-mer baselines; B3 computes Pfam-HMM JSD.
 stage "~3 h, CPU"   "B2. within-family distances vs patristic / species tree / k-mer / GC" \
-  $PY scripts/mammalian_orthologs/mammal_score.py --arm transcript_cdsmask
+  $PY scripts/mammalian_orthologs/mammal_score.py --arm transcript_cdsmask --distance both
 stage "~1 h, CPU"   "B3. between-family distances vs Pfam JSD / k-mer / GC" \
   $PY scripts/mammalian_orthologs/mammal_between.py --arm transcript_cdsmask
 stage "~1 h, CPU"   "B4. between-family on the 400-cap panel (family-size robustness)" \
   $PY scripts/mammalian_orthologs/mammal_between.py --arm transcript_cdsmask \
      --manifest complete_manifest_cap400.csv --tag _400
 
-# W2 is the published between-family metric: no centroid, no graph, no k, so it cannot shift when a
-# k-NN graph reconnects at a different k.
-stage "~1.1 h, CPU" "B5. Wasserstein (W2) between-family sweep, all layers, 9,999 permutations" \
-  $PY scripts/baselines/ot_between_family_sweep.py --experiment mammal-cdsmask --n-perms 9999 --alphas
+# Experiment 2 uses these natural W2 matrices as the reference for control preservation.
+stage "~1.1 h, CPU" "B5. Wasserstein sweep, all layers, with 9,999 Mantel permutations" \
+  $PY scripts/baselines/ot_between_family_sweep.py --n-perms 9999
 
-stage "~40 min"     "B6. within-family confidence intervals and permutation inference" \
-  $PY scripts/mammalian_orthologs/within_family_uncertainty.py
-stage "~2 min"      "B7. results digest" \
-  $PY scripts/mammalian_orthologs/arm_digest.py --arm transcript_cdsmask
+# Block 15 is the pre-specified inference layer for the published within-family claims.
+stage "~2 h, CPU"   "B6. within-family CIs and per-group Mantel inference at block 15" \
+  $PY scripts/mammalian_orthologs/within_family_uncertainty.py \
+    --layers 15 --report-layer 15 --mantel-layer 15 --n-perms 999
 fi
 
 say "Figures 1-3"

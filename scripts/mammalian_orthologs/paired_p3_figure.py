@@ -2,19 +2,14 @@
 
 from __future__ import annotations
 import argparse
-import random
 import sys
-import zlib
-from collections import defaultdict
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from scipy import stats
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-sys.path.insert(0, str(ROOT / "scripts" / "controls"))
 
 RUN = ROOT / "results" / "2026-07-16_mammalian-orthologs-transcript_cdsmask"
 SYN, MIS, FLOOR = "paired_p3_syn", "paired_p3_missense", "kmer6_shuffle"
@@ -35,58 +30,6 @@ def _style():
             return
         except Exception as e:  # noqa: BLE001
             print(f"  [style] {mod}.{fn}() unavailable ({type(e).__name__}: {e})")
-
-
-# ── data
-
-
-def verify_identity() -> dict:
-    """Regenerate both arms from the REAL embedding seeds and measure what is matched."""
-    import control_sequence_identity as csi
-    import make_control_sequences as mcs
-    from make_control_sequences import paired_p3
-
-    nat, fam_of, _, _ = csi.load_mammal_cdsmask()
-    by_fam: dict[str, list[str]] = defaultdict(list)
-    for g, s in nat.items():
-        by_fam[fam_of[g]].append(s)
-    usage = mcs.build_family_codon_usage(by_fam)
-
-    def translate(s: str) -> str:
-        return "".join(mcs._CODON.get(s[i : i + 3], "X") for i in range(0, len(s) - 2, 3))
-
-    same_pos, rate_s, rate_m, aa_s, aa_m, p3 = 0, [], [], [], [], []
-    for key in sorted(nat):
-        src = nat[key]
-        syn = paired_p3(
-            src,
-            usage[fam_of[key]],
-            random.Random(zlib.crc32(f"{SYN}:{key}".encode())),
-            "synonymous",
-        )
-        mis = paired_p3(src, {}, random.Random(zlib.crc32(f"{MIS}:{key}".encode())), "missense")
-        a, b, c = (np.frombuffer(x.encode(), np.uint8) for x in (src, syn, mis))
-        n = min(len(a), len(b), len(c))
-        ed_s, ed_m = a[:n] != b[:n], a[:n] != c[:n]
-        same_pos += bool(np.array_equal(ed_s, ed_m))
-        rate_s.append(ed_s.mean())
-        rate_m.append(ed_m.mean())
-        pa, ps, pm = translate(src), translate(syn), translate(mis)
-        m = min(len(pa), len(ps), len(pm))
-        ta, ts, tm = (np.frombuffer(x[:m].encode(), np.uint8) for x in (pa, ps, pm))
-        aa_s.append(float((ta == ts).mean()))
-        aa_m.append(float((ta == tm).mean()))
-        ncod = n // 3
-        by_p = ed_s[: ncod * 3].reshape(ncod, 3).sum(0)
-        p3.append(by_p[2] / max(by_p.sum(), 1))
-    return {
-        "n": len(nat),
-        "same_positions": same_pos,
-        "nt_identity": (1 - np.mean(rate_s), 1 - np.mean(rate_m)),
-        "edit_rate": (np.mean(rate_s), np.mean(rate_m)),
-        "aa_identity": (np.mean(aa_s), np.mean(aa_m)),
-        "frac_p3": float(np.mean(p3)),
-    }
 
 
 def load_within() -> pd.DataFrame:
@@ -243,11 +186,6 @@ def main() -> None:
         default=18,
         help="layer for the per-family panel (default 18, the deepest gap)",
     )
-    ap.add_argument(
-        "--skip-identity",
-        action="store_true",
-        help="skip the ~1 min sequence regeneration and omit panel A",
-    )
     ap.add_argument("--out", default=str(RUN / "paired_p3_protein_vs_nucleotide"))
     ap.add_argument(
         "--pub",
@@ -263,14 +201,6 @@ def main() -> None:
 
     within, between = load_within(), load_between()
     stats_tbl = paired_stats(LAYERS)
-    ident = None if a.skip_identity else verify_identity()
-
-    if ident:
-        print(
-            f"identity: identical edited positions {ident['same_positions']:,}/{ident['n']:,}, "
-            f"nt {ident['nt_identity'][0]:.4f}/{ident['nt_identity'][1]:.4f}, "
-            f"aa {ident['aa_identity'][0]:.4f}/{ident['aa_identity'][1]:.4f}"
-        )
     w, b = within[MIS] - within[SYN], between[MIS] - between[SYN]
     print(
         f"within  gap: mean {w.mean():+.4f}, lower in {(w < 0).sum()}/{len(w)} layers, "
