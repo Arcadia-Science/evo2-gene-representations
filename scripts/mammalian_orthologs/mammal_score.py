@@ -15,9 +15,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "baselines"))
 from geodesic_utils import compute_geodesic, find_min_connected_k  # noqa: E402
 from kmer_sequence_divergence import kmer_distance_matrix  # noqa: E402
-from protein_alignment_patristic_seqid import (  # noqa: E402  reuse MAFFT/FastTree seq baselines
+from protein_alignment_patristic import (  # noqa: E402
     align_members,
-    seqid_distance_matrix,
     tree_patristic,
 )
 
@@ -28,7 +27,6 @@ MIN_SP = 10
 BASELINES = {
     "speciestree": ("within_family_speciestree.csv", "spearman_geodesic_speciestree"),
     "patristic": ("within_family_patristic.csv", "spearman_geodesic_patristic"),
-    "seqid": ("within_family_seqid.csv", "spearman_geodesic_seqid"),
     "kmer": ("kmer_within_family_correlations.csv", "spearman_geodesic_kmer"),
     "gc": ("within_family_gc.csv", "spearman_geodesic_gc"),
 }
@@ -78,7 +76,7 @@ def load_cds() -> dict[str, str]:
 
 
 def group_ground_truths(meta: pd.DataFrame, cds: dict, pat: pd.DataFrame) -> dict:
-    """Per group (>=MIN_SP embedded species): the 4 layer-INDEPENDENT distance matrices over its
+    """Per group (>=MIN_SP embedded species): layer-independent distance matrices over its
     embedded members, in a fixed member order.
     """
     gt = {}
@@ -99,9 +97,7 @@ def group_ground_truths(meta: pd.DataFrame, cds: dict, pat: pd.DataFrame) -> dic
         with tempfile.TemporaryDirectory() as tmp:
             res = align_members(members, {m: cds[m] for m in members}, Path(tmp))
             if res:
-                aln, aligned = res
-                d["seqid"] = seqid_distance_matrix(members, aligned)
-                tp = tree_patristic(aln, members, Path(tmp))
+                tp = tree_patristic(res, members, Path(tmp))
                 if tp is not None:
                     d["patristic"] = tp
         gt[group] = d
