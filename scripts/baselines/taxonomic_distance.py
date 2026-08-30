@@ -1,15 +1,4 @@
-"""Taxonomic-rank distance baseline for the Evo2 cross-kingdom gene-family analysis.
-
-Axis-B cross-check for the cross-kingdom KEGG ortholog panel: does within-family
-embedding distance track the *species* tree? Coarse step distance up the
-(domain -> group -> organism) hierarchy that the KEGG BRITE annotation in the
-manifest provides. This is the one genuinely cross-kingdom-only ground truth — the
-human matched panel has no taxonomy axis — so it lives apart from the model-agnostic
-sequence baselines (k-mer / Pfam-JSD / seq-identity / patristic) in this directory.
-
-Imported by scripts/evo2/embed_and_geodesic_ortholog.py. The shared k-mer baseline
-it is scored alongside lives in scripts/baselines/kmer_sequence_divergence.py.
-"""
+"""Taxonomic-rank distance baseline for the Evo2 cross-kingdom gene-family analysis."""
 
 from __future__ import annotations
 
@@ -26,12 +15,7 @@ _TAX_DIFF_DOMAIN = 3.0
 
 
 def taxonomic_distance_matrix(meta: pd.DataFrame) -> np.ndarray:
-    """(N, N) coarse taxonomic-rank distance from manifest domain/group/organism.
-
-    `meta` rows must align positionally with the embedding rows. Columns used:
-    organism, domain, group. Unknown ("Unknown") domains compare as a distinct
-    domain, so they never spuriously read as close to anything.
-    """
+    """(N, N) coarse taxonomic-rank distance from manifest domain/group/organism."""
     org = meta["organism"].to_numpy()
     dom = meta["domain"].to_numpy()
     grp = meta["group"].to_numpy()

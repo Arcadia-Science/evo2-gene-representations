@@ -1,32 +1,4 @@
-"""Pfam-HMM Jensen-Shannon-divergence between-family homology baseline: shared kernel + run-dir CLI.
-
-KERNEL — fetch_mean_emission / compute_pfam_jsd
-    Jensen-Shannon divergence between families' canonical Pfam HMM match-emission profiles, fetched
-    from InterPro by Pfam accession. The profile is a *family-intrinsic* property — independent of
-    which sequences (cross-kingdom CDS or human paralogs) populate a family — so families that share
-    a Pfam accession get identical JSD across pipelines, which is exactly what makes this a directly
-    comparable between-family baseline for both models. compute_pfam_jsd is the single implementation,
-    imported by the legacy GPN-Star baseline path (deprecated/gpnstar_calculate_gene_baselines_legacy.py)
-    and by the CLI wrapper below — which both pipelines now call directly — so they score against an
-    IDENTICAL metric.
-
-CLI — main()
-    Writes pfam_jsd_distances.csv for any finished gene-family run dir. The accession map comes from
-    the shared scripts/gene_families.py (PFAM_ACCESSIONS, covering both panels); the run dir's own
-    family_order selects the relevant subset, so the same call works for a human-panel or a
-    cross-kingdom run with no flag. Pfam JSD is
-    between-family only (one value per family pair), so it joins the between_comparison figure, not the
-    within-family figures. (Supersedes the old separate pfam_jsd.py kernel + add_pfam_jsd.py wrapper.)
-
-Import cost: the wrapper's situational imports (the gene_families accession map and pandas) are LOCAL
-to the functions that use them, so importing this module for the kernel (compute_pfam_jsd) stays cheap.
-
-Usage:
-    uv run python scripts/baselines/pfam_hmm_jsd.py --run-dir results/<...>            # human or cross-kingdom
-    # optional: cross-check shared families against another run's Pfam JSD (e.g. the other model)
-    uv run python scripts/baselines/pfam_hmm_jsd.py --run-dir ... \
-        --compare-csv results/<other-run>/pfam_jsd_distances.csv
-"""
+"""Pfam-HMM Jensen-Shannon-divergence between-family homology baseline: shared kernel + run-dir CLI."""
 
 import gzip
 import io
@@ -41,7 +13,7 @@ from tqdm import tqdm
 INTERPRO_HMM = "https://www.ebi.ac.uk/interpro/wwwapi//entry/pfam/{acc}?annotation=hmm"
 
 
-# ── kernel (accession-agnostic; imported by both pipelines) ──────────────────────
+# ── kernel (accession-agnostic; imported by both pipelines)
 
 
 def fetch_mean_emission(pfam_acc: str) -> np.ndarray:
@@ -73,13 +45,11 @@ def compute_pfam_jsd(family_order: list[str], accessions: dict[str, str]) -> np.
     return D
 
 
-# ── run-dir wrapper (CLI) ────────────────────────────────────────────────────────
+# ── run-dir wrapper (CLI)
 # Wrapper-only below. Situational/heavy imports are local to keep the kernel import cheap.
 
 def accession_map() -> dict[str, str]:
-    """Family -> Pfam accession, from the shared scripts/gene_families.py (covers both panels;
-    the run dir's family_order selects the relevant subset). Imported lazily so kernel consumers
-    of compute_pfam_jsd needn't load the gene_families module at all."""
+    """Return the configured Pfam accession for each family."""
     import sys
     from pathlib import Path
 

@@ -1,38 +1,4 @@
-"""Per-family within-family ground truth from one protein alignment (Axis B).
-
-This is the single source of truth for the two alignment-based within-family baselines,
-emitted from ONE MAFFT alignment per family so the two pipelines (Evo2 cross-kingdom,
-GPN-Star human-paralog) are scored against identically-defined metrics:
-
-  * patristic distance  — the gold standard: translate members to protein, align (MAFFT),
-    build a tree (FastTree), take patristic (tree-path, rate-corrected) distances. The
-    realizable cross-kingdom form of the plan's "PANTHER branch lengths" — curated PANTHER
-    trees do not cover archaeal mcrA / bacterial nitrogenase, so the tree is built from the
-    actual embedded sequences.
-  * sequence identity   — a divergence control: pairwise % identity over ungapped columns
-    of the *same* MAFFT alignment (distance = 1 − identity). Derived from the alignment the
-    tree is built on, so patristic and seq-identity are one consistent unit and the metric
-    is identical across models. Protein identity (not nucleotide) is what makes this usable
-    cross-kingdom, where pairwise nucleotide identity would be near-random.
-
-The third within-family baseline, alignment-free k-mer composition, is computed in each
-embedding pipeline (it needs no alignment); together the three form a divergence ladder
-(tree → pairwise identity → composition).
-
-Model-agnostic: Evo2 member id = org_gene, CDS in data/evo2_gene_families/<family>.fasta;
-GPN-Star member id = gene symbol, CDS in data/cache/cds_sequences.json. Aligns to the
-geodesic's member order by id, so it never positionally mislabels.
-
-Writes within_family_patristic.csv (family, n, spearman_geodesic_patristic, p) and
-within_family_seqid.csv (family, n, spearman_geodesic_seqid, p) to the run dir; the
-visualization scripts pick both up as within-correlations series.
-
-Usage:
-    uv run python scripts/baselines/protein_alignment_patristic_seqid.py \
-        --run-dir results/2026-06-19_evo2-gene-families --seq-source evo2
-    uv run python scripts/baselines/protein_alignment_patristic_seqid.py \
-        --run-dir results/2026-06-19_gpnstar-vertebrate --seq-source gpn
-"""
+"""Per-family within-family ground truth from one protein alignment."""
 
 from __future__ import annotations
 
@@ -96,9 +62,7 @@ def load_sequences(seq_source: str) -> dict[str, str]:
 
 
 def align_members(ids: list[str], seqs: dict[str, str], workdir: Path) -> tuple[Path, dict[str, str]] | None:
-    """MAFFT-align translated members. Returns (aln_path, {seqN-label -> aligned protein})
-    in `ids` order, or None on alignment failure. Index labels (seq0..) avoid Newick-special
-    chars — member ids like "org:gene" would be truncated at ':' by FastTree."""
+    """MAFFT-align translated members."""
     prot = workdir / "prot.fasta"
     with open(prot, "w") as fh:
         for i, g in enumerate(ids):
@@ -124,12 +88,7 @@ def align_members(ids: list[str], seqs: dict[str, str], workdir: Path) -> tuple[
 
 
 def seqid_distance_matrix(ids: list[str], aligned: dict[str, str]) -> np.ndarray:
-    """1 − pairwise fractional identity over ungapped alignment columns, in `ids` order.
-
-    Identity = (columns where both residues are non-gap and equal) / (columns where both
-    are non-gap). NaN for any pair with no overlapping ungapped column (essentially never
-    for real homologs). Vectorised: per-symbol indicator matmuls give all-pairs match and
-    overlap counts at once."""
+    """1 − pairwise fractional identity over ungapped alignment columns, in `ids` order."""
     n = len(ids)
     rows = [aligned.get(f"seq{i}", "") for i in range(n)]
     L = max((len(r) for r in rows), default=0)
@@ -193,12 +152,7 @@ def score_within(geo_sub: np.ndarray, D: np.ndarray):
 
 
 def load_cached_within(cache_dir: Path, fam: str, members: list[str]):
-    """Reuse cached layer-independent matrices. Returns (patristic, seqid|None, src).
-
-    Cache layout (shared with the layer-selection engine): <fam>.npy = patristic matrix,
-    <fam>.ids.json = its member order, optional <fam>.seqid.npy. Reorders to `members`
-    when the member SET matches; returns (None, None, "mafft") on miss/mismatch.
-    """
+    """Reuse cached layer-independent matrices. Returns (patristic, seqid|None, src)."""
     pat_npy = cache_dir / f"{fam}.npy"
     ids_json = cache_dir / f"{fam}.ids.json"
     if not (pat_npy.exists() and ids_json.exists()):
