@@ -1,36 +1,10 @@
-"""Evo2 human Panel-1 (matched-manifest) embedder — the human side of the apples-to-apples
-Evo2-vs-GPN-Star comparison (§1 shared locus).
-
-Evo2 reads the **GRCh38 genomic nucleotide string** over each gene's transcript span
-[tx_start, tx_end] — the SAME locus GPN-Star tiles with multiz windows — for the 580 genes
-embeddable by both models (test_sample_human_genes.matched_panel). This is distinct from the
-cross-kingdom pipeline (scripts/evo2/embed_and_geodesic_ortholog.py), which reads KEGG CDS.
-
-Two stages (like the cross-kingdom sweep):
-  * default            : dense layer sweep — embed every block, second-half pooled, →
-                         data/cache/evo2_human_layer_sweep/{layer_stack.npy,metadata.csv}
-                         (consumed by scripts/layer_selection/layer_selection.py --model evo2 --panel human).
-  * --from-layer L     : pull block L from the sweep cache, build the angular k-NN geodesic +
-                         family-centroid geodesic, and write a run dir whose artifacts match the
-                         GPN run-dir contract (metadata.csv with gene/family, *_geodesic.npy,
-                         *_centroid_distances.csv, family_order.txt) so the shared human baselines
-                         (protein_alignment_patristic_seqid / between_family_baselines, --seq-source gpn)
-                         score it exactly as they score GPN-human.
-
-The whole genomic span is fed to Evo2 (1M-context evo2_7b); only the second-half token positions
-are pooled (evo2_embedding.pool_second_half). Long spans risk GPU OOM, so the
-forward pass retries with a progressively tighter center-clip before giving up on a gene.
-
-Usage:
-    uv run python scripts/evo2/embed_and_geodesic_paralog.py                       # full 580-gene sweep
-    uv run python scripts/evo2/embed_and_geodesic_paralog.py --families globins    # smoke subset
-    uv run python scripts/evo2/embed_and_geodesic_paralog.py --from-layer 15       # run dir @ blocks.15
-"""
+"""Evo2 human Panel-1 (matched-manifest) embedder — the human side of the apples-to-apples Evo2-vs-GPN-Star comparison (§1 shared locus)."""
 
 from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import json
 import math
 import sys
@@ -45,20 +19,37 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "evo2"))  # evo2/ siblings (NOT gpnstar) → no name clash
 
-sys.path.insert(0, str(ROOT / "analyses"))  # composition-shuffle fns live with the control scripts
-import test_sample_human_genes as ss  # noqa: E402
+sys.path.insert(0, str(ROOT / "scripts" / "controls"))  # composition-shuffle fns live with the control scripts
+import sample_human_genes as ss  # noqa: E402
 from evo2_embedding import MODEL_NAME, N_BLOCKS, embed_all_blocks, layer_type, load_model  # noqa: E402
-from make_control_sequences import dinuc_shuffle, gc_match, klet_shuffle  # noqa: E402
+from make_control_sequences import (  # noqa: E402
+    build_family_codon_usage,
+    codon_shuffle,
+    dinuc_shuffle,
+    gc_match,
+    klet_shuffle,
+    missense_subset,
+    synonymous_recode,
+)
 
-# Composition-preserving shuffles applicable to a GENOMIC string (no reading frame, so the
-# CDS-only codon_shuffle/synonymous_recode are excluded — the protein-level question is answered
-# by the cross-kingdom CDS controls). gc_match: mononucleotide; dinuc: di-nucleotide (Eulerian);
-# kmer6: 6-mer-preserving (Euler k-let).
+# Composition-preserving shuffles. The first four apply to ANY nucleotide string (no reading
+# frame needed). gc_match: mononucleotide; dinuc: di-nucleotide (Eulerian); kmer4/kmer6:
+# 4-mer/6-mer-preserving (Euler k-let).
 CONTROL_FNS = {
     "gc_match": lambda s, rng: gc_match(s, rng),
     "dinuc_shuffle": lambda s, rng: dinuc_shuffle(s, rng),
+    "kmer4_shuffle": lambda s, rng: klet_shuffle(s, 4, rng),
     "kmer6_shuffle": lambda s, rng: klet_shuffle(s, 6, rng),
+    # CDS-only (require frame-0 reading frame; see CDS_ONLY_CONTROLS). codon_shuffle reorders the
+    # CDS's own codons (preserves codon counts, scrambles protein); it fits the (s, rng) signature.
+    "codon_shuffle": lambda s, rng: codon_shuffle(s, rng),
 }
+# synonymous_recode and its nonsynonymous partner missense_subset need per-family codon usage, so
+# they are not plain (s, rng) fns — apply_control handles them specially. All of these only make
+# sense on in-frame CDS input (--input cds).
+FAMILY_USAGE_CONTROLS = {"synonymous_recode", "missense_subset"}
+CDS_ONLY_CONTROLS = {"codon_shuffle"} | FAMILY_USAGE_CONTROLS
+CONTROL_CHOICES = list(CONTROL_FNS) + sorted(FAMILY_USAGE_CONTROLS)
 from geodesic_utils import (  # noqa: E402
     compute_centroid_geodesic,
     compute_geodesic,
@@ -71,12 +62,12 @@ META_PATH = CACHE_DIR / "metadata.csv"
 CONFIG_PATH = CACHE_DIR / "config.json"
 SEQ_CACHE = Path("data/cache/evo2_human_genomic.json")  # gene -> GRCh38 genomic string
 EMBED_DIM = 4096
-DEFAULT_MAX_LEN = 100_000  # matches test_sample_human_genes.EVO2_MAX_LEN (genomic-string fetch clip)
+DEFAULT_MAX_LEN = 100_000  # matches sample_human_genes.EVO2_MAX_LEN (genomic-string fetch clip)
 EVO2_WINDOW = 8000  # max bp per Evo2-7B forward on a 23 GB A10G (attention is O(L^2)); longer
                     # spans are tiled into windows of this size and pooled (see embed_all_layers)
 
 
-# ── gene set + genomic sequences ──────────────────────────────────────────────
+# ── gene set + genomic sequences
 
 
 def load_or_fetch_genomic(genes: list[str], locus_of: dict, max_len: int) -> dict[str, str]:
@@ -95,19 +86,11 @@ def load_or_fetch_genomic(genes: list[str], locus_of: dict, max_len: int) -> dic
     return {g: cache[g] for g in genes}
 
 
-# ── embedding ─────────────────────────────────────────────────────────────────
+# ── embedding
 
 
 def embed_all_layers(seq: str, model, device: str, window: int = EVO2_WINDOW) -> np.ndarray:
-    """(N_BLOCKS, 4096): second-half-pooled per window, mean-pooled across contiguous windows.
-
-    Evo2-7B attention is O(L^2) in memory, so a single forward over a long genomic span OOMs a
-    23 GB GPU (and a failed giant forward fragments the allocator, so in-process retry can't
-    recover). Instead we cap the forward at `window` bp: a span <= window is one forward; a longer
-    span is tiled into ceil(L/window) contiguous windows, each embedded independently and the
-    per-block vectors averaged across windows — full-span coverage (like GPN's multi-window
-    scheme), no oversized forward. empty_cache between windows/genes keeps the footprint flat.
-    """
+    """(N_BLOCKS, 4096): second-half-pooled per window, mean-pooled across contiguous windows."""
     L = len(seq)
     if L <= window:
         out = embed_all_blocks(seq, model, device)
@@ -123,6 +106,11 @@ def embed_all_layers(seq: str, model, device: str, window: int = EVO2_WINDOW) ->
     return out
 
 
+def _seq_hash(s: str) -> str:
+    """First 12 hex of sha1(sequence) — a compact per-gene sequence fingerprint."""
+    return hashlib.sha1(s.encode()).hexdigest()[:12]
+
+
 def run_sweep(genes, fams, seqs, device, force, checkpoint_every, window=EVO2_WINDOW,
               cache_dir=CACHE_DIR, control=None) -> np.ndarray:
     stack_path = cache_dir / "layer_stack.npy"
@@ -130,42 +118,74 @@ def run_sweep(genes, fams, seqs, device, force, checkpoint_every, window=EVO2_WI
     config_path = cache_dir / "config.json"
     config = {"model": MODEL_NAME, "pool": "second_half", "n_blocks": N_BLOCKS,
               "window": window, "control": control, "genes": genes}
-    if not force and stack_path.exists() and config_path.exists():
+    hashes = {g: _seq_hash(seqs[g]) for g in genes}
+
+    # Reuse cached vectors by gene and verify sequence hashes when available.
+    reusable: dict[str, np.ndarray] = {}
+    if not force and stack_path.exists() and meta_path.exists() and config_path.exists():
         cached_cfg = json.loads(config_path.read_text())
         # Tolerate caches written before the "control" key existed (a keyless cache was a
         # natural/control=None embedding) so a schema addition never forces a GPU re-embed.
         cached_cfg.setdefault("control", None)
-        if cached_cfg == config:
-            print(f"  Reusing cached layer stack ({cache_dir.name}, config matches).")
-            return np.load(stack_path)
+        scalar = ("model", "pool", "n_blocks", "window", "control")
+        if all(cached_cfg.get(k) == config[k] for k in scalar):
+            old_stack = np.load(stack_path)
+            old_meta = pd.read_csv(meta_path)
+            old_genes = old_meta["gene"].astype(str).tolist()
+            # A checkpoint rewrites layer_stack.npy but NOT metadata.csv/config.json (both are
+            # written only on clean completion), so a crash mid-embed leaves a partial stack whose
+            # columns no longer align with the stale metadata's gene order. Reuse-by-column-index
+            # would then silently misassign vectors, so refuse a stack whose width != metadata rows
+            # (only ever true for a partial cache) and fall back to a full re-embed.
+            old_hash = (dict(zip(old_genes, old_meta["seq_hash"].astype(str)))
+                        if "seq_hash" in old_meta.columns else None)
+            want = set(genes) if old_stack.shape[1] == len(old_genes) else set()
+            for i, g in enumerate(old_genes):
+                if g not in want:
+                    continue
+                if old_hash is not None and old_hash.get(g) != hashes.get(g):
+                    continue  # sequence changed since cache written — must re-embed
+                reusable[g] = old_stack[:, i, :]
 
-    print(f"  window={window} bp/forward, control={control}")
-    model = load_model()
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    misses = [g for g in genes if g not in reusable]
     N = len(genes)
+    cache_dir.mkdir(parents=True, exist_ok=True)
     stack = np.zeros((N_BLOCKS, N, EMBED_DIM), dtype=np.float32)
-    for i, g in enumerate(tqdm(genes, desc=f"Embedding ({control or 'natural'}, all {N_BLOCKS} blocks)")):
-        stack[:, i, :] = embed_all_layers(seqs[g], model, device, window)
-        if (i + 1) % checkpoint_every == 0:
-            tmp = stack_path.with_suffix(".tmp.npy")
-            np.save(tmp, stack)
-            tmp.replace(stack_path)
-            tqdm.write(f"    [checkpoint] {i + 1}/{N}")
+    for i, g in enumerate(genes):
+        if g in reusable:
+            stack[:, i, :] = reusable[g]
+    if misses:  # only touch the GPU / load the model when there is something to embed
+        print(f"  window={window} bp/forward, control={control}")
+        model = load_model()
+        idx = {g: i for i, g in enumerate(genes)}
+        for c, g in enumerate(tqdm(misses, desc=f"Embedding ({control or 'natural'}, all {N_BLOCKS} blocks)")):
+            stack[:, idx[g], :] = embed_all_layers(seqs[g], model, device, window)
+            if (c + 1) % checkpoint_every == 0:
+                tmp = stack_path.with_suffix(".tmp.npy")
+                np.save(tmp, stack)
+                tmp.replace(stack_path)
+                tqdm.write(f"    [checkpoint] {c + 1}/{len(misses)}")
+    print(f"  reused {N - len(misses)} / embedded {len(misses)} / total {N} genes")
     np.save(stack_path, stack)
-    pd.DataFrame({"gene": genes, "family": fams}).to_csv(meta_path, index=False)
+    pd.DataFrame({"gene": genes, "family": fams,
+                  "seq_hash": [hashes[g] for g in genes]}).to_csv(meta_path, index=False)
     config_path.write_text(json.dumps(config, indent=2))
     print(f"  Saved layer stack {stack.shape} -> {stack_path}")
     return stack
 
 
-# ── run dir at a chosen layer (geodesic + centroid; baseline-ready) ─────────────
+# ── run dir at a chosen layer (geodesic + centroid; baseline-ready)
 
 
-def write_run_dir(stack, genes, fams, fam_order, layer_idx, model_tag="evo2_human", run_tag=""):
+def write_run_dir(stack, genes, fams, fam_order, layer_idx, model_tag="evo2_human", run_tag="",
+                  run_dir=None):
     emb = stack[layer_idx]
     families_arr = np.array(fams)
-    date = datetime.date.today().isoformat()
-    out = Path("results") / f"{date}_evo2-human-panel-blocks{layer_idx}{run_tag}"
+    if run_dir:  # orchestrator-fixed dir; else stamp the date here
+        out = Path(run_dir)
+    else:
+        date = datetime.date.today().isoformat()
+        out = Path("results") / f"{date}_evo2-human-panel-blocks{layer_idx}{run_tag}"
     out.mkdir(parents=True, exist_ok=True)
 
     _, W = find_min_connected_k(emb, k_min=3)
@@ -191,9 +211,19 @@ def parse_args():
     p.add_argument("--max-len", type=int, default=DEFAULT_MAX_LEN, help="Center-clip genomic span to this many bp.")
     p.add_argument("--window", type=int, default=EVO2_WINDOW, help="Max bp per Evo2 forward; longer spans are tiled.")
     p.add_argument("--from-layer", type=int, default=None, help="Build a run dir at this block from the sweep cache.")
-    p.add_argument("--control", default=None, choices=list(CONTROL_FNS),
-                   help="Composition control: shuffle each genomic string before embedding "
-                        "(gc_match / dinuc_shuffle / kmer6_shuffle). Caches + run dir are control-tagged.")
+    p.add_argument("--stack", default=None,
+                   help="Score an EXTERNAL layer-stack cache dir (dir with layer_stack.npy + "
+                        "metadata.csv), skipping embedding. Use with --from-layer + --run-dir. "
+                        "For the CDS-masked-transcript condition (embed_cds_masked_transcript.py).")
+    p.add_argument("--run-dir", default=None,
+                   help="Explicit output dir (pass from the sweep so the date is fixed once by "
+                        "the caller; else this script stamps results/<today>_..., which splits a "
+                        "sweep across two folders if it runs past midnight UTC).")
+    p.add_argument("--control", default=None, choices=CONTROL_CHOICES,
+                   help="Composition control: shuffle each sequence before embedding "
+                        "(gc_match / dinuc_shuffle / kmer4_shuffle / kmer6_shuffle; plus "
+                        "codon_shuffle / synonymous_recode, which require --input cds). "
+                        "Caches + run dir are control-tagged.")
     p.add_argument("--input", default="genomic", choices=["genomic", "cds"],
                    help="What Evo2 reads: 'genomic' transcript span (default, matches the GPN locus) "
                         "or 'cds' (diagnostic — same genes, CDS input, to isolate intron-dilution "
@@ -203,10 +233,25 @@ def parse_args():
     return p.parse_args()
 
 
-def apply_control(seqs: dict[str, str], control: str) -> dict[str, str]:
-    """Composition-preserving shuffle of each genomic string (deterministic per gene)."""
+def apply_control(seqs: dict[str, str], control: str,
+                  fam_of: dict[str, str] | None = None) -> dict[str, str]:
+    """Composition-preserving shuffle of each sequence (deterministic per gene)."""
     import random
+    from collections import defaultdict
     out = {}
+    if control in FAMILY_USAGE_CONTROLS:
+        if fam_of is None:
+            raise ValueError(f"{control} requires fam_of (gene -> family)")
+        by_fam: dict[str, list[str]] = defaultdict(list)
+        for g, s in seqs.items():
+            by_fam[fam_of[g]].append(s)
+        usage = build_family_codon_usage(by_fam)
+        for g, s in seqs.items():
+            rng = random.Random(f"synonymous_recode:{g}".__hash__() & 0xFFFFFFFF)
+            recoded = synonymous_recode(s, usage[fam_of[g]], rng)
+            out[g] = recoded if control == "synonymous_recode" else missense_subset(
+                s, recoded, random.Random(f"{control}:{g}".__hash__() & 0xFFFFFFFF))
+        return out
     for g, s in seqs.items():
         rng = random.Random(f"{control}:{g}".__hash__() & 0xFFFFFFFF)
         out[g] = CONTROL_FNS[control](s, rng)
@@ -215,9 +260,31 @@ def apply_control(seqs: dict[str, str], control: str) -> dict[str, str]:
 
 def main():
     args = parse_args()
+
+    if args.stack:  # score an external stack (e.g. CDS-masked-transcript); no embedding
+        _, _, _, fam_order = ss.load_matched_panel(None, resolve_loci=False)  # canonical family order
+        meta = pd.read_csv(Path(args.stack) / "metadata.csv")
+        stack = np.load(Path(args.stack) / "layer_stack.npy")
+        if args.families:  # restrict the panel; the geodesic graph is global, so a subset
+            keep = meta["family"].isin(args.families).to_numpy()  # is a genuinely different run
+            if not keep.any():
+                sys.exit(f"--families {args.families}: no genes in {args.stack}/metadata.csv")
+            meta, stack = meta[keep].reset_index(drop=True), stack[:, keep, :]
+        genes, fams = meta["gene"].astype(str).tolist(), meta["family"].tolist()
+        fam_order = [f for f in fam_order if f in set(fams)]
+        print(f"[stack] {stack.shape} from {args.stack}; {len(genes)} genes, {len(fam_order)} families")
+        if args.from_layer is None:
+            sys.exit("--stack requires --from-layer")
+        write_run_dir(stack, genes, fams, fam_order, args.from_layer, run_dir=args.run_dir)
+        print("Done.")
+        return
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[1] Loading matched human Panel-1 (device={device}; control={args.control})")
-    genes, fams, locus_of, fam_order = ss.load_matched_panel(args.families)
+    # CDS input pulls sequences from cds_sequences.json and never uses the genomic locus, so skip
+    # locus resolution for it (avoids ~hundreds of per-gene Ensembl REST calls + gene drops).
+    genes, fams, locus_of, fam_order = ss.load_matched_panel(
+        args.families, require_both=False, resolve_loci=(args.input != "cds"))
     print(f"  {len(genes)} genes across {len(fam_order)} families: {fam_order}")
 
     if args.input == "cds":
@@ -237,8 +304,10 @@ def main():
 
     cache_dir, run_tag = base_cache, base_tag
     if args.control:
+        if args.control in CDS_ONLY_CONTROLS and args.input != "cds":
+            sys.exit(f"--control {args.control} requires --input cds (it needs an in-frame reading frame)")
         print(f"[2b] Applying composition control: {args.control}")
-        seqs = apply_control(seqs, args.control)
+        seqs = apply_control(seqs, args.control, fam_of=dict(zip(genes, fams)))
         cache_dir = base_cache.parent / f"{base_cache.name}_{args.control}"
         run_tag = f"{base_tag}-{args.control}"
 
@@ -248,7 +317,8 @@ def main():
 
     if args.from_layer is not None:
         print(f"[4] Run dir @ blocks.{args.from_layer} ({layer_type(args.from_layer)})")
-        write_run_dir(stack, genes, fams, fam_order, args.from_layer, run_tag=run_tag)
+        write_run_dir(stack, genes, fams, fam_order, args.from_layer, run_tag=run_tag,
+                      run_dir=args.run_dir)
     print("Done.")
 
 

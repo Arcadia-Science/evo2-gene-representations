@@ -105,13 +105,13 @@ each gene's transcript span — the *same* locus GPN-Star tiles with multiz wind
 both models can embed, and scores it against the *same* human baselines as the GPN-Star run.
 
 **Pipeline order:** `embed_and_geodesic_paralog.py` (dense sweep) → `layer_selection.py --panel human`
-→ `embed_and_geodesic_paralog.py --from-layer` → `test_sample_human_genes.py prefetch-cds` → shared
+→ `embed_and_geodesic_paralog.py --from-layer` → `sample_human_genes.py prefetch-cds` → shared
 baselines (+ the composition control) → `gene_family_visualization.py`. Chained by
 `run_paralog_human_gene_pipeline_evo2.sh`.
 
 | File | Purpose |
 |------|---------|
-| `embed_and_geodesic_paralog.py` | Fetch each gene's GRCh38 transcript-span string (Ensembl, cached); embed all blocks per window, mean-pool across windows; sweep cache → run dir at the selected block. The matched gene/locus set comes from `test_sample_human_genes.load_matched_panel()`. |
+| `embed_and_geodesic_paralog.py` | Fetch each gene's GRCh38 transcript-span string (Ensembl, cached); embed all blocks per window, mean-pool across windows; sweep cache → run dir at the selected block. The matched gene/locus set comes from `sample_human_genes.load_matched_panel()`. |
 | *(ground-truth baselines)* | The shared [../baselines/](../baselines/) scripts (sampled CDS seq-identity, protein-alignment patristic/seq-id, k-mer, Pfam-JSD, between-family), run with `--seq-source gpn` so they score the Evo2-human run exactly as they score GPN-human. |
 | `../controls/transcript_composition_control.py` | The transcript-span composition null (k-mer + GC on the actual genomic input). |
 | `run_paralog_human_gene_pipeline_evo2.sh` | Sequential background runner for the Evo2 matched-human job. |
