@@ -8,7 +8,7 @@ Home to all Evo2-related pipelines. Currently contains:
 
 3. **`run_ortholog_gene_pipeline_evo2.sh`** — the cross-kingdom **ortholog** gene-family experiment: one KEGG CDS per row spanning the tree of life, asking whether families separate (Axis A) and whether within-family geodesics track sequence divergence + host taxonomy (Axis B).
 
-4. **`run_paralog_human_gene_pipeline_evo2.sh`** — the Evo2 side of the matched human **paralog** gene-panel experiment, on the same genes/loci the GPN-Star runner uses (`scripts/gpnstar/run_paralog_human_gene_pipeline_gpnstar.sh`).
+4. **`run_paralog_human_gene_pipeline_evo2.sh`** — the Evo2 human **paralog** gene-panel experiment.
 
 The Evo2 embedding mechanics (model load, second-half pooling, the block taxonomy, single-/all-block
 embed) are shared across the gene-panel scripts by [`evo2_embedding.py`](evo2_embedding.py) — the Evo2
@@ -78,8 +78,7 @@ End to end ≈ **7–8 h**, dominated by Evo2 embedding.
 
 Tests whether **Evo2 7B** embeddings of cross-kingdom CDS (one KEGG ortholog per row, spanning all
 sequenced life) (a) separate by gene family — *Axis A* — and (b) recapitulate within-family sequence
-divergence + host taxonomy — *Axis B*. This is the panel no GPN-Star configuration can pose (GPN is
-human-genome-anchored). Layer-selection-driven and resumable.
+divergence + host taxonomy — *Axis B*. Layer-selection-driven and resumable.
 
 **Pipeline order:** `gene_families.py build-ortholog` → `layer_sweep.py` →
 `layer_selection.py` → `embed_and_geodesic_ortholog.py --from-sweep-layer` → shared baselines →
@@ -100,9 +99,8 @@ Results are written to `results/YYYY-MM-DD_evo2-gene-families-blocks<layer>/`.
 
 ## 4. Matched human paralog gene-family pipeline
 
-The Evo2 side of the apples-to-apples **paralog** comparison: embeds the GRCh38 genomic string over
-each gene's transcript span — the *same* locus GPN-Star tiles with multiz windows — for the 580 genes
-both models can embed, and scores it against the *same* human baselines as the GPN-Star run.
+Embeds the GRCh38 genomic string over each gene's transcript span and scores the resulting
+human-paralog geometry against sequence and protein-alignment baselines.
 
 **Pipeline order:** `embed_and_geodesic_paralog.py` (dense sweep) → `layer_selection.py --panel human`
 → `embed_and_geodesic_paralog.py --from-layer` → `sample_human_genes.py prefetch-cds` → shared
@@ -112,7 +110,7 @@ baselines (+ the composition control) → `gene_family_visualization.py`. Chaine
 | File | Purpose |
 |------|---------|
 | `embed_and_geodesic_paralog.py` | Fetch each gene's GRCh38 transcript-span string (Ensembl, cached); embed all blocks per window, mean-pool across windows; sweep cache → run dir at the selected block. The matched gene/locus set comes from `sample_human_genes.load_matched_panel()`. |
-| *(ground-truth baselines)* | The shared [../baselines/](../baselines/) scripts (sampled CDS seq-identity, protein-alignment patristic/seq-id, k-mer, Pfam-JSD, between-family), run with `--seq-source gpn` so they score the Evo2-human run exactly as they score GPN-human. |
+| *(ground-truth baselines)* | The shared [../baselines/](../baselines/) scripts (protein-alignment patristic/seq-id, k-mer, Pfam-JSD, between-family), run with `--seq-source human`. |
 | `../controls/transcript_composition_control.py` | The transcript-span composition null (k-mer + GC on the actual genomic input). |
 | `run_paralog_human_gene_pipeline_evo2.sh` | Sequential background runner for the Evo2 matched-human job. |
 

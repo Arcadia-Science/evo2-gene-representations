@@ -411,7 +411,7 @@ def _human_setup(controls: list[str], device: str, force_reembed: bool, input_mo
 
 
 def _human_patristic_by_family(genes: list[str], fam_of: dict[str, str],
-                               cache: Path = Path("data/cache/gpnstar_patristic")):
+                               cache: Path = Path("data/cache/human_patristic")):
     """Load each family's members and patristic submatrix from cache."""
     import json as _json
 
@@ -518,8 +518,7 @@ def run_human_all_layers(controls: list[str], nat_dir_for, device: str = "cpu",
 
 
 def run_between(controls: list[str], device: str, layer: str, nat_dir: Path) -> None:
-    """Mirror control: BETWEEN-family centroid geodesic of each control vs the NATURAL
-    centroid geometry and vs Pfam-JSD (parallel to the GPN MSA between-control)."""
+    """Score control centroid geometry against natural geometry and Pfam JSD."""
     order = pd.read_csv(nat_dir / "family_centroid_distances.csv", index_col=0).index.tolist()
     nat_cen = pd.read_csv(nat_dir / "family_centroid_distances.csv", index_col=0).reindex(
         index=order, columns=order).values

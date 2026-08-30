@@ -5,10 +5,7 @@ figures. Scoring for a specific panel lives with that panel
 (`mammalian_orthologs/controls_score_graphfree.py`, `evo2/cdspool_controls.py`).
 
 
-One-off, finished analyses that are **not** part of the standard from-scratch pipelines
-(`scripts/evo2/run_*_pipeline.sh`, `scripts/gpnstar/run_paralog_human_gene_pipeline_gpnstar.sh`). They are run by
-hand against an existing natural run and produce paper figures/tables. Kept separate so the
-model `scripts/` dirs stay limited to the live pipeline.
+These scripts run against existing natural runs and produce the control figures and tables.
 
 All scripts run from the repo root (`uv run python scripts/controls/<script>.py ...`) and import
 shared helpers from `scripts/` via `sys.path`.
@@ -30,10 +27,6 @@ artifact of nucleotide composition?
   between. `--panel ortholog` re-embeds the cross-kingdom KEGG controls; `--panel human`
   reads the matched-human control run dirs (preservation only). Writes
   `<natural-run>/controls/control_within_scores.csv` + `control_between_scores.csv`.
-- `embed_and_score_msa_controls.py` — the GPN-Star analog: MSA column / conservation
-  ablation controls. `--axis between` → `<run>/msa_controls/msa_control_between_scores.csv`
-  (centroid preservation); `--axis within` → `<run>/controls/control_within_scores.csv`
-  (per-family recovery vs patristic + `rho_geodesic_vs_natural` preservation).
 - `control_comparison_figure.py` — Figure 3: natural vs. each control, per family.
 - `control_sequence_identity.py` — the ladder's own confound check, sequence-level and GPU-free:
   how much of the SOURCE sequence does each rung actually retain, and is its ρ just tracking that?
@@ -49,8 +42,8 @@ artifact of nucleotide composition?
   exact), `human_cds`, `mammal_cdsmask`.
 
 The shared preservation metric lives in `scripts/geodesic_utils.py`
-(`within_preservation_rho`, `between_preservation_rho`) and is wired into all three
-pipeline runners (`scripts/{evo2,gpnstar}/run_*_pipeline*.sh`), so every run writes its
+(`within_preservation_rho`, `between_preservation_rho`) and is used by the active control
+pipelines, so every run writes its
 control-reconstruction CSVs into its own `results/<run>/controls/` folder.
 
 See **`control_metrics_guide.md`** for how to read these CSVs — what each column means

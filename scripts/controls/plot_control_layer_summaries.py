@@ -36,14 +36,6 @@ MODELS = [
         "natural_metric": "patristic tree",
     },
     {
-        "name": "GPN-Star human (9 paralogs, MSA-anchored)",
-        "slug": "gpnstar-human-9fam",
-        "glob": "results/2026-07-01_gpnstar-human-panel/L*",
-        "recov_col": "rho_geodesic_patristic",
-        "recov_label": "within recovery vs patristic",
-        "natural_metric": "patristic tree",
-    },
-    {
         "name": "Evo2 human CDS (48 families, spliced-CDS input)",
         "slug": "evo2-human-cds-48fam",
         "glob": "results/2026-07-22_evo2-human-panel-cds/blocks*",
@@ -134,12 +126,6 @@ COND_COLOR = {
     "codon_shuffle": acs.CONTROL_COLORS["codon_shuffle"],
     "dinuc_shuffle": acs.CONTROL_COLORS["dinuc_shuffle"],
     "gc_match": acs.CONTROL_COLORS["gc_match"],
-    # GPN-Star MSA-anchored conditions
-    "column_shuffle": acs.CONTROL_COLORS["column_shuffle"],
-    "conservation_ablation": acs.CONTROL_COLORS["conservation_ablation"],
-    "ref_dinuc_column": acs.CONTROL_COLORS["ref_dinuc_column"],
-    "ref_kmer4_column": acs.CONTROL_COLORS["ref_kmer4_column"],
-    "ref_kmer6_column": acs.CONTROL_COLORS["ref_kmer6_column"],
 }
 
 

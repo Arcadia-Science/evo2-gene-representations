@@ -145,7 +145,7 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--cache", default=None,
-                    help="per-family patristic/seqid cache (default: try evo2 then gpnstar)")
+                    help="per-family patristic/seqid cache (default: try Evo2 then human)")
     ap.add_argument("--n-perms", type=int, default=999,
                     help="Mantel permutations; p floor is 1/(n+1), so 999 -> p >= 0.001")
     ap.add_argument("--n-boot", type=int, default=1000)
@@ -162,7 +162,7 @@ def main() -> None:
     pos = {g: i for i, g in enumerate(ids)}
     geo = geo_df.values
     caches = ([Path(args.cache)] if args.cache else
-              [ROOT / "data/cache/evo2_patristic", ROOT / "data/cache/gpnstar_patristic"])
+              [ROOT / "data/cache/evo2_patristic", ROOT / "data/cache/human_patristic"])
 
     families = sorted({fam_of[g] for g in ids if g in fam_of})
     print(f"{run_dir}\n{len(ids)} genes, {len(families)} families, "

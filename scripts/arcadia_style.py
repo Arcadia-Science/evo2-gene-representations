@@ -130,8 +130,7 @@ SEQUENTIAL_ALT = "apc:viridis"
 DIVERGING = "apc:red_blue_r"  # low = blue, high = red (matplotlib RdBu_r's direction)
 DIVERGING_WARM_COOL = "apc:orange_sage_r"  # low = sage/green, high = orange (RdYlGn_r)
 
-# Per-baseline heatmap gradients: one hue per baseline, held constant across the Evo2 and
-# GPN-Star figures so the two panels read as one comparison.
+# Per-baseline heatmap gradients keep each baseline's hue consistent across figures.
 HEATMAP_GEODESIC = "apc:oranges_r"  # model geodesic  (was YlOrRd)
 HEATMAP_JSD = "apc:blues_r"  # Pfam-domain JSD  (was Blues)
 HEATMAP_SEQID = "apc:greens_r"  # sequence identity (was Greens)
@@ -154,9 +153,8 @@ HIGHLIGHT = apc.dragon  # the one element a panel is about
 
 # ── Semantic categorical groups
 
-# The three standardized within-family baselines, identical in the Evo2 and GPN-Star
-# within_correlations figures. Each bar colour is the mid-tone of the gradient that
-# baseline's heatmap uses, so a baseline keeps one hue across the whole figure set.
+# Each within-family baseline uses the mid-tone of its heatmap gradient so its hue
+# remains consistent across the figure set.
 WITHIN_PALETTE = {
     "kmer": apc.aster,  # HEATMAP_KMER (purples)
     "seqid": apc.seaweed,  # HEATMAP_SEQID (greens)
@@ -178,11 +176,11 @@ DOMAIN_COLORS = {
 # ladder order (6-mer → 4-mer → codon → dinucleotide preserved), so the ramp itself carries
 # the "progressively more composition destroyed" axis; the composition floor is neutral,
 # `natural` is the intact reference (the same green as REFERENCE_LINE), and the two rungs
-# that ablate something ORTHOGONAL to nucleotide composition — synonymous recode (protein
-# preserved) and conservation ablation — are amber so they never read as part of the ramp.
+# that ablates something orthogonal to nucleotide composition—synonymous recoding,
+# which preserves the protein—is amber so it does not read as part of the ramp.
 CONTROL_COLORS = {
     "natural": apc.seaweed,
-    # sequence-composition ladder (Evo2 / GPN CDS controls)
+    # Sequence-composition ladder
     "kmer6_shuffle": apc.dusk,
     "kmer4_shuffle": apc.lapis,
     "codon_shuffle": apc.aegean,
@@ -201,12 +199,6 @@ CONTROL_COLORS = {
     # SELF-CONTAINED pair scored against each other, not rungs of the composition ladder.
     "paired_p3_syn": apc.canary,
     "paired_p3_missense": apc.rose,
-    # MSA-anchored ladder (GPN-Star multiz controls)
-    "column_shuffle": apc.dusk,
-    "ref_kmer6_column": apc.lapis,
-    "ref_kmer4_column": apc.aegean,
-    "ref_dinuc_column": apc.vital,
-    "conservation_ablation": apc.amber,
     # structural ablations
     "cds_masked": apc.aster,
     "shuffled": apc.rose,

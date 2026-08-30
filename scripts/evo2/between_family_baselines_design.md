@@ -329,11 +329,10 @@ module is dropped as constant (§4); eggNOG superseded by Pfam clan (§4 1c).
 
 ---
 
-## 6b. Convergent-pair rank test + GPN-Star comparison (2026-06-21)
+## 6b. Convergent-pair rank test (2026-06-21)
 
-Both built. The rank test is in `between_family_baselines.py` (`convergent_pair_ranks.csv`);
-GPN-Star runs via `--seq-source gpn` on its run dir (shares the curated annotations; adds
-`hox`, `carbonic_anhydrase`). Per-family patristic gold standard:
+The rank test is in `between_family_baselines.py` (`convergent_pair_ranks.csv`).
+The per-family patristic gold standard is:
 `scripts/baselines/protein_alignment_patristic_seqid.py` (MAFFT→FastTree→patristic, model-agnostic).
 
 **Convergent-pair rank test (Evo2)** — percentile of each pair's geodesic closeness among
@@ -354,58 +353,18 @@ biochemical-analogy signal. The CA trio is moderately close (mechanism/context p
 the 2–6th %ile, geometry at 14–26) — a weak nod to analogy, not a clean hit. Honest read:
 no clean homology-vs-analogy story between families; the structure is a globin hub.
 
-**GPN-Star vs Evo2 (the architecture contrast, plan takeaway #3).** Same baselines, 9
-human-paralog families (36 pairs). The decisive baseline is the *continuous* homology one,
-**Pfam JSD** (the categorical tier/clan are near-degenerate on this panel — only OLFR↔opsins
-share a clan — so they read weak regardless):
-
-| Axis (baseline) | Evo2 ρ | GPN-Star ρ |
-|------|--------|-----------|
-| homology — **Pfam JSD** (graded) | +0.096 | **+0.396** (rank-p .017, Mantel .10) |
-| homology — tier/clan (categorical) | +0.035 | +0.155 |
-| k-mer (composition) | **−0.781** | +0.310 |
-| GC | −0.275 | +0.247 |
-
-**GPN-Star's between-family geometry tracks graded domain homology (Pfam JSD +0.40) — its
-strongest signal, ahead of composition.** It is *suggestive*, not conclusive: the
-conservative family-label Mantel is marginal (p≈0.10) at N=9 families, but it is the only
-baseline approaching significance and it beats k-mer. Evo2 shows no homology signal
-(+0.10 ns) and composition *anti*-correlates (−0.78). So the models are closer to **mirror
-images** than a simple sign-flip:
-
-| | within-family (patristic) | between-family (best biological axis) |
-|---|---|---|
-| **Evo2** | **strong** (ρ .15–.78, all p≈0) | null (Pfam JSD +0.10 ns; k-mer −0.78) |
-| **GPN-Star** | ≈0 (paralog tree not recovered) | **graded domain homology** (Pfam JSD +0.40, marginal) |
-
-Mechanistically sensible: GPN-Star is a genome-anchored MLM trained on cross-species
-**aligned** windows → it encodes conserved-domain divergence (what Pfam JSD measures)
-*between* families; Evo2's autoregressive manifold instead captures the fine evolutionary
-gradient *within* each family. (Earlier drafts of this doc mis-stated GPN-Star as
-composition-tracking — that conflated the weak categorical clan/tier with the omitted
-graded Pfam JSD, which is the real signal.) GPN-Star's negative controls also behave sanely
-(globins↔hox 86th %ile = far; Evo2 had globins close to everything).
-
 **Within-family patristic gold standard (the Axis-B headline).** Per-family
 MAFFT→FastTree patristic distance vs the within-family geodesic.
 - **Evo2: strong and significant for every family** — ρ +0.15 → +0.78, all p≈0
   (opsins +0.71, MMO +0.78, γ-CA +0.70, NOS +0.67, globins +0.64, nitrogenase +0.57,
   mcrA +0.52, Ras +0.52; lowest HCO +0.15). Evo2's within-family geodesic genuinely
   recapitulates the gene tree. This is the project's contribution.
-- **GPN-Star: ρ ≈ 0 for every family** (±0.06, mostly ns) — its geodesic does *not*
-  recover the gene tree among human paralogs (known paralog-signal weakness + last-layer
-  tap). `within_family_patristic.csv` in each run; figure `within_correlations.png`.
-
-The model contrast is the cleanest result of all: **Evo2 recovers within-family
-evolutionary structure where GPN-Star does not**, while *neither* recovers a between-family
-biological axis. The within-family signal is the gene-family contribution; the
-between-family axis is a calibrated null.
 
 **GO baselines (added 2026-06-21).** GO molecular-function (`go_mf`, mechanism axis) and
 GO biological-process (`go_bp`, context axis), from GO's curated pfam2go mapping (namespace
 via QuickGO; canonical curated fill for the 4 families pfam2go does not map at Pfam level:
-α/γ-CA, hemerythrin, sMMO). Both null between families (Evo2 go_mf +0.044, go_bp +0.039;
-GPN go_mf −0.024, go_bp +0.155 — all ns), consistent with the other six biological axes.
+α/γ-CA, hemerythrin, sMMO). Both are null between families
+(go_mf +0.044, go_bp +0.039), consistent with the other biological axes.
 **Eight independent biological signals now return null between families; only composition
 (k-mer/GC) correlates.** That is the calibration the proposal asked for.
 

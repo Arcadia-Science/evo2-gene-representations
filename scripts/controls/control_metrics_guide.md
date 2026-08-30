@@ -28,20 +28,17 @@ question). It has no external ground truth — it only compares model to model.
 > *Does the control's geometry still track an **external biological ground truth**?*
 
 This is a control-vs-**ground-truth** comparison: correlate the control geodesic against a
-fixed reference signal — **phylogeny** (patristic tree distance, GPN-Star) or **host
-taxonomy** (Evo2 cross-kingdom). It asks whether the biological signal the natural run
+fixed reference signal such as a patristic tree or host taxonomy. It asks whether the
+biological signal the natural run
 recovered **survives** the ablation.
 
 - **ρ near the natural run's ρ** → the signal survived; whatever the control preserved is
   enough to explain that biological signal (i.e. the signal may be a composition artifact).
 - **ρ collapsing toward 0** → the ablation destroyed the biological signal.
 
-**Crucial caveat for reading recovery:** recovery is only interpretable when the **natural**
-run itself has signal to lose. If the natural run's recovery ρ is already near zero (as
-GPN-Star is on the *within-family* axis at its deep layers — it has little within-family
-phylogenetic signal there to begin with), then the controls' recovery ρ will also be near
-zero, and that says **nothing** about the controls. Always read the `natural` row first; if
-it is near zero, ignore the recovery column for that run and rely on **reconstruction**.
+Recovery is only interpretable when the **natural** run has signal to lose. Always read the
+`natural` row first; if its recovery is near zero, ignore that column for the run and rely
+on **reconstruction**.
 
 These two questions are independent. A control can fully reconstruct the natural geometry
 (high preservation) while that geometry has no biological recovery signal at all — the two
@@ -63,20 +60,8 @@ columns are answering different things and should not be compared to each other.
 
 ## Where each number lives
 
-### GPN-Star (human panel)
 
-| Axis | File | Column | Question |
-|---|---|---|---|
-| WITHIN | `results/<run>/controls/control_within_scores.csv` | `rho_geodesic_vs_natural` | **reconstruction** (preservation) |
-| WITHIN | `results/<run>/controls/control_within_scores.csv` | `rho_geodesic_patristic` | **recovery** vs phylogeny (read the `natural` row first) |
-| BETWEEN | `results/<run>/msa_controls/msa_control_between_scores.csv` | `rho_vs_natural_geodesic` | **reconstruction** (preservation) |
-| BETWEEN | `results/<run>/msa_controls/msa_control_between_scores.csv` | `rho_geodesic_vs_pfamjsd` | supplementary: centroid geometry vs Pfam-JSD homology |
-
-`control_within_scores.csv` is **per-family rows** (with a `natural` block where preservation
-is 1.0 by definition); take the **mean over families per condition** to get the headline
-number. The GPN between-control keeps its original `msa_controls/` location.
-
-### Evo2 (human panel and cross-kingdom / ortholog panel)
+### Evo2 panels
 
 | Axis | File | Column | Question |
 |---|---|---|---|

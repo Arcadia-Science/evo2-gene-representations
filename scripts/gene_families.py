@@ -24,7 +24,7 @@ OVERSAMPLE = 1.6  # fetch this × target as candidates so dedup still leaves ~ta
 # 1. DEFINITIONS
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── Human panel (GPN-Star): HGNC gene-group spec ─────────────────────────────────
+# ── Human paralog panel: HGNC gene-group specification
 # group_ids are HGNC gene-group IDs (resolved against the live HGNC REST API). extra_symbols are
 # appended verbatim (for genes HGNC leaves ungrouped). symbol_prefix restricts a broad group to one
 # cluster. max_members triggers a seeded subsample (none set today; machinery kept generic).
@@ -399,8 +399,8 @@ def build_human_paralogs() -> None:
                 if doc.get("locus_group") != "protein-coding gene":
                     continue  # drop pseudogenes / RNA genes
                 sym = doc.get("symbol", "")
-                if not sym or sym.startswith("MT-"):
-                    continue  # mitochondrial loci are absent from the nuclear multiz
+                if not sym:
+                    continue
                 if "symbol_prefix" in spec and not sym.startswith(spec["symbol_prefix"]):
                     continue
                 symbols.add(sym)

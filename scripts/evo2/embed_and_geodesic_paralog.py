@@ -1,4 +1,4 @@
-"""Evo2 human Panel-1 (matched-manifest) embedder — the human side of the apples-to-apples Evo2-vs-GPN-Star comparison (§1 shared locus)."""
+"""Embed and score the Evo2 human-paralog panel."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-sys.path.insert(0, str(ROOT / "scripts" / "evo2"))  # evo2/ siblings (NOT gpnstar) → no name clash
+sys.path.insert(0, str(ROOT / "scripts" / "evo2"))
 
 sys.path.insert(0, str(ROOT / "scripts" / "controls"))  # composition-shuffle fns live with the control scripts
 import sample_human_genes as ss  # noqa: E402
@@ -197,8 +197,7 @@ def write_run_dir(stack, genes, fams, fam_order, layer_idx, model_tag="evo2_huma
     pd.DataFrame(cen, index=fam_order, columns=fam_order).to_csv(
         out / f"{model_tag}_centroid_distances.csv"
     )
-    # metadata.csv with a "gene" column → scored with --seq-source gpn (human ground truth),
-    # exactly like GPN-human, so the two models are compared on the same baselines.
+    # Human-panel metadata uses gene symbols as identifiers.
     pd.DataFrame({"gene": genes, "family": fams}).to_csv(out / "metadata.csv", index=False)
     (out / "family_order.txt").write_text("\n".join(fam_order) + "\n")
     print(f"  Wrote run dir {out}  (geodesic {geo.shape}, {len(fam_order)} families)")
@@ -225,7 +224,7 @@ def parse_args():
                         "codon_shuffle / synonymous_recode, which require --input cds). "
                         "Caches + run dir are control-tagged.")
     p.add_argument("--input", default="genomic", choices=["genomic", "cds"],
-                   help="What Evo2 reads: 'genomic' transcript span (default, matches the GPN locus) "
+                   help="What Evo2 reads: 'genomic' transcript span (default) "
                         "or 'cds' (diagnostic — same genes, CDS input, to isolate intron-dilution "
                         "from the paralog gene set). CDS read from data/cache/cds_sequences.json.")
     p.add_argument("--force-reembed", action="store_true")
