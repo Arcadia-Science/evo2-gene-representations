@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# Experiment 1 — between- and within-family geometry vs homology and composition baselines.
+# Produces publication figures 1, 2 and 3.
+#
+#   bash experiments/exp1_gene_family_geometry.sh            # print the plan, run nothing
+#   bash experiments/exp1_gene_family_geometry.sh --figures  # re-render figures 1-3  (~2 min, CPU)
+#   bash experiments/exp1_gene_family_geometry.sh --run      # full pipeline          (~40 h, GPU)
+#
+# Panel: 48 HGNC families / 1,144 human paralogs, resolved to 1:1 orthologs across 24 mammals
+# (Ensembl Compara release 116). Readout is the residual stream with non-coding positions masked,
+# mean-pooled over the second half of token positions, L2-normalised, at all 32 blocks.
+
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+MODE="${1:-plan}"
+case "$MODE" in
+  --run) MODE=run ;;
+  --figures) MODE=figures ;;
+  plan|--plan|"") MODE=plan ;;
+  -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+  *) echo "unknown option: $MODE (use --run, --figures, or nothing)"; exit 2 ;;
+esac
+
+PY="uv run --no-sync python"
+RUN=results/2026-07-16_mammalian-orthologs-transcript_cdsmask
+GF=results/layer_sweep_summaries/mammalian-orthologs-cdsmask-48fam
+OUT=pub/figures
+mkdir -p "$OUT"
+OK=0; FAILED=0; SKIPPED=0; declare -a FAIL_LIST=()
+
+say() { echo; echo "══ $*"; }
+
+# Print a stage; run it only under --run, and stop the chain if it fails.
+stage() {
+  local cost="$1" desc="$2"; shift 2
+  echo; echo "── $desc   [$cost]"; echo "   $*"
+  [ "$MODE" = run ] || return 0
+  "$@" && echo "   ok" || { echo "   FAILED — chain stopped"; exit 1; }
+}
+
+# Skip a figure unless every input glob matches.
+need() {
+  local label="$1"; shift
+  for p in "$@"; do
+    compgen -G "$p" > /dev/null || {
+      SKIPPED=$((SKIPPED+1)); echo "── $label"; echo "   SKIP — missing $p"; return 1; }
+  done
+}
+
+# Render a figure, recording the outcome instead of aborting.
+fig() {
+  local label="$1"; shift
+  echo "── $label"
+  [ "$MODE" = plan ] && { echo "   $*"; return 0; }
+  if "$@" > /tmp/exp1_fig.log 2>&1; then
+    OK=$((OK+1)); grep -E '^\s+pub: ' /tmp/exp1_fig.log | sed 's/^/   /'
+  else
+    FAILED=$((FAILED+1)); FAIL_LIST+=("$label")
+    echo "   FAILED:"; tail -6 /tmp/exp1_fig.log | sed 's/^/   | /'
+  fi
+}
+
+collect() { for e in png pdf; do [ -f "$1.$e" ] && cp -p "$1.$e" "$OUT/$2.$e"; done; return 0; }
+
+echo "Experiment 1 — gene-family geometry (figures 1-3)"
+[ "$MODE" = plan ]    && echo "DRY RUN — nothing will execute."
+[ "$MODE" = figures ] && echo "FIGURES ONLY — re-rendering from artifacts on disk."
+
+if [ "$MODE" != figures ]; then
+say "Dataset"
+
+# Check the per-family size report after A1 for incomplete Compara responses.
+stage "~6 h, API"   "A1. Compara 1:1 ortholog resolution, 24 mammals" \
+  $PY scripts/mammalian_orthologs/resolve_orthologs.py
+stage "~3 h, net"   "A2. download Ensembl GTF + genome FASTA per species" \
+  $PY scripts/mammalian_orthologs/download_bulk.py
+stage "~2 h, CPU"   "A3. extract transcript-span locus + CDS per ortholog, with QC" \
+  $PY scripts/mammalian_orthologs/extract_loci_bulk.py
+stage "~20 min"     "A4. assemble manifests and per-locus FASTAs" \
+  $PY scripts/mammalian_orthologs/assemble_datasets.py
+stage "~5 min"      "A5. stratified 400-loci-per-family cap" \
+  $PY scripts/mammalian_orthologs/build_capped_manifest.py
+stage "~5 min"      "A6. VertLife/MamPhy species tree -> patristic matrix" \
+  $PY scripts/mammalian_orthologs/build_species_tree.py
+stage "~15 min"     "A7. per-locus CDS-position masks" \
+  $PY scripts/mammalian_orthologs/build_cds_masks_mammal.py
+
+say "Embedding and scoring"
+
+FAMS=$($PY -c "
+import pandas as pd; print(' '.join(sorted(pd.read_csv('data/mammalian_orthologs/complete_manifest.csv').family.unique())))" 2>/dev/null) \
+  || FAMS='<families from complete_manifest.csv>'
+
+# Safe to interrupt: each locus is written to a .tmp.npy and atomically renamed, so a restart skips
+# what is done and loses at most the in-flight locus. --mirror-arm cds pins the locus set to the
+# CDS arm's.
+stage "~34 h, GPU"  "B1. embed 11,288 loci x 32 blocks, CDS-masked" \
+  $PY scripts/mammalian_orthologs/embed_cds_masked_mammal.py --families $FAMS --mirror-arm cds
+
+# B2 computes the MAFFT/FastTree patristic and k-mer baselines; B3 computes Pfam-HMM JSD.
+stage "~3 h, CPU"   "B2. within-family distances vs patristic / species tree / k-mer / GC" \
+  $PY scripts/mammalian_orthologs/mammal_score.py --arm transcript_cdsmask
+stage "~1 h, CPU"   "B3. between-family distances vs Pfam JSD / k-mer / GC" \
+  $PY scripts/mammalian_orthologs/mammal_between.py --arm transcript_cdsmask
+stage "~1 h, CPU"   "B4. between-family on the 400-cap panel (family-size robustness)" \
+  $PY scripts/mammalian_orthologs/mammal_between.py --arm transcript_cdsmask \
+     --manifest complete_manifest_cap400.csv --tag _400
+
+# W2 is the published between-family metric: no centroid, no graph, no k, so it cannot shift when a
+# k-NN graph reconnects at a different k.
+stage "~1.1 h, CPU" "B5. Wasserstein (W2) between-family sweep, all layers, 9,999 permutations" \
+  $PY scripts/baselines/ot_between_family_sweep.py --experiment mammal-cdsmask --n-perms 9999 --alphas
+
+stage "~40 min"     "B6. within-family confidence intervals and permutation inference" \
+  $PY scripts/mammalian_orthologs/within_family_uncertainty.py
+stage "~2 min"      "B7. results digest" \
+  $PY scripts/mammalian_orthologs/arm_digest.py --arm transcript_cdsmask
+fi
+
+say "Figures 1-3"
+
+# Publication panels use angular within-family scoring and the configured baseline exclusions.
+if need "figs 1-2: between/within rho by layer" "$RUN/blocks*"; then
+  fig "figs 1-2: between/within rho by layer" $PY scripts/layer_sweep_summary.py \
+    --glob "$RUN/blocks*" \
+    --out-dir "$GF" \
+    --title 'Evo2 mammalian orthologs (transcript, CDS-masked) — 48 families, graph-free metrics' \
+    --stem-suffix _graphfree --within-file-suffix _angular --kmer-k 6 \
+    --exclude-between cofactor ec_number go_mf --exclude-within 'sequence identity' \
+    --lead-per-baseline --no-baselines --pub
+  collect "$GF/pub/between_axis_vs_layer_graphfree"  fig01_between_family_rho_by_layer
+  collect "$GF/pub/within_family_vs_layer_graphfree" fig02_within_family_rho_by_layer
+fi
+
+if need "fig 3: three-family zoom" "$GF/within_family_vs_layer_graphfree.csv"; then
+  fig "fig 3: three-family zoom" $PY scripts/within_family_per_family_grid.py \
+    --csv "$GF/within_family_vs_layer_graphfree.csv" \
+    --families adrenoceptor glutathione_peroxidase peroxidase --out-suffix zoom3 --pub
+  collect "$GF/pub/within_family_vs_layer_graphfree_zoom3" fig03_within_family_three_families
+fi
+
+if [ "$MODE" = plan ]; then
+  echo; echo "══ dry run complete. --figures to re-render, --run for the whole experiment."
+  exit 0
+fi
+
+echo; echo "══ $OK ok, $FAILED failed, $SKIPPED skipped"
+[ ${#FAIL_LIST[@]} -gt 0 ] && printf '   FAILED: %s\n' "${FAIL_LIST[@]}"
+echo; echo "══ panel geometry (published panels are exactly 1000 or 500 pt wide)"
+$PY - <<'EOF'
+from PIL import Image
+import glob, os, sys
+bad = 0
+for f in sorted(glob.glob("pub/figures/fig0[123]*.png")):
+    im = Image.open(f)
+    dpi = im.info.get("dpi", (300, 300))[0]
+    w, h = (d / (dpi / 72) for d in im.size)
+    flag = "" if round(w) in (500, 1000) else "   <-- OFF-SPEC"
+    bad += bool(flag)
+    print(f"   {round(w):>5} x {round(h):<5} pt   {os.path.basename(f)}{flag}")
+sys.exit(1 if bad else 0)
+EOF
