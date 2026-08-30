@@ -14,7 +14,6 @@ from scipy.stats import spearmanr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
 
-EVO2_FASTA_DIR = Path("data/evo2_gene_families")
 HUMAN_CDS_JSON = Path("data/cache/cds_sequences.json")
 MIN_MEMBERS = 4  # below this a within-family rank correlation is meaningless
 
@@ -93,23 +92,9 @@ def translate(cds: str) -> str:
     return "".join("X" if c == "*" else c for c in aa)
 
 
-def load_sequences(seq_source: str) -> dict[str, str]:
-    """id -> CDS, for whichever panel this run came from."""
-    if seq_source == "human":
-        return json.loads(HUMAN_CDS_JSON.read_text())
-    seqs: dict[str, str] = {}
-    for fasta in EVO2_FASTA_DIR.glob("*.fasta"):
-        cur_id, cur = None, []
-        for line in fasta.read_text().splitlines():
-            if line.startswith(">"):
-                if cur_id:
-                    seqs[cur_id] = "".join(cur)
-                cur_id, cur = line[1:].split("|")[0], []
-            elif line.strip():
-                cur.append(line.strip().upper())
-        if cur_id:
-            seqs[cur_id] = "".join(cur)
-    return seqs
+def load_sequences() -> dict[str, str]:
+    """id -> CDS for the human paralog panel."""
+    return json.loads(HUMAN_CDS_JSON.read_text())
 
 
 def align_members(
@@ -240,7 +225,6 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--run-dir", required=True)
-    ap.add_argument("--seq-source", required=True, choices=["evo2", "human"])
     args = ap.parse_args()
     run_dir = Path(args.run_dir)
 
@@ -252,21 +236,16 @@ def main() -> None:
     ids_all = df_geo.index.tolist()
     id_pos = {g: i for i, g in enumerate(ids_all)}
 
-    meta = (
-        pd.read_csv(run_dir / "metadata.csv")
-        if (run_dir / "metadata.csv").exists()
-        else pd.read_csv(EVO2_FASTA_DIR / "embeddings" / "metadata.csv")
-    )
-    id_col = "gene" if args.seq_source == "human" else "org_gene"
-    fam_of = dict(zip(meta[id_col], meta["family"], strict=False))
-    seqs = load_sequences(args.seq_source)
+    meta = pd.read_csv(run_dir / "metadata.csv")
+    fam_of = dict(zip(meta["gene"], meta["family"], strict=False))
+    seqs = load_sequences()
 
     # The per-family patristic & seq-id distance MATRICES are layer-INDEPENDENT
     # (they come from the sequences, not the embedding), so they are cached on disk —
     # the layer-selection engine already populates data/cache/<model>_patristic/. We
     # reuse them and skip the (slow) MAFFT/FastTree pass; a fresh family is computed
     # once and cached. Only the geodesic↔matrix correlation is recomputed per layer.
-    cache_dir = Path(f"data/cache/{args.seq_source}_patristic")
+    cache_dir = Path("data/cache/human_patristic")
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     families = sorted(set(meta["family"]))

@@ -268,7 +268,6 @@ def summarize(rows: list[dict], dropped: list[dict], families: list[str], date: 
         "include_evo2": sum(r["include_evo2"] == "true" for r in rows),
         "dropped_by_reason": drop_reasons,
         "notes": [
-            "Human paralogs only; build the cross-kingdom panel with gene_families.py.",
             "Availability flags are metadata-derived (a human canonical CDS implies CDS+coords).",
         ],
     }

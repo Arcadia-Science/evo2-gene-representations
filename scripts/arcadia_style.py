@@ -27,7 +27,6 @@ __all__ = [
     "ANNOTATION",
     "NULL_BAND",
     "WITHIN_PALETTE",
-    "DOMAIN_COLORS",
     "CONTROL_COLORS",
     "STEER_COLORS",
 ]
@@ -162,14 +161,6 @@ WITHIN_PALETTE = {
     "taxonomy": apc.asparagus,  # HEATMAP_TAXONOMY (sages)
     "geodesic": apc.terracotta,  # HEATMAP_GEODESIC (oranges)
     "jsd": apc.aegean,  # HEATMAP_JSD (blues)
-}
-
-# Domain strip on the cross-kingdom within-family heatmaps.
-DOMAIN_COLORS = {
-    "Bacteria": apc.vital,
-    "Archaea": apc.canary,
-    "Eukaryota": apc.seaweed,
-    "Unknown": apc.chateau,
 }
 
 # Composition / ablation controls. The nucleotide rungs walk blue_shades dark → light in

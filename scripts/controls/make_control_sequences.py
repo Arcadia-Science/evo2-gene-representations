@@ -1,15 +1,9 @@
-"""Generate composition-matched control sequence sets for the Evo2 gene-family panel."""
+"""Composition-matched control-sequence operators, shared by every panel's control builder."""
 
 from __future__ import annotations
-import argparse
 import random
 from collections import defaultdict
-from pathlib import Path
 
-import pandas as pd
-
-DATA_DIR = Path("data/evo2_gene_families")
-CONTROL_ROOT = DATA_DIR / "controls"
 # kmer4/kmer6 preserve exact k-mer spectra. `missense_subset` is nested within each recode.
 # The paired-p3 arms share edited sites and rates and should be compared only with each other.
 CONTROLS = [
@@ -307,92 +301,3 @@ def gc_match(seq: str, rng: random.Random) -> str:
     gc = sum(c in "GC" for c in s)
     p = gc / valid if valid else 0.5
     return "".join(rng.choice("GC") if rng.random() < p else rng.choice("AT") for _ in s)
-
-
-# ── FASTA IO
-
-
-def load_family_fastas() -> tuple[dict[str, str], dict[str, list[tuple[str, str]]]]:
-    """Return ({org_gene: cds}, {family: [(header, org_gene), ...] in file order})."""
-    seqs: dict[str, str] = {}
-    order: dict[str, list[tuple[str, str]]] = {}
-    for fasta in sorted(DATA_DIR.glob("*.fasta")):
-        fam = fasta.stem
-        order[fam] = []
-        cur_hdr, cur_id, cur = None, None, []
-        for line in fasta.read_text().splitlines():
-            if line.startswith(">"):
-                if cur_id:
-                    seqs[cur_id] = "".join(cur)
-                cur_hdr = line[1:]
-                cur_id = cur_hdr.split("|")[0]
-                cur = []
-                order[fam].append((cur_hdr, cur_id))
-            elif line.strip():
-                cur.append(line.strip().upper())
-        if cur_id:
-            seqs[cur_id] = "".join(cur)
-    return seqs, order
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    ap.add_argument("--controls", nargs="+", default=CONTROLS, choices=CONTROLS)
-    args = ap.parse_args()
-
-    seqs, order = load_family_fastas()
-    seqs_by_family = {fam: [seqs[i] for _, i in hdrs] for fam, hdrs in order.items()}
-    print(f"Loaded {len(seqs)} CDS across {len(order)} families")
-    manifest = pd.read_csv(DATA_DIR / "manifest.csv")
-
-    needs_usage = {"synonymous_recode", "missense_subset", "paired_p3_syn"}
-    fam_usage_all = (
-        build_family_codon_usage(seqs_by_family) if needs_usage & set(args.controls) else {}
-    )
-
-    for control in args.controls:
-        rng = random.Random(SEED)  # fresh deterministic stream per control
-        # missense_subset draws its recode partner from a DEDICATED stream seeded exactly as the
-        # synonymous_recode control's own stream is, and consumes it in the same family/gene order.
-        # The partner is therefore byte-identical to the recode set on disk, so the two rungs are
-        # matched per sequence and not merely in distribution.
-        partner_rng = random.Random(SEED) if control == "missense_subset" else None
-        out_dir = CONTROL_ROOT / control
-        out_dir.mkdir(parents=True, exist_ok=True)
-        n_total = 0
-        for fam, hdrs in order.items():
-            lines = []
-            for hdr, og in hdrs:
-                s = seqs[og]
-                if control == "dinuc_shuffle":
-                    c = dinuc_shuffle(s, rng)
-                elif control == "kmer4_shuffle":
-                    c = klet_shuffle(s, 4, rng)
-                elif control == "kmer6_shuffle":
-                    c = klet_shuffle(s, 6, rng)
-                elif control == "codon_shuffle":
-                    c = codon_shuffle(s, rng)
-                elif control == "synonymous_recode":
-                    c = synonymous_recode(s, fam_usage_all[fam], rng)
-                elif control == "paired_p3_syn":
-                    c = paired_p3(s, fam_usage_all[fam], rng, "synonymous")
-                elif control == "paired_p3_missense":
-                    c = paired_p3(s, {}, rng, "missense")
-                elif control == "missense_subset":
-                    c = missense_subset(
-                        s, synonymous_recode(s, fam_usage_all[fam], partner_rng), rng
-                    )
-                else:  # gc_match
-                    c = gc_match(s, rng)
-                lines.append(f">{hdr}\n{c}")
-                n_total += 1
-            (out_dir / f"{fam}.fasta").write_text("\n".join(lines) + "\n")
-        manifest.to_csv(out_dir / "manifest.csv", index=False)  # metadata unchanged
-        print(f"  {control:18} -> {out_dir}  ({n_total} sequences)")
-    print("Done.")
-
-
-if __name__ == "__main__":
-    main()

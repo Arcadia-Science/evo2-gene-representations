@@ -109,11 +109,7 @@ def load_panel(run_dir: Path):
     geo = pd.read_csv(hits[0], index_col=0)
     ids = geo.index.tolist()
 
-    meta_p = run_dir / "metadata.csv"
-    if meta_p.exists():
-        meta = pd.read_csv(meta_p)
-    else:  # cross-kingdom: family membership lives with the sequence manifest
-        meta = pd.read_csv(ROOT / "data/evo2_gene_families/manifest.csv")
+    meta = pd.read_csv(run_dir / "metadata.csv")
     id_col = next((c for c in ("org_gene", "gene") if c in meta.columns), None)
     if id_col is None:
         sys.exit(f"metadata has neither org_gene nor gene: {list(meta.columns)}")
@@ -184,7 +180,7 @@ def main() -> None:
     caches = (
         [Path(args.cache)]
         if args.cache
-        else [ROOT / "data/cache/evo2_patristic", ROOT / "data/cache/human_patristic"]
+        else [ROOT / "data/cache/human_patristic"]
     )
 
     families = sorted({fam_of[g] for g in ids if g in fam_of})
