@@ -28,7 +28,7 @@ PUB_RUNG_LABELS = {
 # Height of one stacked publication panel, in points.
 PUB_PANEL_H = 330.0
 
-# same rung colours as plot_control_layer_summaries so the two figures read as one set
+# Use the shared control-rung colors.
 COLORS = {
     "synonymous_recode": acs.CONTROL_COLORS["synonymous_recode"],
     "gc_match": acs.CONTROL_COLORS["gc_match"],
