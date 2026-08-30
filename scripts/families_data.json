@@ -10,7 +10,46 @@
     "ras_gtpases",
     "carbonic_anhydrase",
     "nitric_oxide_synthase",
-    "heme_oxygenase"
+    "heme_oxygenase",
+    "peroxiredoxin",
+    "glutathione_peroxidase",
+    "glutaredoxin",
+    "peroxidase",
+    "glutathione_s_transferase",
+    "aldehyde_dehydrogenase",
+    "aldo_keto_reductase",
+    "sulfotransferase",
+    "udp_glucuronosyltransferase",
+    "nadph_oxidase",
+    "arachidonate_lipoxygenase",
+    "flavin_monooxygenase",
+    "steap_metalloreductase",
+    "matrix_metalloproteinase",
+    "adam_metallopeptidase",
+    "adamts_metallopeptidase",
+    "m14_carboxypeptidase",
+    "alcohol_dehydrogenase",
+    "metallothionein",
+    "alkaline_phosphatase",
+    "histone_deacetylase_classI",
+    "ectonucleotide_pyrophosphatase",
+    "phosphodiesterase",
+    "ferritin",
+    "rab_gtpase",
+    "arf_gtpase",
+    "rho_gtpase",
+    "guanylate_binding_protein",
+    "taste2_receptor",
+    "serotonin_receptor",
+    "adrenoceptor",
+    "glutamate_metabotropic",
+    "dopamine_receptor",
+    "muscarinic_receptor",
+    "histamine_receptor",
+    "p2y_receptor",
+    "cxc_chemokine_receptor",
+    "serine_protease",
+    "histone_h4"
   ],
   "family_spec": {
     "globins": {
@@ -93,6 +132,203 @@
     "heme_oxygenase": {
       "group_ids": [
         3873
+      ]
+    },
+    "peroxiredoxin": {
+      "group_ids": [
+        953
+      ]
+    },
+    "glutathione_peroxidase": {
+      "group_ids": [
+        3475
+      ]
+    },
+    "glutaredoxin": {
+      "group_ids": [
+        1468
+      ],
+      "symbol_prefix": "GLRX"
+    },
+    "peroxidase": {
+      "group_ids": [
+        3476
+      ]
+    },
+    "glutathione_s_transferase": {
+      "group_ids": [
+        567
+      ]
+    },
+    "aldehyde_dehydrogenase": {
+      "group_ids": [
+        398
+      ]
+    },
+    "aldo_keto_reductase": {
+      "group_ids": [
+        399
+      ],
+      "symbol_prefix": "AKR"
+    },
+    "sulfotransferase": {
+      "group_ids": [
+        762
+      ]
+    },
+    "udp_glucuronosyltransferase": {
+      "group_ids": [
+        363
+      ]
+    },
+    "nadph_oxidase": {
+      "group_ids": [
+        3535
+      ]
+    },
+    "arachidonate_lipoxygenase": {
+      "group_ids": [
+        407
+      ]
+    },
+    "flavin_monooxygenase": {
+      "group_ids": [
+        1667
+      ]
+    },
+    "steap_metalloreductase": {
+      "group_ids": [
+        1324
+      ]
+    },
+    "matrix_metalloproteinase": {
+      "group_ids": [
+        891
+      ]
+    },
+    "adam_metallopeptidase": {
+      "group_ids": [
+        47
+      ]
+    },
+    "adamts_metallopeptidase": {
+      "group_ids": [
+        50
+      ]
+    },
+    "m14_carboxypeptidase": {
+      "group_ids": [
+        1321
+      ]
+    },
+    "alcohol_dehydrogenase": {
+      "group_ids": [
+        397
+      ]
+    },
+    "metallothionein": {
+      "group_ids": [
+        638
+      ]
+    },
+    "alkaline_phosphatase": {
+      "group_ids": [
+        1072
+      ]
+    },
+    "histone_deacetylase_classI": {
+      "group_ids": [
+        989
+      ]
+    },
+    "ectonucleotide_pyrophosphatase": {
+      "group_ids": [
+        1821
+      ]
+    },
+    "phosphodiesterase": {
+      "group_ids": [
+        681
+      ]
+    },
+    "ferritin": {
+      "group_ids": [
+        1455
+      ]
+    },
+    "rab_gtpase": {
+      "group_ids": [
+        388
+      ]
+    },
+    "arf_gtpase": {
+      "group_ids": [
+        357
+      ]
+    },
+    "rho_gtpase": {
+      "group_ids": [
+        390
+      ]
+    },
+    "guanylate_binding_protein": {
+      "group_ids": [
+        1825
+      ]
+    },
+    "taste2_receptor": {
+      "group_ids": [
+        1162
+      ]
+    },
+    "serotonin_receptor": {
+      "group_ids": [
+        170
+      ]
+    },
+    "adrenoceptor": {
+      "group_ids": [
+        169
+      ]
+    },
+    "glutamate_metabotropic": {
+      "group_ids": [
+        281
+      ]
+    },
+    "dopamine_receptor": {
+      "group_ids": [
+        181
+      ]
+    },
+    "muscarinic_receptor": {
+      "group_ids": [
+        180
+      ]
+    },
+    "histamine_receptor": {
+      "group_ids": [
+        187
+      ]
+    },
+    "p2y_receptor": {
+      "group_ids": [
+        213
+      ]
+    },
+    "cxc_chemokine_receptor": {
+      "group_ids": [
+        1094
+      ]
+    },
+    "serine_protease": {
+      "group_ids": [
+        738
+      ]
+    },
+    "histone_h4": {
+      "group_ids": [
+        1939
       ]
     }
   },
@@ -701,6 +937,641 @@
     "heme_oxygenase": [
       "HMOX1",
       "HMOX2"
+    ],
+    "peroxiredoxin": [
+      "PRDX1",
+      "PRDX2",
+      "PRDX3",
+      "PRDX4",
+      "PRDX5",
+      "PRDX6"
+    ],
+    "glutathione_peroxidase": [
+      "GPX1",
+      "GPX2",
+      "GPX3",
+      "GPX4",
+      "GPX5",
+      "GPX6",
+      "GPX7",
+      "GPX8"
+    ],
+    "glutaredoxin": [
+      "GLRX",
+      "GLRX2",
+      "GLRX3",
+      "GLRX5"
+    ],
+    "peroxidase": [
+      "EPX",
+      "LPO",
+      "MPO",
+      "PXDN",
+      "PXDNL",
+      "TPO"
+    ],
+    "glutathione_s_transferase": [
+      "GSTA1",
+      "GSTA2",
+      "GSTA3",
+      "GSTA4",
+      "GSTA5",
+      "GSTK1",
+      "GSTM1",
+      "GSTM2",
+      "GSTM3",
+      "GSTM4",
+      "GSTM5",
+      "GSTO1",
+      "GSTO2",
+      "GSTP1",
+      "GSTT1",
+      "GSTT2",
+      "GSTT2B",
+      "GSTT4",
+      "GSTZ1",
+      "HPGDS"
+    ],
+    "aldehyde_dehydrogenase": [
+      "ALDH16A1",
+      "ALDH18A1",
+      "ALDH1A1",
+      "ALDH1A2",
+      "ALDH1A3",
+      "ALDH1B1",
+      "ALDH1L1",
+      "ALDH1L2",
+      "ALDH2",
+      "ALDH3A1",
+      "ALDH3A2",
+      "ALDH3B1",
+      "ALDH3B2",
+      "ALDH4A1",
+      "ALDH5A1",
+      "ALDH6A1",
+      "ALDH7A1",
+      "ALDH8A1",
+      "ALDH9A1"
+    ],
+    "aldo_keto_reductase": [
+      "AKR1A1",
+      "AKR1B1",
+      "AKR1B10",
+      "AKR1B15",
+      "AKR1C1",
+      "AKR1C2",
+      "AKR1C3",
+      "AKR1C4",
+      "AKR1C8",
+      "AKR1D1",
+      "AKR1E2",
+      "AKR7A2",
+      "AKR7A3"
+    ],
+    "sulfotransferase": [
+      "SULT1A1",
+      "SULT1A2",
+      "SULT1A3",
+      "SULT1A4",
+      "SULT1B1",
+      "SULT1C2",
+      "SULT1C3",
+      "SULT1C4",
+      "SULT1E1",
+      "SULT2A1",
+      "SULT2B1",
+      "SULT4A1",
+      "SULT6B1"
+    ],
+    "udp_glucuronosyltransferase": [
+      "UGT1A",
+      "UGT2A1",
+      "UGT2A3",
+      "UGT2B10",
+      "UGT2B11",
+      "UGT2B15",
+      "UGT2B17",
+      "UGT2B28",
+      "UGT2B4",
+      "UGT2B7",
+      "UGT3A1",
+      "UGT3A2",
+      "UGT8"
+    ],
+    "nadph_oxidase": [
+      "CYBB",
+      "DUOX1",
+      "DUOX2",
+      "NOX1",
+      "NOX3",
+      "NOX4",
+      "NOX5"
+    ],
+    "arachidonate_lipoxygenase": [
+      "ALOX12",
+      "ALOX12B",
+      "ALOX15",
+      "ALOX15B",
+      "ALOX5",
+      "ALOXE3"
+    ],
+    "flavin_monooxygenase": [
+      "FMO1",
+      "FMO2",
+      "FMO3",
+      "FMO4",
+      "FMO5"
+    ],
+    "steap_metalloreductase": [
+      "STEAP1",
+      "STEAP1B",
+      "STEAP2",
+      "STEAP3",
+      "STEAP4"
+    ],
+    "matrix_metalloproteinase": [
+      "MMP1",
+      "MMP10",
+      "MMP11",
+      "MMP12",
+      "MMP13",
+      "MMP14",
+      "MMP15",
+      "MMP16",
+      "MMP17",
+      "MMP19",
+      "MMP2",
+      "MMP20",
+      "MMP21",
+      "MMP23B",
+      "MMP24",
+      "MMP25",
+      "MMP26",
+      "MMP27",
+      "MMP28",
+      "MMP3",
+      "MMP7",
+      "MMP8",
+      "MMP9"
+    ],
+    "adam_metallopeptidase": [
+      "ADAM10",
+      "ADAM11",
+      "ADAM12",
+      "ADAM15",
+      "ADAM17",
+      "ADAM18",
+      "ADAM19",
+      "ADAM2",
+      "ADAM20",
+      "ADAM21",
+      "ADAM22",
+      "ADAM23",
+      "ADAM28",
+      "ADAM29",
+      "ADAM30",
+      "ADAM32",
+      "ADAM33",
+      "ADAM7",
+      "ADAM8",
+      "ADAM9"
+    ],
+    "adamts_metallopeptidase": [
+      "ADAMTS1",
+      "ADAMTS10",
+      "ADAMTS12",
+      "ADAMTS13",
+      "ADAMTS14",
+      "ADAMTS15",
+      "ADAMTS16",
+      "ADAMTS17",
+      "ADAMTS18",
+      "ADAMTS19",
+      "ADAMTS2",
+      "ADAMTS20",
+      "ADAMTS3",
+      "ADAMTS4",
+      "ADAMTS5",
+      "ADAMTS6",
+      "ADAMTS7",
+      "ADAMTS8",
+      "ADAMTS9"
+    ],
+    "m14_carboxypeptidase": [
+      "AEBP1",
+      "AGBL1",
+      "AGBL2",
+      "AGBL3",
+      "AGBL4",
+      "AGBL5",
+      "AGTPBP1",
+      "CPA1",
+      "CPA2",
+      "CPA3",
+      "CPA4",
+      "CPA5",
+      "CPA6",
+      "CPB1",
+      "CPB2",
+      "CPD",
+      "CPE",
+      "CPM",
+      "CPN1",
+      "CPN2",
+      "CPO",
+      "CPQ",
+      "CPVL",
+      "CPXM1",
+      "CPXM2",
+      "CPZ",
+      "PRCP",
+      "SCPEP1"
+    ],
+    "alcohol_dehydrogenase": [
+      "ADH1A",
+      "ADH1B",
+      "ADH1C",
+      "ADH4",
+      "ADH5",
+      "ADH6",
+      "ADH7",
+      "ADHFE1"
+    ],
+    "metallothionein": [
+      "MT1A",
+      "MT1B",
+      "MT1E",
+      "MT1F",
+      "MT1G",
+      "MT1H",
+      "MT1HL1",
+      "MT1M",
+      "MT1X",
+      "MT2A",
+      "MT3",
+      "MT4"
+    ],
+    "alkaline_phosphatase": [
+      "ALPG",
+      "ALPI",
+      "ALPL",
+      "ALPP"
+    ],
+    "histone_deacetylase_classI": [
+      "HDAC1",
+      "HDAC2",
+      "HDAC3",
+      "HDAC8"
+    ],
+    "ectonucleotide_pyrophosphatase": [
+      "ENPP1",
+      "ENPP2",
+      "ENPP3",
+      "ENPP4",
+      "ENPP5",
+      "ENPP6",
+      "ENPP7"
+    ],
+    "phosphodiesterase": [
+      "PDE10A",
+      "PDE11A",
+      "PDE1A",
+      "PDE1B",
+      "PDE1C",
+      "PDE2A",
+      "PDE3A",
+      "PDE3B",
+      "PDE4A",
+      "PDE4B",
+      "PDE4C",
+      "PDE4D",
+      "PDE5A",
+      "PDE6A",
+      "PDE6B",
+      "PDE6C",
+      "PDE6D",
+      "PDE6G",
+      "PDE6H",
+      "PDE7A",
+      "PDE7B",
+      "PDE8A",
+      "PDE8B",
+      "PDE9A"
+    ],
+    "ferritin": [
+      "FTH1",
+      "FTHL17",
+      "FTL",
+      "FTMT"
+    ],
+    "rab_gtpase": [
+      "CRACR2A",
+      "RAB10",
+      "RAB11A",
+      "RAB11B",
+      "RAB12",
+      "RAB13",
+      "RAB14",
+      "RAB15",
+      "RAB17",
+      "RAB18",
+      "RAB19",
+      "RAB1A",
+      "RAB1B",
+      "RAB20",
+      "RAB21",
+      "RAB22A",
+      "RAB23",
+      "RAB24",
+      "RAB25",
+      "RAB26",
+      "RAB27A",
+      "RAB27B",
+      "RAB28",
+      "RAB29",
+      "RAB2A",
+      "RAB2B",
+      "RAB30",
+      "RAB31",
+      "RAB32",
+      "RAB33A",
+      "RAB33B",
+      "RAB34",
+      "RAB35",
+      "RAB36",
+      "RAB37",
+      "RAB38",
+      "RAB39A",
+      "RAB39B",
+      "RAB3A",
+      "RAB3B",
+      "RAB3C",
+      "RAB3D",
+      "RAB40A",
+      "RAB40B",
+      "RAB40C",
+      "RAB41",
+      "RAB42",
+      "RAB43",
+      "RAB44",
+      "RAB4A",
+      "RAB4B",
+      "RAB5A",
+      "RAB5B",
+      "RAB5C",
+      "RAB6A",
+      "RAB6B",
+      "RAB6C",
+      "RAB6D",
+      "RAB7A",
+      "RAB7B",
+      "RAB8A",
+      "RAB8B",
+      "RAB9A",
+      "RAB9B",
+      "RASEF"
+    ],
+    "arf_gtpase": [
+      "ARF1",
+      "ARF3",
+      "ARF4",
+      "ARF5",
+      "ARF6",
+      "ARFRP1",
+      "ARL1",
+      "ARL10",
+      "ARL11",
+      "ARL13A",
+      "ARL13B",
+      "ARL14",
+      "ARL15",
+      "ARL16",
+      "ARL17A",
+      "ARL17B",
+      "ARL2",
+      "ARL3",
+      "ARL4A",
+      "ARL4C",
+      "ARL4D",
+      "ARL5A",
+      "ARL5B",
+      "ARL5C",
+      "ARL6",
+      "ARL8A",
+      "ARL8B",
+      "ARL9",
+      "SAR1A",
+      "SAR1B",
+      "TRIM23"
+    ],
+    "rho_gtpase": [
+      "CDC42",
+      "RAC1",
+      "RAC2",
+      "RAC3",
+      "RHOA",
+      "RHOB",
+      "RHOBTB1",
+      "RHOBTB2",
+      "RHOC",
+      "RHOD",
+      "RHOF",
+      "RHOG",
+      "RHOH",
+      "RHOJ",
+      "RHOQ",
+      "RHOU",
+      "RHOV",
+      "RND1",
+      "RND2",
+      "RND3"
+    ],
+    "guanylate_binding_protein": [
+      "GBP1",
+      "GBP2",
+      "GBP3",
+      "GBP4",
+      "GBP5",
+      "GBP6",
+      "GBP7"
+    ],
+    "taste2_receptor": [
+      "TAS2R1",
+      "TAS2R10",
+      "TAS2R13",
+      "TAS2R14",
+      "TAS2R16",
+      "TAS2R19",
+      "TAS2R2",
+      "TAS2R20",
+      "TAS2R3",
+      "TAS2R30",
+      "TAS2R31",
+      "TAS2R33",
+      "TAS2R36",
+      "TAS2R38",
+      "TAS2R39",
+      "TAS2R4",
+      "TAS2R40",
+      "TAS2R41",
+      "TAS2R42",
+      "TAS2R43",
+      "TAS2R45",
+      "TAS2R46",
+      "TAS2R5",
+      "TAS2R50",
+      "TAS2R60",
+      "TAS2R7",
+      "TAS2R8",
+      "TAS2R9"
+    ],
+    "serotonin_receptor": [
+      "HTR1A",
+      "HTR1B",
+      "HTR1D",
+      "HTR1E",
+      "HTR1F",
+      "HTR2A",
+      "HTR2B",
+      "HTR2C",
+      "HTR4",
+      "HTR5A",
+      "HTR6",
+      "HTR7"
+    ],
+    "adrenoceptor": [
+      "ADRA1A",
+      "ADRA1B",
+      "ADRA1D",
+      "ADRA2A",
+      "ADRA2B",
+      "ADRA2C",
+      "ADRB1",
+      "ADRB2",
+      "ADRB3"
+    ],
+    "glutamate_metabotropic": [
+      "GRM1",
+      "GRM2",
+      "GRM3",
+      "GRM4",
+      "GRM5",
+      "GRM6",
+      "GRM7",
+      "GRM8"
+    ],
+    "dopamine_receptor": [
+      "DRD1",
+      "DRD2",
+      "DRD3",
+      "DRD4",
+      "DRD5"
+    ],
+    "muscarinic_receptor": [
+      "CHRM1",
+      "CHRM2",
+      "CHRM3",
+      "CHRM4",
+      "CHRM5"
+    ],
+    "histamine_receptor": [
+      "HRH1",
+      "HRH2",
+      "HRH3",
+      "HRH4"
+    ],
+    "p2y_receptor": [
+      "P2RY1",
+      "P2RY11",
+      "P2RY12",
+      "P2RY13",
+      "P2RY14",
+      "P2RY2",
+      "P2RY4",
+      "P2RY6"
+    ],
+    "cxc_chemokine_receptor": [
+      "CXCR1",
+      "CXCR2",
+      "CXCR3",
+      "CXCR4",
+      "CXCR5",
+      "CXCR6"
+    ],
+    "serine_protease": [
+      "ACR",
+      "C1R",
+      "C1RL",
+      "C1S",
+      "C2",
+      "CFB",
+      "CFI",
+      "ENDOU",
+      "F10",
+      "F11",
+      "F12",
+      "F2",
+      "F7",
+      "F9",
+      "HABP2",
+      "HGFAC",
+      "LONP1",
+      "LPA",
+      "MASP1",
+      "MASP2",
+      "OVCH1",
+      "OVCH2",
+      "PLAT",
+      "PLAU",
+      "PLG",
+      "PROC",
+      "PRSS1",
+      "PRSS12",
+      "PRSS16",
+      "PRSS2",
+      "PRSS21",
+      "PRSS22",
+      "PRSS23",
+      "PRSS27",
+      "PRSS3",
+      "PRSS33",
+      "PRSS35",
+      "PRSS36",
+      "PRSS37",
+      "PRSS38",
+      "PRSS41",
+      "PRSS48",
+      "PRSS50",
+      "PRSS51",
+      "PRSS53",
+      "PRSS54",
+      "PRSS55",
+      "PRSS56",
+      "PRSS57",
+      "PRSS58",
+      "PRSS8",
+      "STEAP1",
+      "TPSAB1",
+      "TPSB2",
+      "TPSD1",
+      "TPSG1"
+    ],
+    "histone_h4": [
+      "H4C1",
+      "H4C11",
+      "H4C12",
+      "H4C13",
+      "H4C14",
+      "H4C15",
+      "H4C16",
+      "H4C2",
+      "H4C3",
+      "H4C4",
+      "H4C5",
+      "H4C6",
+      "H4C7",
+      "H4C8",
+      "H4C9"
     ]
   }
 }

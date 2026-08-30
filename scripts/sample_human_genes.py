@@ -1,37 +1,10 @@
-"""Assemble + sample the matched human-paralog panel (the apples-to-apples Evo2-vs-GPN-Star set).
-
-This is the human side of the comparison: starting from the human paralog family membership defined
-in scripts/gene_families.py, it works out which genes BOTH models can actually embed, then resolves
-the single shared locus each model samples. (The cross-kingdom Evo2 ortholog panel is separate —
-scripts/gene_families.py build-ortholog — and needs none of this reconciliation.)
-
-Three stages, each a CLI subcommand; the resolved panel + sampling views are also importable
-(consumed by scripts/evo2/embed_and_geodesic_paralog.py and scripts/gpnstar/embed_and_geodesic.py):
-
-  build-table   HGNC paralog membership (gene_families) + per-gene Ensembl canonical-CDS lookup +
-                multiz100way chromosome coverage -> data/sampling/master_gene_table.tsv. Each gene is
-                flagged include_evo2 (a human canonical CDS exists) and include_gpnstar (hg38 coords +
-                chrom present in the multiz panel); the genes with BOTH are the comparable set.
-  resolve-loci  For the matched genes, resolve the canonical transcript's hg38 span (UTR + exons +
-                introns) -> data/sampling/shared_loci.tsv (a review artifact). The shared locus is the
-                single-source definition both models sample (Evo2 = genomic string; GPN = multiz windows).
-  prefetch-cds  Fill data/cache/cds_sequences.json with the matched panel's CDS for the within-family
-                / k-mer baselines.
-
-(Supersedes the old build_master_gene_table.py + sequence_sampling.py + prefetch_matched_cds.py.)
-
-Usage:
-    uv run python scripts/test_sample_human_genes.py build-table [--families ...] [--date 2026-06-29]
-    uv run python scripts/test_sample_human_genes.py resolve-loci [--families globins]
-    uv run python scripts/test_sample_human_genes.py prefetch-cds
-"""
+"""Assemble and sample the Evo2 human-paralog panel."""
 
 from __future__ import annotations
 
 import argparse
 import csv
 import json
-import math
 import sys
 import time
 import urllib.error
@@ -50,19 +23,18 @@ OUT_LOCI = SAMPLING_DIR / "shared_loci.tsv"
 GENE_RECORDS_CACHE = ROOT / "data" / "cache" / "gene_records.json"  # symbol -> Ensembl gene record
 LOCI_CACHE = ROOT / "data" / "cache" / "gene_loci.json"            # transcript_id -> hg38 locus
 CDS_CACHE = ROOT / "data" / "cache" / "cds_sequences.json"
-MULTIZ_ZARR = ROOT / "data" / "multiz100way.zarr"
 
-# Sampling defaults — tune at embed time, not here.
-GPNSTAR_WINDOW = 1536  # multiz window width (≈ GPN-Star max_position_embeddings)
-GPNSTAR_MAX_WINDOWS = 16  # cap windows per gene (mean-pooled)
+# Local (no-REST) inputs for `build-local`: Ensembl release-111 genome + GTF (chrom names "1".."MT").
+LOCAL_GTF = ROOT / "data" / "genome" / "Homo_sapiens.GRCh38.111.gtf.gz"
+LOCAL_FASTA = ROOT / "data" / "genome" / "GRCh38.primary_assembly.fa"
+
 EVO2_MAX_LEN = 100_000  # clip/center the Evo2 genomic string to this many bp
 
 # master_gene_table.tsv schema (order matters — written verbatim).
 COLUMNS = [
     "family_label", "species", "gene_id", "transcript_id", "protein_id", "symbol",
     "relationship_type", "anchor_gene_id", "source_ids", "cds_sequence_available",
-    "genomic_coordinates_available", "gpnstar_msa_available", "include_evo2",
-    "include_gpnstar", "inclusion_reason",
+    "genomic_coordinates_available", "include_evo2", "inclusion_reason",
 ]
 
 # Family display order for the panel (largest → smallest; intentionally differs from the canonical
@@ -70,6 +42,17 @@ COLUMNS = [
 PANEL_FAMILY_ORDER = [
     "olfactory_receptors", "cytochrome_p450", "hox", "ras_gtpases",
     "carbonic_anhydrase", "globins", "opsins", "nitric_oxide_synthase", "heme_oxygenase",
+    "glutathione_peroxidase", "peroxidase", "peroxiredoxin", "glutaredoxin",
+    "glutathione_s_transferase", "aldehyde_dehydrogenase", "aldo_keto_reductase",
+    "sulfotransferase", "udp_glucuronosyltransferase", "nadph_oxidase",
+    "arachidonate_lipoxygenase", "flavin_monooxygenase", "steap_metalloreductase",
+    "matrix_metalloproteinase", "adam_metallopeptidase", "adamts_metallopeptidase",
+    "m14_carboxypeptidase", "alcohol_dehydrogenase", "metallothionein",
+    "alkaline_phosphatase", "histone_deacetylase_classI", "ectonucleotide_pyrophosphatase",
+    "phosphodiesterase", "ferritin", "rab_gtpase", "arf_gtpase", "rho_gtpase",
+    "guanylate_binding_protein", "taste2_receptor", "serotonin_receptor", "adrenoceptor",
+    "glutamate_metabotropic", "dopamine_receptor", "muscarinic_receptor", "histamine_receptor",
+    "p2y_receptor", "cxc_chemokine_receptor", "serine_protease", "histone_h4",
 ]
 
 
@@ -78,18 +61,11 @@ def _b(x: bool) -> str:
     return "true" if x else "false"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 # Stage 1 — build-table: HGNC membership + per-gene availability -> master_gene_table.tsv
-# ══════════════════════════════════════════════════════════════════════════════
 
 
 def fetch_gene_record(symbol: str, sleep: float) -> dict:
-    """Look up a human gene symbol; return {status, record}.
-
-    status ∈ {ok, no_canonical_cds, not_found}. ``record`` (for ok) carries the canonical-CDS
-    coordinates plus the gene/transcript/protein Ensembl ids. Transient network errors retry with
-    backoff, then raise (a real outage should not be cached as a permanent drop).
-    """
+    """Look up a human gene symbol; return {status, record}."""
     url = f"{ENSEMBL_BASE}/lookup/symbol/homo_sapiens/{symbol}?content-type=application/json&expand=1"
     data = None
     for attempt in range(5):
@@ -137,17 +113,10 @@ def _save_records_cache(cache: dict) -> None:
     GENE_RECORDS_CACHE.write_text(json.dumps(cache, indent=2) + "\n")
 
 
-def multiz_chroms() -> set[str]:
-    """Top-level chromosome groups present in the multiz100way zarr (drop zarr dotfiles)."""
-    if not MULTIZ_ZARR.exists():
-        print(f"  WARNING: {MULTIZ_ZARR} not found — gpnstar_msa_available will be false.")
-        return set()
-    return {p.name for p in MULTIZ_ZARR.iterdir() if p.is_dir() and not p.name.startswith(".")}
 
 
 def resolve_paralog_rows(
-    families: list[str], gene_families: dict[str, list[str]], chroms: set[str],
-    cache: dict, sleep: float,
+    families: list[str], gene_families: dict[str, list[str]], cache: dict, sleep: float,
 ) -> tuple[list[dict], list[dict]]:
     """Resolve HGNC paralog members → master rows (with availability flags) + dropped rows."""
     rows: list[dict] = []
@@ -160,9 +129,6 @@ def resolve_paralog_rows(
         print(f"\n=== {family} ({len(members)} HGNC members) ===")
 
         for sym in members:
-            if sym.startswith("MT-"):  # mitochondrial: absent from the nuclear multiz
-                dropped.append({"gene": sym, "family": family, "reason": "mt_locus"})
-                continue
 
             if sym not in cache:
                 cache[sym] = fetch_gene_record(sym, sleep)
@@ -173,22 +139,16 @@ def resolve_paralog_rows(
                                 "reason": "no_canonical_cds" if status == "no_canonical_cds" else "gene_not_found"})
                 continue
 
-            # A human canonical CDS exists ⇒ both the CDS sequence (Evo2) and the hg38 coordinates
-            # (GPN window) are available; GPN additionally needs the chrom in the multiz panel.
             coords_ok = True
-            msa_ok = rec["chrom"] in chroms
             src = ";".join(x for x in (hgnc_ids, f"Pfam:{pfam}" if pfam else "", rec["gene_id"]) if x)
             reason = "human paralog; canonical hg38 CDS"
-            if not msa_ok:
-                reason += f"; chrom {rec['chrom']} absent from multiz100way (GPN-excluded)"
 
             rows.append({
                 "family_label": family, "species": "homo_sapiens", "gene_id": rec["gene_id"],
                 "transcript_id": rec["transcript_id"], "protein_id": rec["protein_id"], "symbol": sym,
                 "relationship_type": "human_paralog", "anchor_gene_id": "", "source_ids": src,
                 "cds_sequence_available": _b(coords_ok), "genomic_coordinates_available": _b(coords_ok),
-                "gpnstar_msa_available": _b(msa_ok), "include_evo2": _b(coords_ok),
-                "include_gpnstar": _b(coords_ok and msa_ok), "inclusion_reason": reason,
+                "include_evo2": _b(coords_ok), "inclusion_reason": reason,
             })
         _save_records_cache(cache)  # checkpoint after each family (long OR fetch is resumable)
 
@@ -210,7 +170,7 @@ def summarize(rows: list[dict], dropped: list[dict], families: list[str], date: 
             out[r[key]] = out.get(r[key], 0) + 1
         return out
 
-    matched = [r for r in rows if r["include_evo2"] == "true" and r["include_gpnstar"] == "true"]
+    included = [r for r in rows if r["include_evo2"] == "true"]
     drop_reasons: dict[str, int] = {}
     for d in dropped:
         drop_reasons[d["reason"]] = drop_reasons.get(d["reason"], 0) + 1
@@ -220,20 +180,17 @@ def summarize(rows: list[dict], dropped: list[dict], families: list[str], date: 
         "config": {
             "families": families,
             "source": "HGNC gene groups via gene_families.py + Ensembl REST (hg38 canonical CDS)",
-            "multiz_chroms_present": sorted(multiz_chroms()),
         },
         "counts": {
             "master_rows": len(rows),
-            "matched_both_models": len(matched),
+            "included": len(included),
             "dropped": len(dropped),
         },
         "by_family": by(rows, "family_label"),
-        "include_gpnstar": sum(r["include_gpnstar"] == "true" for r in rows),
         "include_evo2": sum(r["include_evo2"] == "true" for r in rows),
         "dropped_by_reason": drop_reasons,
         "notes": [
             "Human paralogs only; the cross-kingdom Evo2 panel lives in gene_families.py (build-ortholog).",
-            "GPN-Star is human-anchored; include_gpnstar requires hg38 coords + chrom in multiz100way.",
             "Availability flags are metadata-derived (a human canonical CDS implies CDS+coords).",
         ],
     }
@@ -241,11 +198,9 @@ def summarize(rows: list[dict], dropped: list[dict], families: list[str], date: 
 
 def cmd_build_table(args: argparse.Namespace) -> None:
     gene_families = family_members("human")
-    chroms = multiz_chroms()
     cache = _load_records_cache()
 
-    print(f"multiz100way chroms: {len(chroms)} present")
-    rows, dropped = resolve_paralog_rows(args.families, gene_families, chroms, cache, args.sleep)
+    rows, dropped = resolve_paralog_rows(args.families, gene_families, cache, args.sleep)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     write_tsv(args.out_dir / "master_gene_table.tsv", rows)
@@ -259,14 +214,11 @@ def cmd_build_table(args: argparse.Namespace) -> None:
 
     print(f"\nWrote master_gene_table.tsv + dropped_genes.tsv + sampling_summary.json to {args.out_dir}/")
     print(f"  master rows           : {len(rows)}")
-    print(f"  matched (both models) : {summary['counts']['matched_both_models']}")
-    print(f"  include_evo2 / gpnstar: {summary['include_evo2']} / {summary['include_gpnstar']}")
+    print(f"  included              : {summary['counts']['included']}")
     print(f"  dropped               : {len(dropped)}  {summary['dropped_by_reason']}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 # Stage 2 — the matched panel + shared-locus resolution (importable + resolve-loci CLI)
-# ══════════════════════════════════════════════════════════════════════════════
 
 
 def _get_json(url: str, sleep: float):
@@ -290,11 +242,7 @@ def _get_json(url: str, sleep: float):
 
 
 def fetch_locus(transcript_id: str, sleep: float) -> dict | None:
-    """Resolve a canonical transcript to its hg38 locus (span + exon + coding-exon intervals).
-
-    Keying on the transcript_id (the same one chosen in master_gene_table.tsv) keeps the locus
-    identical to the gene the table selected. Returns None if the transcript is not found.
-    """
+    """Resolve a canonical transcript to its hg38 locus (span + exon + coding-exon intervals)."""
     data = _get_json(
         f"{ENSEMBL_BASE}/lookup/id/{transcript_id}?content-type=application/json&expand=1", sleep)
     if data is None:
@@ -336,51 +284,18 @@ def load_or_fetch_loci(transcripts: list[str], sleep: float) -> dict[str, dict |
 
 
 def shared_interval(locus: dict, span: str = "transcript") -> tuple[str, int, int, str]:
-    """The hg38 interval both models sample. ``span='transcript'`` = the transcript body."""
+    """Return the hg38 transcript interval."""
     if span != "transcript":
         raise ValueError("only span='transcript' is implemented; gene/flanking are future views")
     return locus["chrom"], locus["tx_start"], locus["tx_end"], locus["strand"]
 
 
-def _linspace(a: float, b: float, n: int) -> list[float]:
-    if n == 1:
-        return [a]
-    step = (b - a) / (n - 1)
-    return [a + step * i for i in range(n)]
-
-
-def gpnstar_windows(
-    locus: dict, window: int = GPNSTAR_WINDOW, max_windows: int = GPNSTAR_MAX_WINDOWS,
-    span: str = "transcript",
-) -> list[tuple[int, int]]:
-    """Tile <= max_windows windows of `window` bp across the shared interval (for GPN-Star).
-
-    A span shorter than one window yields a single centered window; longer spans are tiled and then
-    evenly subsampled to max_windows. The model mean-pools the windows' embeddings.
-    """
-    _, start, end, _ = shared_interval(locus, span)
-    length = end - start
-    if length <= window:
-        c = (start + end) // 2
-        return [(max(0, c - window // 2), max(0, c - window // 2) + window)]
-    n = math.ceil(length / window)
-    centers = [start + window // 2 + i * window for i in range(n)]
-    centers[-1] = min(centers[-1], end - window // 2)
-    if len(centers) > max_windows:
-        pick = sorted(set(round(x) for x in _linspace(0, len(centers) - 1, max_windows)))
-        centers = [centers[i] for i in pick]
-    return [(max(0, c - window // 2), max(0, c - window // 2) + window) for c in centers]
 
 
 def evo2_genomic_sequence(
     locus: dict, max_len: int = EVO2_MAX_LEN, span: str = "transcript", sleep: float = 0.34,
 ) -> str:
-    """Genomic nucleotide string over the shared interval, on the gene's strand (for Evo2).
-
-    If the span exceeds ``max_len`` the interval is centered on the transcript midpoint and clipped
-    to ``max_len`` bp. Sequence is GRCh38 (Ensembl /sequence/region), the same reference assembly
-    underlying the multiz-100way human row GPN-Star reads.
-    """
+    """Genomic nucleotide string over the shared interval, on the gene's strand (for Evo2)."""
     chrom, start, end, strand = shared_interval(locus, span)
     if max_len and (end - start) > max_len:
         mid = (start + end) // 2
@@ -402,12 +317,12 @@ def evo2_genomic_sequence(
     raise RuntimeError(f"Failed to fetch genomic region for {locus['transcript_id']}")
 
 
-def _read_master_rows(families: list[str] | None, require_both: bool) -> list[tuple[str, str, str]]:
+def _read_master_rows(families: list[str] | None) -> list[tuple[str, str, str]]:
     """(symbol, transcript_id, family) for human-paralog rows of the master table."""
     if not MASTER_TABLE.exists():
         raise FileNotFoundError(
             f"{MASTER_TABLE} not found — run "
-            "`uv run python scripts/test_sample_human_genes.py build-table` first."
+            "`uv run python scripts/sample_human_genes.py build-table` first."
         )
     rows = []
     with open(MASTER_TABLE, newline="") as f:
@@ -416,36 +331,28 @@ def _read_master_rows(families: list[str] | None, require_both: bool) -> list[tu
                 continue
             if families and r["family_label"] not in families:
                 continue
-            if require_both and not (r["include_evo2"] == "true" and r["include_gpnstar"] == "true"):
+            if r["include_evo2"] != "true":
                 continue
             rows.append((r["symbol"], r["transcript_id"], r["family_label"]))
     return rows
 
 
-def matched_panel(families: list[str] | None = None, require_both: bool = True
-                  ) -> list[tuple[str, str, str]]:
-    """(symbol, transcript_id, family) for the matched human-paralog panel.
-
-    require_both=True returns only genes with BOTH include_evo2 AND include_gpnstar — the identical
-    gene set both models embed (the comparable panel), so Evo2-human and GPN-human within/between
-    results are apples-to-apples. Order follows the master table.
-    """
-    return _read_master_rows(families, require_both)
+def matched_panel(families: list[str] | None = None) -> list[tuple[str, str, str]]:
+    """Return included ``(symbol, transcript_id, family)`` rows."""
+    return _read_master_rows(families)
 
 
-def load_matched_panel(families: list[str] | None = None, sleep: float = 0.0):
-    """(genes, family_labels, {gene: locus}, family_order) for the matched panel.
-
-    Shared by the Evo2 and GPN-Star human embedders so both run on the identical gene set/order.
-    Genes are ordered by PANEL_FAMILY_ORDER then symbol; loci come from the cached locus table
-    (sleep=0 since all panel loci are already resolved). Returns only genes with a usable locus.
-    """
+def load_matched_panel(families: list[str] | None = None, sleep: float = 0.0,
+                       resolve_loci: bool = True):
+    """Return genes, family labels, loci, and family order for the human panel."""
     rows = matched_panel(families)
     fam_order = [f for f in PANEL_FAMILY_ORDER if any(r[2] == f for r in rows)]
     rows.sort(key=lambda r: (fam_order.index(r[2]), r[0]))
     genes = [r[0] for r in rows]
     fams = [r[2] for r in rows]
     tx = [r[1] for r in rows]
+    if not resolve_loci:
+        return genes, fams, {}, fam_order
     loci = load_or_fetch_loci(tx, sleep=sleep)
     locus_of = {g: loci[t] for g, t in zip(genes, tx) if loci.get(t)}
     keep = [(g, f) for g, f in zip(genes, fams) if g in locus_of]
@@ -453,13 +360,13 @@ def load_matched_panel(families: list[str] | None = None, sleep: float = 0.0):
 
 
 def cmd_resolve_loci(args: argparse.Namespace) -> None:
-    members = matched_panel(args.families, require_both=False)
+    members = matched_panel(args.families)
     tx_ids = sorted({t for _, t, _ in members})
     loci = load_or_fetch_loci(tx_ids, args.sleep)
 
     OUT_LOCI.parent.mkdir(parents=True, exist_ok=True)
     cols = ["symbol", "family_label", "gene_id", "transcript_id", "chrom", "strand",
-            "tx_start", "tx_end", "tx_span_bp", "n_exons", "n_coding_exons", "n_gpnstar_windows"]
+            "tx_start", "tx_end", "tx_span_bp", "n_exons", "n_coding_exons"]
     spans, unresolved = [], []
     with open(OUT_LOCI, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=cols, delimiter="\t")
@@ -476,7 +383,6 @@ def cmd_resolve_loci(args: argparse.Namespace) -> None:
                 "transcript_id": tx, "chrom": loc["chrom"], "strand": loc["strand"],
                 "tx_start": loc["tx_start"], "tx_end": loc["tx_end"], "tx_span_bp": span_bp,
                 "n_exons": len(loc["exon_intervals"]), "n_coding_exons": len(loc["coding_intervals"]),
-                "n_gpnstar_windows": len(gpnstar_windows(loc, args.window, args.max_windows)),
             })
 
     spans.sort()
@@ -490,9 +396,7 @@ def cmd_resolve_loci(args: argparse.Namespace) -> None:
         print(f"  unresolved transcripts: {unresolved[:5]}{' ...' if len(unresolved) > 5 else ''}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 # Stage 3 — prefetch-cds: fill cds_sequences.json for the matched panel's baselines
-# ══════════════════════════════════════════════════════════════════════════════
 
 
 def fetch_cds_sequence(gene_symbol: str) -> str:
@@ -555,9 +459,186 @@ def cmd_prefetch_cds(args: argparse.Namespace) -> None:
     print(f"done; {have}/{len(genes)} matched genes now have CDS ({len(cds)} total in cache)")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# Stage 1b — build-local: derive the master table + CDS from LOCAL release-111 files (no REST)
+
+
+def _symbol_to_gene_id(gtf_path: Path, symbols: set[str]) -> dict[str, str]:
+    """Map human gene SYMBOL -> release-111 gene_id via the GTF gene_name (one gzip pass, no REST)."""
+    import gzip
+
+    sys.path.insert(0, str(ROOT / "scripts" / "mammalian_orthologs"))
+    from extract_loci_bulk import _attrs  # noqa: E402
+
+    out: dict[str, str] = {}
+    with gzip.open(gtf_path, "rt") as fh:
+        for line in fh:
+            if line.startswith("#") or "\tgene\t" not in line:
+                continue
+            a = _attrs(line.rstrip("\n").split("\t")[8])
+            nm = a.get("gene_name")
+            if nm in symbols:
+                out[nm] = a.get("gene_id")  # last-wins on the rare duplicated gene_name
+    return out
+
+
+def _derive_cds(model: dict, fa) -> str | None:
+    """Assemble a canonical transcript CDS in coding orientation."""
+    from Bio.Seq import Seq
+
+    chrom = model["chrom"]
+    if not model["cds"] or chrom not in fa:
+        return None
+    cds = "".join(fa[chrom][s - 1:e].seq.upper() for s, e in model["cds"])
+    if model["strand"] == "-":
+        cds = str(Seq(cds).reverse_complement())
+    return cds
+
+
+def cmd_build_local(args: argparse.Namespace) -> None:
+    """Derive master_gene_table.tsv + fill cds_sequences.json entirely from local release-111 files."""
+    from pyfaidx import Fasta
+
+    sys.path.insert(0, str(ROOT / "scripts" / "mammalian_orthologs"))
+    from extract_loci_bulk import parse_gtf  # noqa: E402
+
+    if not LOCAL_GTF.exists() or not LOCAL_FASTA.exists():
+        sys.exit(f"local inputs missing: {LOCAL_GTF} / {LOCAL_FASTA}")
+
+    gene_families = family_members("human")
+    fam_order = family_order("human")
+
+    # (family, symbol) pairs in human family order, then symbol.
+    ordered: list[tuple[str, str]] = []
+    all_symbols: set[str] = set()
+    for fam in fam_order:
+        for sym in sorted(gene_families.get(fam, [])):
+            ordered.append((fam, sym))
+            all_symbols.add(sym)
+    print(f"[build-local] {len(fam_order)} families, {len(all_symbols)} unique symbols")
+
+    # Step 2 — symbol -> gene_id (one gzip pass over the local GTF).
+    sym2gid = _symbol_to_gene_id(LOCAL_GTF, all_symbols)
+    print(f"[build-local] matched {len(sym2gid)}/{len(all_symbols)} symbols to a release-111 gene_id")
+
+    # Step 3 — parse the GTF once for the matched gene_ids -> canonical transcript models.
+    needed_ids = set(sym2gid.values())
+    print(f"[build-local] parsing GTF for {len(needed_ids)} gene_ids...")
+    models, _ = parse_gtf(LOCAL_GTF, needed_ids)
+
+    # Step 4 — derive the spliced CDS per gene from the FASTA.
+    fa = Fasta(str(LOCAL_FASTA), rebuild=False)
+
+    rows: list[dict] = []
+    dropped: list[dict] = []
+    derived: dict[str, str] = {}       # symbol -> local CDS (for cache fill + validation)
+    per_family: dict[str, dict] = {}   # family -> counts
+
+    for fam, sym in ordered:
+        pf = per_family.setdefault(fam, {"members": 0, "include_evo2": 0, "dropped": 0})
+        pf["members"] += 1
+        gid = sym2gid.get(sym)
+        if gid is None:  # symbol not present in the GTF gene_name column
+            dropped.append({"gene": sym, "family": fam, "reason": "symbol_not_in_gtf"})
+            pf["dropped"] += 1
+            continue
+
+        model = models.get(gid)
+        cds = _derive_cds(model, fa) if model is not None else None
+        pfam = PFAM_ACCESSIONS.get(fam, "")
+        src = ";".join(x for x in (f"Pfam:{pfam}" if pfam else "", gid) if x)
+        tx_id = model["tx_id"] if model is not None else ""
+        chrom = model["chrom"] if model is not None else ""
+
+        if cds is not None:
+            derived[sym] = cds
+            pf["include_evo2"] += 1
+            reason = "human paralog; local canonical CDS derived from release-111 GTF+FASTA"
+        else:
+            if model is None:
+                reason = "no transcript model in release-111 GTF"
+            elif not model["cds"]:
+                reason = "canonical transcript has no CDS"
+            else:
+                reason = f"chrom {chrom} absent from genome FASTA"
+        ok = cds is not None
+
+        rows.append({
+            "family_label": fam, "species": "homo_sapiens", "gene_id": gid,
+            "transcript_id": tx_id, "protein_id": "", "symbol": sym,
+            "relationship_type": "human_paralog", "anchor_gene_id": "", "source_ids": src,
+            "cds_sequence_available": _b(ok), "genomic_coordinates_available": _b(ok),
+            "include_evo2": _b(ok), "inclusion_reason": reason,
+        })
+
+    # Step 7 — VALIDATION GATE: compare local derivation vs the cached REST CDS (do NOT overwrite).
+    existing = json.loads(CDS_CACHE.read_text()) if CDS_CACHE.exists() else {}
+    shared = [s for s in derived if s in existing]
+    match = [s for s in shared if derived[s] == existing[s]]
+    differ = [s for s in shared if derived[s] != existing[s]]
+    print("\n" + "=" * 70)
+    print("VALIDATION GATE — local CDS vs cached REST CDS (existing keys, no overwrite)")
+    print(f"  compared : {len(shared)}   exact match : {len(match)}   differ : {len(differ)}")
+    if shared:
+        print(f"  match rate: {len(match) / len(shared):.1%}")
+    if differ:
+        print("  *** DIFFERENCES (up to 10) — local vs cached lengths: ***")
+        for s in differ[:10]:
+            print(f"    {s}: local={len(derived[s])}bp  cached={len(existing[s])}bp")
+    else:
+        print("  all shared genes match exactly — local derivation validated against REST.")
+    print("=" * 70 + "\n")
+
+    # Step 6 — ADD new CDS to the cache; NEVER overwrite an existing entry.
+    added = [s for s in derived if s not in existing]
+    for s in added:
+        existing[s] = derived[s]
+    CDS_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    CDS_CACHE.write_text(json.dumps(existing))
+
+    # Step 5 — write master table + dropped + summary.
+    out_dir = args.out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    write_tsv(out_dir / "master_gene_table.tsv", rows)
+    with open(out_dir / "dropped_genes.tsv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["gene", "family", "reason"], delimiter="\t")
+        w.writeheader()
+        w.writerows(dropped)
+
+    n_evo2 = sum(r["include_evo2"] == "true" for r in rows)
+    summary = {
+        "generated_date": args.date,
+        "config": {
+            "families": fam_order,
+            "source": "LOCAL Ensembl release-111 GTF+FASTA (no REST); canonical/longest-CDS transcript",
+            "gtf": str(LOCAL_GTF), "fasta": str(LOCAL_FASTA),
+        },
+        "counts": {
+            "master_rows": len(rows), "include_evo2": n_evo2,
+            "dropped": len(dropped),
+            "symbols_matched_gene_id": len(sym2gid), "symbols_total": len(all_symbols),
+        },
+        "by_family": {f: c for f, c in per_family.items()},
+        "validation_gate": {
+            "compared": len(shared), "exact_match": len(match), "differ": len(differ),
+            "match_rate": (len(match) / len(shared)) if shared else None,
+            "differing_genes": differ[:10],
+        },
+        "cds_cache": {"added": len(added), "total": len(existing)},
+    }
+    (out_dir / "sampling_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+
+    # Report — per-family and dropped rollup.
+    drop_reasons: dict[str, int] = {}
+    for d in dropped:
+        drop_reasons[d["reason"]] = drop_reasons.get(d["reason"], 0) + 1
+    print(f"Wrote master_gene_table.tsv + dropped_genes.tsv + sampling_summary.json to {out_dir}/")
+    print(f"  master rows            : {len(rows)}")
+    print(f"  include_evo2           : {n_evo2}")
+    print(f"  dropped (no gene_id)   : {len(dropped)}  {drop_reasons}")
+    print(f"  cds_sequences.json     : +{len(added)} added, {len(existing)} total")
+
+
 # CLI
-# ══════════════════════════════════════════════════════════════════════════════
 
 
 def main() -> None:
@@ -574,10 +655,13 @@ def main() -> None:
     pl = sub.add_parser("resolve-loci", help="matched genes -> shared_loci.tsv (review artifact)")
     pl.add_argument("--families", nargs="+", default=None, help="Subset of families (smoke).")
     pl.add_argument("--sleep", type=float, default=0.34, help="Ensembl REST throttle (s).")
-    pl.add_argument("--window", type=int, default=GPNSTAR_WINDOW)
-    pl.add_argument("--max-windows", type=int, default=GPNSTAR_MAX_WINDOWS)
 
     sub.add_parser("prefetch-cds", help="fill cds_sequences.json for the matched panel")
+
+    pbl = sub.add_parser("build-local",
+                         help="derive master table + CDS from LOCAL release-111 GTF+FASTA (no REST)")
+    pbl.add_argument("--date", default="unspecified", help="Stamp written into sampling_summary.json.")
+    pbl.add_argument("--out-dir", type=Path, default=SAMPLING_DIR)
 
     args = ap.parse_args()
     if args.cmd == "build-table":
@@ -586,6 +670,8 @@ def main() -> None:
         cmd_resolve_loci(args)
     elif args.cmd == "prefetch-cds":
         cmd_prefetch_cds(args)
+    elif args.cmd == "build-local":
+        cmd_build_local(args)
 
 
 if __name__ == "__main__":
