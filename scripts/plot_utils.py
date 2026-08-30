@@ -1,15 +1,7 @@
-"""Shared matplotlib helpers for the figure scripts (gpnstar and evo2).
-
-Holds the publication rcParams block, a NaN-aware colormap helper, the
-significance-star formatter, and the family-level heatmap / Spearman-ρ bar-chart
-panels shared by the between-family comparison figures. Scripts run as
-``uv run python scripts/<dir>/<figure>.py`` add ``scripts/`` to sys.path before
-importing this module.
-"""
+"""Shared matplotlib helpers for the figure scripts (gpnstar and evo2)."""
 
 from pathlib import Path
 
-import matplotlib as mpl
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,16 +9,15 @@ import pandas as pd
 from matplotlib.colors import Normalize
 from scipy.stats import spearmanr
 
+import arcadia_style as acs  # noqa: I001 - sibling module, resolved via the scripts/ sys.path entry
+
 # Shared colour for the three standardized within-family baselines, used identically by the
 # Evo2 and GPN-Star within_correlations figures so the two read as one comparison.
-WITHIN_PALETTE = {"kmer": "#6A4C93", "seqid": "#2C6E8A", "patristic": "#B5651D"}
+WITHIN_PALETTE = acs.WITHIN_PALETTE
 
 
 def within_csv_series(run_dir: Path, family_order: list) -> list:
-    """The two alignment-based within-family series (seq identity, patristic tree) from the
-    shared within_family_*.csv that scripts/baselines/protein_alignment_patristic_seqid.py writes. Each is a
-    (label, rhos, pvals, color) tuple aligned to family_order, ready for grouped_rho_bars.
-    k-mer is added by each pipeline separately (it needs no alignment)."""
+    """Load the sequence-identity and patristic within-family series."""
     specs = [
         ("within_family_seqid.csv", "spearman_geodesic_seqid", "p_seqid", "vs seq identity", "seqid"),
         ("within_family_patristic.csv", "spearman_geodesic_patristic", "p_patristic", "vs patristic tree", "patristic"),
@@ -52,27 +43,12 @@ def set_pub_style(
     tick_size: int = 6,
     legend_size: int = 7,
 ) -> None:
-    """Apply the shared publication rcParams (Helvetica, 300 dpi, type-42 fonts)."""
-    mpl.rcParams.update(
-        {
-            "font.family": "sans-serif",
-            "font.sans-serif": ["Helvetica", "Arial", "DejaVu Sans"],
-            "font.size": font_size,
-            "axes.labelsize": font_size,
-            "axes.titlesize": title_size,
-            "xtick.labelsize": tick_size,
-            "ytick.labelsize": tick_size,
-            "legend.fontsize": legend_size,
-            "figure.dpi": 300,
-            "savefig.dpi": 300,
-            "savefig.bbox": "tight",
-            "pdf.fonttype": 42,
-            "ps.fonttype": 42,
-        }
-    )
+    """Apply the Arcadia style guide plus this project's compact type scale."""
+    acs.setup(font_size=font_size, title_size=title_size, tick_size=tick_size,
+              legend_size=legend_size)
 
 
-def make_cmap_with_nan(base_cmap_name: str, nan_color: str = "#DDDDDD"):
+def make_cmap_with_nan(base_cmap_name: str, nan_color=acs.MISSING):
     """Return a copy of a named colormap that renders NaN/masked cells in nan_color."""
     cmap = plt.get_cmap(base_cmap_name).copy()
     cmap.set_bad(color=nan_color)
@@ -90,7 +66,7 @@ def pstar(pval: float, ns: str = "") -> str:
     return ns
 
 
-# ── Statistics ────────────────────────────────────────────────────────────────
+# ── Statistics
 
 
 def bootstrap_spearman(x, y, n_boot: int = 1000, seed: int = 42):
@@ -104,11 +80,7 @@ def bootstrap_spearman(x, y, n_boot: int = 1000, seed: int = 42):
 
 
 def per_family_rho(geodesic, baseline, families_arr, family_order, min_pairs: int = 3):
-    """Per-family within-family Spearman ρ of the geodesic vs a baseline distance matrix.
-
-    Both matrices are gene×gene in the same row order. Returns (rhos, pvals) lists
-    aligned to family_order, with NaN where a family has < min_pairs finite pairs.
-    """
+    """Per-family within-family Spearman ρ of the geodesic vs a baseline distance matrix."""
     rhos, pvals = [], []
     for fam in family_order:
         idx = np.where(families_arr == fam)[0]
@@ -126,7 +98,7 @@ def per_family_rho(geodesic, baseline, families_arr, family_order, min_pairs: in
     return rhos, pvals
 
 
-# ── Shared panels for the between-family comparison figures ─────────────────────
+# ── Shared panels for the between-family comparison figures
 
 
 def draw_family_heatmap(
@@ -151,10 +123,10 @@ def draw_family_heatmap(
     fam_labels = [f.replace("_", " ").title() for f in family_order]
     n = len(family_order)
     if matrix is None:
-        ax.set_facecolor("#F5F5F5")
+        ax.set_facecolor(acs.PLACEHOLDER_FILL)
         ax.text(
             0.5, 0.5, "TBD", transform=ax.transAxes, ha="center", va="center",
-            fontsize=14, color="#AAAAAA", fontweight="bold",
+            fontsize=14, color=acs.PLACEHOLDER_TEXT, fontweight="bold",
         )
         ax.set_xticks([])
         ax.set_yticks([])
@@ -184,20 +156,21 @@ def draw_family_heatmap(
 
 
 def grouped_rho_bars(
-    ax, group_labels, series, title, ylabel, ylim=(-0.4, 1.0), bar_width=0.38, tick_fontsize=9
+    ax, group_labels, series, title, ylabel, ylim=(-0.4, 1.0), bar_width=0.38,
+    tick_fontsize=9, show_values=True
 ):
-    """Per-group grouped Spearman-ρ bars with significance stars.
-
-    series: list of (label, rhos, pvals, color); each rhos/pvals list is aligned to
-    group_labels (NaN entries are skipped). pvals may be None for "no stars".
-    """
+    """Per-group grouped Spearman-ρ bars with significance stars."""
+    n_series = max(1, len(series))
+    bar_width = min(bar_width, 0.9 / n_series)  # never let a group's bars overlap its neighbours
     x = np.arange(len(group_labels))
     offsets = (np.arange(len(series)) - (len(series) - 1) / 2) * bar_width
     for (label, rhos, pvals, color), off in zip(series, offsets, strict=False):
         ax.bar(
             x + off, [r if np.isfinite(r) else 0 for r in rhos], bar_width,
-            label=label, color=color, zorder=3, edgecolor="white", linewidth=0.5,
+            label=label, color=color, zorder=3, edgecolor=acs.apc.white, linewidth=0.5,
         )
+        if not show_values:
+            continue
         pv = pvals if pvals is not None else [None] * len(rhos)
         for xi, (r, p) in enumerate(zip(rhos, pv, strict=False)):
             if np.isfinite(r):
@@ -206,7 +179,7 @@ def grouped_rho_bars(
                     xi + off, r + (0.02 if r >= 0 else -0.08), f"{r:.2f}{star}",
                     ha="center", va="bottom", fontsize=7,
                 )
-    ax.axhline(0, color="black", linewidth=0.8, linestyle="--", zorder=2)
+    ax.axhline(0, color=acs.ZERO_LINE, linewidth=0.8, linestyle="--", zorder=2)
     ax.set_xticks(x)
     ax.set_xticklabels(
         [g.replace("_", " ").title() for g in group_labels],
@@ -217,25 +190,97 @@ def grouped_rho_bars(
     ax.set_title(title, fontsize=11, fontweight="bold", pad=6)
     ax.legend(fontsize=9, loc="upper right")
     ax.spines[["top", "right"]].set_visible(False)
-    ax.yaxis.grid(True, linestyle=":", linewidth=0.5, alpha=0.6, zorder=0)
+    ax.yaxis.grid(True, color=acs.GRID, linestyle=":", linewidth=0.5, zorder=0)
+    # x is a categorical axis whose labels are already title-cased and rotated above, so only
+    # the numeric y gets the guide's monospaced treatment.
+    acs.style_axes(ax, monospaced_axes="y")
+
+
+def control_preservation_figure(
+    out_path, fam_order, display, within_by_condition, between_by_condition=None,
+    title_left="Composition controls: is the within-family geometry preserved?",
+    ylabel_left="Within-family Spearman ρ (control vs natural geodesic)",
+):
+    """Two-panel control-vs-natural PRESERVATION figure, shared by the Evo2 and GPN-Star control pipelines so the two read as one comparison."""
+    present = [(k, lbl, c) for k, lbl, c in display if k in within_by_condition]
+    if not present:
+        return False
+    # Drop families with no finite within-family value across any shown control (e.g. families
+    # too small to score) so the left panel has no empty slots.
+    fam_order = [f for f in fam_order
+                 if any(np.isfinite(within_by_condition[k].get(f, np.nan)) for k, _, _ in present)]
+    betweens = [(between_by_condition or {}).get(k, np.nan) for k, _, _ in present]
+    has_between = between_by_condition is not None and any(np.isfinite(b) for b in betweens)
+
+    set_pub_style(title_size=11, tick_size=8)
+    # Left-panel width scales with family count so a 15-family panel doesn't crush its
+    # bars (the ~2–8-family human panels keep their compact look). Per-bar value labels
+    # are dropped once there are too many families to place them legibly — the right
+    # panel carries the numeric summary.
+    n_fam, n_series = len(fam_order), len(present)
+    left_w = max(9.0, 0.95 * n_fam)
+    fig, (axL, axR) = plt.subplots(1, 2, figsize=(left_w + 5.0, 6), dpi=200,
+                                   gridspec_kw={"width_ratios": [left_w / 5.0, 1.1]})
+
+    series = []
+    for key, lbl, color in present:
+        wd = within_by_condition[key]
+        series.append((lbl, [wd.get(f, np.nan) for f in fam_order], None, color))
+    grouped_rho_bars(axL, fam_order, series, title_left, ylabel_left,
+                     ylim=(-0.2, 1.05), bar_width=0.9 / max(1, n_series),
+                     tick_fontsize=8, show_values=(n_fam <= 8))
+
+    labels = [lbl for _, lbl, _ in present]
+    colors = [c for _, _, c in present]
+    mean_within = [float(np.nanmean([within_by_condition[k].get(f, np.nan) for f in fam_order]))
+                   for k, _, _ in present]
+    xs = np.arange(len(present))
+    if has_between:
+        w = 0.38
+        axR.bar(xs - w / 2, mean_within, w, label="Within (mean)", color=colors,
+                edgecolor=acs.apc.white, linewidth=0.5, zorder=3)
+        axR.bar(xs + w / 2, betweens, w, label="Between (centroid)", color=colors,
+                edgecolor=acs.apc.white, linewidth=0.5, hatch="//", alpha=0.85, zorder=3)
+        label_pairs = list(zip(xs - w / 2, mean_within)) + list(zip(xs + w / 2, betweens))
+    else:
+        axR.bar(xs, mean_within, 0.5, label="Within (mean)", color=colors,
+                edgecolor=acs.apc.white, linewidth=0.5, zorder=3)
+        label_pairs = list(zip(xs, mean_within))
+    for x, v in label_pairs:
+        if np.isfinite(v):
+            axR.text(x, v + 0.02, f"{v:.2f}", ha="center", fontsize=7, fontweight="bold")
+    axR.axhline(1.0, color=acs.REFERENCE_LINE, linewidth=1.5, linestyle="--", zorder=2,
+                label="natural (self = 1.0)")
+    axR.axhline(0, color=acs.ZERO_LINE, linewidth=0.8)
+    axR.set_xticks(xs)
+    axR.set_xticklabels(labels, rotation=30, ha="right", fontsize=8)
+    axR.set_ylim(-0.2, 1.05)
+    axR.set_ylabel("Preservation ρ (control vs natural)")
+    axR.set_title("Mean preservation", fontweight="bold")
+    axR.legend(fontsize=8, loc="lower left")
+    axR.spines[["top", "right"]].set_visible(False)
+    axR.yaxis.grid(True, color=acs.GRID, linestyle=":", linewidth=0.5, zorder=0)
+    acs.style_axes(axR, monospaced_axes="y")
+
+    fig.tight_layout()
+    fig.savefig(f"{out_path}.pdf", dpi=200)
+    fig.savefig(f"{out_path}.png", dpi=200)
+    plt.close(fig)
+    return True
 
 
 def between_rho_bars(ax, bars, x_geo, idx_upper, title, ylabel, ylim=(-0.2, 1.0)):
-    """Between-group Spearman-ρ bars (a reference vector vs each baseline) + bootstrap CIs.
-
-    bars: list of (label, matrix_or_None, color); each matrix is F×F and correlated
-    (upper triangle) against x_geo. A None matrix renders a grey 'TBD' bar.
-    Returns [(label, rho, ci_lo, ci_hi), ...] (rho/ci None for TBD bars) for logging.
-    """
+    """Between-group Spearman-ρ bars (a reference vector vs each baseline) + bootstrap CIs."""
     x = np.arange(len(bars))
     results = []
     for xi, (label, mat, color) in enumerate(bars):
         if mat is not None:
             rho, ci_lo, ci_hi = bootstrap_spearman(x_geo, mat[idx_upper])
-            ax.bar(xi, rho, color=color, width=0.5, zorder=3, edgecolor="white", linewidth=0.5)
+            ax.bar(xi, rho, color=color, width=0.5, zorder=3,
+                   edgecolor=acs.apc.white, linewidth=0.5)
             ax.errorbar(
                 xi, rho, yerr=[[max(0.0, rho - ci_lo)], [max(0.0, ci_hi - rho)]],
-                fmt="none", color="black", capsize=5, linewidth=1.2, zorder=4,
+                fmt="none", color=acs.apc.black, capsize=5, linewidth=1.2, zorder=4,
             )
             # Label just beyond the error bar, on the same side as the bar.
             if rho >= 0:
@@ -245,14 +290,16 @@ def between_rho_bars(ax, bars, x_geo, idx_upper, title, ylabel, ylim=(-0.2, 1.0)
             results.append((label, rho, ci_lo, ci_hi))
         else:
             ax.bar(xi, 0, color=color, width=0.5, zorder=3)
-            ax.text(xi, 0.04, "TBD", ha="center", va="bottom", fontsize=10, color="#888888")
+            ax.text(xi, 0.04, "TBD", ha="center", va="bottom", fontsize=10,
+                    color=acs.PLACEHOLDER_TEXT)
             results.append((label, None, None, None))
-    ax.axhline(0, color="black", linewidth=0.8, linestyle="--", zorder=2)
+    ax.axhline(0, color=acs.ZERO_LINE, linewidth=0.8, linestyle="--", zorder=2)
     ax.set_xticks(x)
     ax.set_xticklabels([b[0] for b in bars], fontsize=10)
     ax.set_ylim(*ylim)
     ax.set_ylabel(ylabel, fontsize=10)
     ax.set_title(title, fontsize=11, fontweight="bold", pad=6)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.yaxis.grid(True, linestyle=":", linewidth=0.5, alpha=0.6, zorder=0)
+    ax.yaxis.grid(True, color=acs.GRID, linestyle=":", linewidth=0.5, zorder=0)
+    acs.style_axes(ax, monospaced_axes="y")
     return results
