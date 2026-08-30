@@ -770,9 +770,9 @@ def main() -> None:
                     help="per-family alignment-distance cache dir to archive into baselines/. NOT "
                          "inferred — pass it ONLY when that cache belongs to this panel, since the "
                          "cache is keyed by family name and names collide across panels "
-                         "(data/cache/evo2_patristic = the CROSS-KINGDOM panel; "
-                         "data/cache/gpnstar_patristic = the GPN-Star human panel; the mammalian "
-                         "ortholog panels have no such cache). Omitted = nothing archived.")
+                         "(data/cache/evo2_patristic = the cross-kingdom panel; "
+                         "data/cache/human_patristic = the human panel). "
+                         "Omitted = nothing archived.")
     ap.add_argument("--pub", action="store_true",
                     help="render at PUBLICATION geometry instead of the compact diagnostic scale: "
                          "an exact 1,000 pt panel, the style guide's 15 pt type with monospaced "

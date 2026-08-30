@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
 from geodesic_utils import upper_triangle  # noqa: E402
 
 EVO2_FASTA_DIR = Path("data/evo2_gene_families")
-GPN_CDS_JSON = Path("data/cache/cds_sequences.json")
+HUMAN_CDS_JSON = Path("data/cache/cds_sequences.json")
 MIN_MEMBERS = 4  # below this a within-family rank correlation is meaningless
 
 _CODON = {  # standard genetic code; '*' = stop, 'X' = unknown/ambiguous
@@ -44,8 +44,8 @@ def translate(cds: str) -> str:
 
 def load_sequences(seq_source: str) -> dict[str, str]:
     """id -> CDS, for whichever panel this run came from."""
-    if seq_source == "gpn":
-        return json.loads(GPN_CDS_JSON.read_text())
+    if seq_source == "human":
+        return json.loads(HUMAN_CDS_JSON.read_text())
     seqs: dict[str, str] = {}
     for fasta in EVO2_FASTA_DIR.glob("*.fasta"):
         cur_id, cur = None, []
@@ -180,7 +180,7 @@ def save_cached_within(cache_dir: Path, fam: str, members: list[str],
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run-dir", required=True)
-    ap.add_argument("--seq-source", required=True, choices=["evo2", "gpn"])
+    ap.add_argument("--seq-source", required=True, choices=["evo2", "human"])
     args = ap.parse_args()
     run_dir = Path(args.run_dir)
 
@@ -194,7 +194,7 @@ def main() -> None:
 
     meta = pd.read_csv(run_dir / "metadata.csv") if (run_dir / "metadata.csv").exists() \
         else pd.read_csv(EVO2_FASTA_DIR / "embeddings" / "metadata.csv")
-    id_col = "gene" if args.seq_source == "gpn" else "org_gene"
+    id_col = "gene" if args.seq_source == "human" else "org_gene"
     fam_of = dict(zip(meta[id_col], meta["family"]))
     seqs = load_sequences(args.seq_source)
 
@@ -203,7 +203,7 @@ def main() -> None:
     # the layer-selection engine already populates data/cache/<model>_patristic/. We
     # reuse them and skip the (slow) MAFFT/FastTree pass; a fresh family is computed
     # once and cached. Only the geodesic↔matrix correlation is recomputed per layer.
-    cache_dir = Path(f"data/cache/{'evo2' if args.seq_source == 'evo2' else 'gpnstar'}_patristic")
+    cache_dir = Path(f"data/cache/{args.seq_source}_patristic")
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     families = sorted(set(meta["family"]))

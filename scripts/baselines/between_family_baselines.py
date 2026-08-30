@@ -75,9 +75,8 @@ FAMILY_ANNOTATIONS: dict[str, dict] = {
     "opsins": dict(
         homology_group="opsin_mixed", cofactors=["retinal"], ec="non-enzyme",
         gas="none", process="phototransduction"),
-    # ── GPN-Star panel additions (same biology, different family subset)
-    # "carbonic_anhydrase" (GPN) is the alpha class specifically (PF00194) — identical
-    # annotation to carbonic_anhydrase_alpha above.
+    # Human-paralog panel additions.
+    # This carbonic anhydrase family is the alpha class (PF00194).
     "carbonic_anhydrase": dict(
         homology_group="alpha_CA", cofactors=["zinc"], ec="4.2.1.1",
         gas="CO2", process="CO2_hydration"),
@@ -383,8 +382,8 @@ def _gc(seq: str) -> tuple[int, int]:
 
 
 def gc_by_family(fams: list[str], seq_source: str, fam_of: dict[str, str]) -> dict[str, float]:
-    """Mean GC fraction per family. Evo2: per-family FASTAs; GPN: cds_sequences.json
-    keyed by gene (membership from `fam_of`). Returns {} if no source is available."""
+    """Mean GC fraction from cross-kingdom FASTAs or the human CDS cache.
+    Returns {} if no source is available."""
     gc = {f: 0 for f in fams}
     at = {f: 0 for f in fams}
     if seq_source == "evo2":
@@ -398,11 +397,11 @@ def gc_by_family(fams: list[str], seq_source: str, fam_of: dict[str, str]) -> di
                 g, a = _gc(line)
                 gc[f] += g
                 at[f] += a
-    else:  # gpn: gene-keyed CDS json
-        gpn_cds = Path("data/cache/cds_sequences.json")
-        if not gpn_cds.exists():
+    else:  # human: gene-keyed CDS JSON
+        human_cds = Path("data/cache/cds_sequences.json")
+        if not human_cds.exists():
             return {}
-        seqs = json.loads(gpn_cds.read_text())
+        seqs = json.loads(human_cds.read_text())
         for gene, seq in seqs.items():
             f = fam_of.get(gene)
             if f in gc:
@@ -414,8 +413,8 @@ def gc_by_family(fams: list[str], seq_source: str, fam_of: dict[str, str]) -> di
 
 def load_between_kmer(run_dir: Path, fams: list[str], seq_families: np.ndarray | None,
                       kmer_seq: np.ndarray | None) -> np.ndarray | None:
-    """Between-family k-mer matrix: prefer a precomputed family-level CSV (GPN-Star),
-    else aggregate the run's sequence-level k-mer matrix (Evo2). None if neither."""
+    """Load a family-level k-mer matrix or aggregate a sequence-level matrix.
+    Returns None if neither is available."""
     fam_csv = run_dir / "kmer_distance_family.csv"
     if fam_csv.exists():
         df = pd.read_csv(fam_csv, index_col=0).reindex(index=fams, columns=fams)
@@ -505,7 +504,7 @@ DEPRECATED_BASELINES = {"homology_tier"}
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run-dir", required=True)
-    ap.add_argument("--seq-source", choices=["evo2", "gpn"], default="evo2",
+    ap.add_argument("--seq-source", choices=["evo2", "human"], default="evo2",
                     help="Which panel this run is from (drives GC source and k-mer).")
     ap.add_argument("--n-perms", type=int, default=9999, help="Mantel permutations (F≈15 → cheap).")
     ap.add_argument("--distances-from", default=None,
@@ -530,13 +529,13 @@ def main() -> None:
         centroid = centroid.reindex(index=fams, columns=fams)
     geo = centroid.values.astype(np.float64)
 
-    # Per-CDS metadata: family label + member id (org_gene for Evo2, gene for GPN-Star).
+    # Per-CDS metadata: family label and panel-specific member identifier.
     meta_path = run_dir / "metadata.csv" if (run_dir / "metadata.csv").exists() else EMBED_META
     meta = pd.read_csv(meta_path)
-    id_col = "gene" if args.seq_source == "gpn" else "org_gene"
+    id_col = "gene" if args.seq_source == "human" else "org_gene"
     fam_of = dict(zip(meta[id_col], meta["family"])) if id_col in meta.columns else {}
     seq_families = meta["family"].to_numpy()
-    # Sequence-level k-mer matrix (Evo2 .npy); GPN uses a precomputed family-level CSV.
+    # Prefer the sequence-level k-mer matrix when its order matches the metadata.
     kmer_seq = None
     if (run_dir / "kmer_distance.npy").exists():
         kmer_seq = np.load(run_dir / "kmer_distance.npy")
@@ -568,7 +567,7 @@ def main() -> None:
             "ec_number": ec_matrix(fams),
         }
         gc = gc_by_family(fams, args.seq_source, fam_of)
-        if gc:  # empty if no sequence source on disk (e.g. GPN without cds_sequences.json)
+        if gc:
             mats["gc_content"] = gc_matrix(fams, gc)
         else:
             print("  [skip] gc_content: no sequence source available")

@@ -1,4 +1,4 @@
-"""Shared matplotlib helpers for the figure scripts (gpnstar and evo2)."""
+"""Shared Matplotlib helpers for analysis figures."""
 
 from pathlib import Path
 
@@ -11,8 +11,7 @@ from scipy.stats import spearmanr
 
 import arcadia_style as acs  # noqa: I001 - sibling module, resolved via the scripts/ sys.path entry
 
-# Shared colour for the three standardized within-family baselines, used identically by the
-# Evo2 and GPN-Star within_correlations figures so the two read as one comparison.
+# Shared colors for standardized within-family baselines.
 WITHIN_PALETTE = acs.WITHIN_PALETTE
 
 
@@ -201,7 +200,7 @@ def control_preservation_figure(
     title_left="Composition controls: is the within-family geometry preserved?",
     ylabel_left="Within-family Spearman ρ (control vs natural geodesic)",
 ):
-    """Two-panel control-vs-natural PRESERVATION figure, shared by the Evo2 and GPN-Star control pipelines so the two read as one comparison."""
+    """Draw within- and between-family control-preservation panels."""
     present = [(k, lbl, c) for k, lbl, c in display if k in within_by_condition]
     if not present:
         return False

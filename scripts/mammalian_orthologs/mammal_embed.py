@@ -22,10 +22,10 @@ from embed_and_geodesic_paralog import (  # noqa: E402  reuse the windowed Evo2 
 # synonymous_recode are excluded): gc_match, dinuc_shuffle, kmer4_shuffle, kmer6_shuffle.
 GENOMIC_CONTROLS = ["gc_match", "dinuc_shuffle", "kmer4_shuffle", "kmer6_shuffle"]
 
-MAX_WINDOWS = 24  # cap forwards/locus: long gene-body loci (up to ~845 kb = 100+ windows) are the
-                  # time sink; evenly subsample MAX_WINDOWS windows across the locus (GPN scheme) so
-                  # per-locus cost is bounded while still sampling the whole span. mean-pooled anyway.
-                  # 24 windows = 192 kb sampled; only ~3% of loci exceed 12 windows, so cost is modest.
+MAX_WINDOWS = 24  # Bound long-locus cost by subsampling across the full span.
+                  # Mean pooling gives each locus an equal-window estimator.
+                  # 24 windows sample 192 kb; only about 3% of loci exceed
+                  # 12 windows, so the added cost is modest.
 
 
 def embed_capped(seq: str, model, device: str, window: int = EVO2_WINDOW,

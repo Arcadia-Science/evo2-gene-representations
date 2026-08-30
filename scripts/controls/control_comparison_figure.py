@@ -37,7 +37,7 @@ TAX_COL = "spearman_geodesic_taxonomy"
 
 
 def preservation_figure(out_dir: Path, family_order: list[str]) -> None:
-    """Companion 'control vs natural GEODESIC' figure, styled identically to the Evo2-human and GPN-Star-human panels via the shared plot_utils.control_preservation_figure()."""
+    """Draw the control-versus-natural geodesic figure."""
     win_p = out_dir / "control_within_scores.csv"
     if not win_p.exists():
         print(f"  [skip] control_preservation: no {win_p.name} (run the control scoring first)")
@@ -80,8 +80,7 @@ def main() -> None:
     nat_dir = Path(args.natural_run)
     suffix = f"_blocks{args.layer}" if args.layer is not None else ""
 
-    # Self-contained controls/ folder in the run dir (mirrors the GPN msa_controls/ layout):
-    # per-condition CSVs + a combined summary + the figure.
+    # Keep per-condition CSVs, the combined summary, and the figure together.
     out_dir = nat_dir / "controls"
     out_dir.mkdir(parents=True, exist_ok=True)
 

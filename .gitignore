@@ -109,6 +109,5 @@ notes/
 
 # Large reference binaries — keep out of git (papers + Goodfire reproduction bundle)
 evo2.pdf
-gpnstar.pdf
 tree_of_life_reproduction_goodfire/
 .venv/
