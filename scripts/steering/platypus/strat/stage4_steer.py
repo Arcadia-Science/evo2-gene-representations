@@ -18,8 +18,8 @@ sys.path.insert(0, str(ROOT / "scripts" / "steering"))
 sys.path.insert(0, str(ROOT / "scripts" / "steering" / "platypus"))
 
 import steer_lib as S  # noqa: E402
-from stage4_steer import diagnostic_sites_in_continuation  # noqa: E402
-from top_recon_steer_sweep import score  # noqa: E402
+from alignment_metrics import score_generation  # noqa: E402
+from diagnostic_sites import diagnostic_sites_in_continuation  # noqa: E402
 
 PREFIX_BP = 90
 
@@ -435,7 +435,7 @@ def main() -> None:
                         verbose=0,
                     )
                 for k, cont in enumerate(o.sequences):
-                    sc = score(cont, p["cont"], p["diag"])
+                    sc = score_generation(cont, p["cont"], p["diag"])
                     rows.append(
                         {
                             "gene": gene,

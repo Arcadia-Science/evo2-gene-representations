@@ -19,7 +19,7 @@ import pandas as pd  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts"))
-sys.path.insert(0, str(ROOT / "scripts" / "steering"))  # top_recon_steer_sweep.nt_aligner
+sys.path.insert(0, str(ROOT / "scripts" / "steering"))  # alignment_metrics
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arcadia_pub as pub  # noqa: E402
 import arcadia_style as acs  # noqa: E402
@@ -187,7 +187,7 @@ def gc_by_position(seq: str) -> tuple[float, float, float]:
 
 def codon_diff_stats(gen: str, target: str) -> dict:
     """Synonymous / nonsynonymous differences between a generation and the platypus target."""
-    from top_recon_steer_sweep import nt_aligner
+    from alignment_metrics import nt_aligner
 
     if not gen or not target:
         return {}
