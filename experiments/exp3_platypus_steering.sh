@@ -115,7 +115,7 @@ stage "~20 min"     "C5. stage-4 analysis" \
 stage "~1 h, CPU"   "C6. rescore on the nucleotide alignment (private-base metric)" \
   $PY $S/strat/stage4_rescore_nt.py --run $R --dir $ARM
 stage "~2 h, CPU"   "C7. leave-human vs platypus-choice decomposition at private sites" \
-  $PY $S/strat/site_directionality.py --run $R --layers 27
+  $PY $S/strat/site_directionality.py --run $R --dir $ARM
 
 say "Evolutionary rates (CPU-only; independent of stages 2-4)"
 

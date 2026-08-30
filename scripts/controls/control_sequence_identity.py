@@ -24,7 +24,7 @@ sys.path.insert(0, str(_REPO / "scripts" / "controls"))
 # Labels and colors shared by the control figures.
 import arcadia_style as acs  # noqa: E402
 import make_control_sequences as mcs  # noqa: E402  (pure sequence ops; no torch)
-from control_comparison_figure import CONDITIONS as _CONDITIONS  # noqa: E402
+from control_ladder import CONDITIONS as _CONDITIONS  # noqa: E402
 
 LABEL = {k: lbl for k, lbl, _, _ in _CONDITIONS}
 COLOUR = {k: c for k, _, _, c in _CONDITIONS}
@@ -144,37 +144,6 @@ def draw_control(
 # ── panels: sequences + where their rho tables live
 
 
-def _read_fastas(d: Path, families: list[str]) -> dict[str, str]:
-    seqs: dict[str, str] = {}
-    for fam in families:
-        cur, buf = None, []
-        for line in (d / f"{fam}.fasta").read_text().splitlines():
-            if line.startswith(">"):
-                if cur:
-                    seqs[cur] = "".join(buf)
-                cur, buf = line[1:].split("|")[0], []
-            elif line.strip():
-                buf.append(line.strip().upper())
-        if cur:
-            seqs[cur] = "".join(buf)
-    return seqs
-
-
-def load_xkingdom():
-    """
-    Cross-kingdom KEGG panel: natural + the ON-DISK control FASTAs that were actually embedded.
-    """
-    nat, order = mcs.load_family_fastas()
-    fam_of = {g: f for f, hdrs in order.items() for _, g in hdrs}
-    fams = list(order)
-    embedded = {
-        c: _read_fastas(mcs.CONTROL_ROOT / c, fams)
-        for c in LADDER
-        if (mcs.CONTROL_ROOT / c).is_dir()
-    }
-    return nat, fam_of, embedded, True
-
-
 def load_human_cds():
     """Matched human paralog panel, CDS input."""
     import sample_human_genes as ss  # noqa: E402  (repo panel definition; no torch)
@@ -216,15 +185,6 @@ def _latest(pattern: str) -> Path:
 
 
 PANELS = {
-    "xkingdom": {
-        "loader": load_xkingdom,
-        "run": lambda: _latest("results/*_evo2-gene-families"),
-        "layer_dir": "blocks{L}",
-        "recovery_col": "spearman_geodesic_taxonomy",
-        "natural_recovery": ("axisB_within_family_correlations.csv", "spearman_geodesic_taxonomy"),
-        "recovery_name": "host taxonomy",
-        "exact_sequences": True,
-    },
     "human_cds": {
         "loader": load_human_cds,
         "run": lambda: _latest("results/*_evo2-human-panel-cds"),
@@ -249,7 +209,7 @@ PANELS = {
 # ── stage 1: identity
 
 
-def measure_identity(panel: str, max_seqs: int | None, verify_on_disk: bool) -> pd.DataFrame:
+def measure_identity(panel: str, max_seqs: int | None) -> pd.DataFrame:
     """Measure source identity for every control rung in a panel."""
     spec = PANELS[panel]
     nat, fam_of, embedded, in_frame = spec["loader"]()
@@ -297,8 +257,6 @@ def measure_identity(panel: str, max_seqs: int | None, verify_on_disk: bool) -> 
             )
         print(f"  {control:18} n={sum(r['condition'] == control for r in rows):5d}  done")
 
-    if verify_on_disk and embedded:
-        _verify_on_disk(nat, fam_of, embedded)
     return pd.DataFrame(rows)
 
 
@@ -312,44 +270,6 @@ def _applicable_rungs(panel: str, in_frame: bool) -> list[str]:
         raise SystemExit(f"{panel}: no controls/control_within_scores.csv under {run}")
     present = set(pd.read_csv(tables[0])["condition"])
     return [c for c in LADDER if c in present]
-
-
-def _verify_on_disk(nat: dict, fam_of: dict, embedded: dict) -> None:
-    """
-    Confirm the on-disk control FASTAs are the ones make_control_sequences generates, by replaying
-    its
-    exact RNG discipline.
-    """
-    _, order = mcs.load_family_fastas()
-    usage = mcs.build_family_codon_usage(
-        {f: [nat[g] for _, g in h] for f, h in order.items() if all(g in nat for _, g in h)}
-    )
-    for control, disk in embedded.items():
-        rng = random.Random(mcs.SEED)
-        same = total = 0
-        for fam, hdrs in order.items():
-            for _, g in hdrs:
-                s = nat.get(g)
-                if s is None:
-                    continue
-                if control == "gc_match":
-                    c = mcs.gc_match(s, rng)
-                elif control == "dinuc_shuffle":
-                    c = mcs.dinuc_shuffle(s, rng)
-                elif control == "kmer4_shuffle":
-                    c = mcs.klet_shuffle(s, 4, rng)
-                elif control == "kmer6_shuffle":
-                    c = mcs.klet_shuffle(s, 6, rng)
-                elif control == "codon_shuffle":
-                    c = mcs.codon_shuffle(s, rng)
-                else:
-                    c = mcs.synonymous_recode(s, usage[fam], rng)
-                total += 1
-                same += int(disk.get(g) == c)
-        print(
-            f"  [verify] {control:18} {same}/{total} on-disk sequences reproduce from SEED="
-            f"{mcs.SEED}"
-        )
 
 
 def summarise_identity(per_seq: pd.DataFrame) -> pd.DataFrame:
@@ -1225,12 +1145,6 @@ def main() -> None:
         help="thin each panel to at most this many sequences (deterministic; for a "
         "quick pass on the 11k-locus mammal panel).",
     )
-    ap.add_argument(
-        "--verify-on-disk",
-        action="store_true",
-        help="(xkingdom) replay make_control_sequences' RNG discipline and report how "
-        "many on-disk control sequences it reproduces.",
-    )
     args = ap.parse_args()
 
     for panel in args.panel:
@@ -1240,7 +1154,7 @@ def main() -> None:
         summary_p = run / "control_sequence_identity.csv"
 
         if args.stage in ("identity", "all"):
-            per_seq = measure_identity(panel, args.max_seqs, args.verify_on_disk)
+            per_seq = measure_identity(panel, args.max_seqs)
             per_seq.to_csv(per_seq_p, index=False)
             summarise_identity(per_seq).to_csv(summary_p, index=False)
             print(f"  Saved {summary_p} (+ per-sequence rows)")

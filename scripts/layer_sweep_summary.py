@@ -485,15 +485,11 @@ def _family_colors(families: list[str]) -> dict[str, str]:
     One colour per family from the panel's canonical chemistry-block palette, so a family keeps its
     colour across every figure.
     """
-    for panel in ("human", "evo2"):
-        try:
-            panel_colors = family_colors(panel)
-        except Exception:  # noqa: BLE001 - a missing panel is not a figure-level failure
-            continue
-        if set(families) <= set(panel_colors):
-            # line_safe: these are 1 px curves, not filled patches — the pale end of the
-            # panel palette needs darkening to be visible at all (hue is preserved).
-            return {f: acs.line_safe(panel_colors[f]) for f in families}
+    panel_colors = family_colors("human")
+    if set(families) <= set(panel_colors):
+        # line_safe: these are 1 px curves, not filled patches — the pale end of the
+        # panel palette needs darkening to be visible at all (hue is preserved).
+        return {f: acs.line_safe(panel_colors[f]) for f in families}
     return dict(zip(families, acs.categorical(len(families)), strict=True))
 
 
@@ -985,8 +981,7 @@ def main() -> None:
         help="per-family alignment-distance cache dir to archive into baselines/. NOT "
         "inferred — pass it ONLY when that cache belongs to this panel, since the "
         "cache is keyed by family name and names collide across panels "
-        "(data/cache/evo2_patristic = the cross-kingdom panel; "
-        "data/cache/human_patristic = the human panel). "
+        "(data/cache/human_patristic = the human panel). "
         "Omitted = nothing archived.",
     )
     ap.add_argument(

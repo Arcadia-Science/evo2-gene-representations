@@ -23,9 +23,6 @@ from baselines.cofactor_annotations import (
 from gene_families import PFAM_ACCESSIONS  # noqa: E402  (single source of family Pfam accessions)
 from geodesic_utils import mantel_test, upper_triangle  # noqa: E402
 
-DATA_DIR = Path("data/evo2_gene_families")
-EMBED_META = DATA_DIR / "embeddings" / "metadata.csv"
-
 # Curated per-family annotations; the data-derived baselines check them.
 #   cofactors  scored via ChEBI-derived cofactor_similarity, role-blind
 #   ec         EC number ('non-enzyme' for receptors/carriers)
@@ -599,33 +596,20 @@ def _gc(seq: str) -> tuple[int, int]:
     return s.count("G") + s.count("C"), s.count("A") + s.count("T")
 
 
-def gc_by_family(fams: list[str], seq_source: str, fam_of: dict[str, str]) -> dict[str, float]:
-    """Mean GC fraction from cross-kingdom FASTAs or the human CDS cache.
-    Returns {} if no source is available."""
+def gc_by_family(fams: list[str], fam_of: dict[str, str]) -> dict[str, float]:
+    """Mean GC fraction from the human CDS cache. Returns {} if no source is available."""
     gc = {f: 0 for f in fams}
     at = {f: 0 for f in fams}
-    if seq_source == "evo2":
-        for f in fams:
-            fasta = DATA_DIR / f"{f}.fasta"
-            if not fasta.exists():
-                continue
-            for line in fasta.read_text().splitlines():
-                if line.startswith(">") or not line:
-                    continue
-                g, a = _gc(line)
-                gc[f] += g
-                at[f] += a
-    else:  # human: gene-keyed CDS JSON
-        human_cds = Path("data/cache/cds_sequences.json")
-        if not human_cds.exists():
-            return {}
-        seqs = json.loads(human_cds.read_text())
-        for gene, seq in seqs.items():
-            f = fam_of.get(gene)
-            if f in gc:
-                g, a = _gc(seq)
-                gc[f] += g
-                at[f] += a
+    human_cds = Path("data/cache/cds_sequences.json")
+    if not human_cds.exists():
+        return {}
+    seqs = json.loads(human_cds.read_text())
+    for gene, seq in seqs.items():
+        f = fam_of.get(gene)
+        if f in gc:
+            g, a = _gc(seq)
+            gc[f] += g
+            at[f] += a
     return {f: (gc[f] / (gc[f] + at[f]) if (gc[f] + at[f]) else 0.0) for f in fams}
 
 
@@ -727,12 +711,6 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--run-dir", required=True)
-    ap.add_argument(
-        "--seq-source",
-        choices=["evo2", "human"],
-        default="evo2",
-        help="Which panel this run is from (drives GC source and k-mer).",
-    )
     ap.add_argument("--n-perms", type=int, default=9999, help="Mantel permutations (F≈15 → cheap).")
     ap.add_argument(
         "--distances-from",
@@ -763,9 +741,8 @@ def main() -> None:
     geo = centroid.values.astype(np.float64)
 
     # Per-CDS metadata: family label and panel-specific member identifier.
-    meta_path = run_dir / "metadata.csv" if (run_dir / "metadata.csv").exists() else EMBED_META
-    meta = pd.read_csv(meta_path)
-    id_col = "gene" if args.seq_source == "human" else "org_gene"
+    meta = pd.read_csv(run_dir / "metadata.csv")
+    id_col = "gene"
     fam_of = dict(zip(meta[id_col], meta["family"], strict=False)) if id_col in meta.columns else {}
     seq_families = meta["family"].to_numpy()
     # Prefer the sequence-level k-mer matrix when its order matches the metadata.
@@ -794,12 +771,12 @@ def main() -> None:
             sys.exit(f"--distances-from {donor}: no betweenfam_*_distances.csv to reuse")
         print(f"Reusing {len(mats)} cached between-family distance matrices from {donor}")
     else:
-        print(f"Scoring {len(fams)} families ({args.seq_source}) against multi-axis baselines\n")
+        print(f"Scoring {len(fams)} families against multi-axis baselines\n")
         mats = {
             "cofactor": cofactor_matrix(fams),
             "ec_number": ec_matrix(fams),
         }
-        gc = gc_by_family(fams, args.seq_source, fam_of)
+        gc = gc_by_family(fams, fam_of)
         if gc:
             mats["gc_content"] = gc_matrix(fams, gc)
         else:

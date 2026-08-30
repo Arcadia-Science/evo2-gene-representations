@@ -1,4 +1,6 @@
-"""Single source of truth for gene-family SELECTION, shared by both models."""
+"""Single source of truth for gene-family SELECTION: the 48 HGNC human paralog families
+that scripts/mammalian_orthologs/resolve_orthologs.py expands to 1:1 orthologs across 24
+mammals."""
 
 from __future__ import annotations
 import json
@@ -6,17 +8,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 FAMILIES_DATA_JSON = ROOT / "scripts" / "families_data.json"  # human membership artifact
-EVO2_DATA_DIR = ROOT / "data" / "evo2_gene_families"  # evo2 FASTA + manifest live here
 
-# ── HTTP / build constants ──────────────────────────────────────────────────────
+# ── HGNC build constants ────────────────────────────────────────────────────────
 HGNC_FETCH = "https://rest.genenames.org/fetch/gene_group_id/{gid}"
-KEGG = "https://rest.kegg.jp"
-SLEEP = 0.34  # KEGG fair-use throttle
-NTSEQ_BATCH = 10  # KEGG `get` accepts up to 10 entries per call
-BRITE_CACHE = ROOT / "data" / "cache" / "kegg_br08610.txt"
-TARGET_PER_FAMILY = 400
-SUBSAMPLE_SEED = 0
-OVERSAMPLE = 1.6  # fetch this × target as candidates so dedup still leaves ~target
+SUBSAMPLE_SEED = 0  # seeds the max_members subsample in build_human_paralogs
 
 
 # Definitions
@@ -50,7 +45,6 @@ HGNC_FAMILY_SPEC: dict[str, dict] = {
             165,
             167,
         ],
-
     },
     "cytochrome_p450": {
         # CYP families 1,2,3,4,7,8,11,17,19,20,21,24,26,27,39,46,51.
@@ -183,92 +177,6 @@ HUMAN_FAMILY_ORDER: list[str] = [
     "histone_h4",
 ]
 
-# ── Evo2 panel (cross-kingdom): KEGG Orthology spec ──────────────────────────────
-# family -> {KO: subtype-label}. The label is a finer annotation carried into the manifest
-# (e.g. type1/type2 for the opsin convergence control). Edit/extend to change membership.
-FAMILY_KOS: dict[str, dict[str, str]] = {
-    # Flagship: bacterial glbN → vertebrate Hb/Mb/Ngb/Cygb. Spans all of life.
-    "globins": {
-        "K06886": "bacterial_glbN",
-        "K13822": "HBA",
-        "K13823": "HBB",
-        "K13824": "HBG",
-        "K13825": "HBE",
-        "K21892": "MB",
-        "K21893": "NGB",
-        "K21894": "CYGB",
-    },
-    # Heme-copper oxidase superfamily, catalytic SUBUNIT I only (homologous across aa3 / cbb3 /
-    # cytochrome-o / archaeal aa3). NOT cytochrome bd (different fold).
-    "heme_copper_oxidase": {
-        "K02256": "aa3_COX1",
-        "K02274": "aa3_coxA",
-        "K00404": "cbb3_ccoN",
-        "K02298": "cyo_cyoB",
-        "K24009": "aa3_soxB",
-        "K24011": "aa3_soxM",
-    },
-    # Cytochrome P450 superfamily. Representative cross-kingdom CYP KO set.
-    "cytochrome_p450": {
-        "K00490": "CYP4F",
-        "K07408": "CYP1A1",
-        "K07409": "CYP1A2",
-        "K07410": "CYP1B1",
-        "K07411": "CYP2A",
-        "K07413": "CYP2C",
-        "K07415": "CYP2E1",
-        "K07424": "CYP3A",
-        "K00517": "CYP_other",
-    },
-    # Olfactory receptors — one lumped KO (~198k genes); heavily subsampled. Vertebrate.
-    "olfactory_receptors": {"K04257": "OLFR"},
-    # Opsins as a CONVERGENCE CONTROL: animal type-2 (homologous) + microbial type-1 (convergent).
-    "opsins": {
-        "K04250": "type2",
-        "K04251": "type2",
-        "K04252": "type2",
-        "K04253": "type2",
-        "K04254": "type2",
-        "K04255": "type2",
-        "K04256": "type2",
-        "K04641": "type1",
-        "K04642": "type1",
-        "K04643": "type1",
-    },
-    # Control: small-GTPase RAS family (eukaryotic, tight, well understood).
-    "ras_gtpases": {"K07827": "KRAS", "K02833": "HRAS"},
-    # ── Gas sensing and metabolism─
-    # Convergent O2 carrier: hemerythrin binds O2 with a non-heme di-iron centre — a DIFFERENT fold
-    # from the globin heme pocket (functional-but-not-sequence analog).
-    "hemerythrin": {"K07216": "hr"},
-    # CO2 hydratases — three independently evolved, sequence-unrelated classes (same EC 4.2.1.1).
-    "carbonic_anhydrase_alpha": {"K01672": "CA", "K18245": "CA2", "K18246": "CA4"},
-    "carbonic_anhydrase_beta": {"K01673": "cynT_can", "K01674": "cah"},
-    "carbonic_anhydrase_gamma": {"K01726": "gammaCA", "K01743": "cam"},
-    # N2 fixation — nitrogenase iron protein, a single conserved marker (bacteria+archaea).
-    "nitrogenase": {"K02588": "nifH"},
-    # Anaerobic CH4 metabolism — methyl-coenzyme M reductase alpha (archaeal marker).
-    "methyl_coenzyme_m_reductase": {"K00399": "mcrA"},
-    # NO production — shared oxygenase domain across bacterial nos and animal NOS1/2/3.
-    "nitric_oxide_synthase": {
-        "K00491": "bacterial_nos",
-        "K13240": "NOS1",
-        "K13241": "NOS2",
-        "K13242": "NOS3",
-    },
-    # CO production — canonical heme-oxygenase fold (animal HMOX1/2 + bacterial/plant HOs).
-    "heme_oxygenase": {
-        "K00510": "HMOX1",
-        "K21418": "HMOX2",
-        "K21480": "HO_ferredoxin",
-        "K07215": "pigA_hemO",
-    },
-    # CH4 oxidation convergence pair: soluble di-iron mmoX vs particulate copper pmoA.
-    "methane_monooxygenase": {"K16157": "sMMO_mmoX", "K10944": "pMMO_pmoA"},
-}
-
-EVO2_FAMILY_ORDER: list[str] = list(FAMILY_KOS)
-
 # ── Pfam accession per family (single union map; family-intrinsic homology id) ───────
 # Keys span both panels, which agree on shared-family accessions.
 PFAM_ACCESSIONS: dict[str, str] = {
@@ -328,15 +236,6 @@ PFAM_ACCESSIONS: dict[str, str] = {
     # Tier 6 — mechanism contrast + controls
     "serine_protease": "PF00089",  # Trypsin (chymotrypsin-like serine protease)
     "histone_h4": "PF00125",  # Core histone fold
-    # evo2 cross-kingdom-only
-    "heme_copper_oxidase": "PF00115",  # COX1 (cytochrome c / quinol oxidase subunit I)
-    "hemerythrin": "PF01814",  # Hemerythrin (non-heme di-iron O2 carrier)
-    "carbonic_anhydrase_alpha": "PF00194",  # Eukaryotic-type (alpha) carbonic anhydrase
-    "carbonic_anhydrase_beta": "PF00484",  # beta carbonic anhydrase (Pro_CA)
-    "carbonic_anhydrase_gamma": "PF28366",  # gamma-CA (approximate: no single clean Pfam)
-    "nitrogenase": "PF00142",  # Fer4_NifH (nitrogenase iron protein)
-    "methyl_coenzyme_m_reductase": "PF02249",  # MCR_alpha (N-term)
-    "methane_monooxygenase": "PF02332",  # sMMO mmoX representative (family also mixes pMMO)
 }
 
 # ── Per-panel plot colors ────────────────────────────────────────────────────────
@@ -401,36 +300,13 @@ FAMILY_COLORS: dict[str, dict[str, str]] = {
         "serine_protease": "bark",
         "histone_h4": "stone",
     },
-    "evo2": {
-        # Heme / O2 chemistry — red_shades, then canary for the sixth
-        "globins": "cinnabar",
-        "hemerythrin": "dragon",
-        "heme_copper_oxidase": "amber",
-        "cytochrome_p450": "tangerine",
-        "nitric_oxide_synthase": "melon",
-        "heme_oxygenase": "canary",
-        # Carbonic anhydrases — teal_shades, in class order (the axis is α → β → γ)
-        "carbonic_anhydrase_alpha": "depths",
-        "carbonic_anhydrase_beta": "asparagus",
-        "carbonic_anhydrase_gamma": "seaweed",
-        # Sensory GPCRs — blue
-        "opsins": "dusk",
-        "olfactory_receptors": "vital",
-        # GTPase
-        "ras_gtpases": "matcha",
-        # C1 / N2 metabolism — purple_shades
-        "nitrogenase": "concord",
-        "methyl_coenzyme_m_reductase": "tanzanite",
-        "methane_monooxygenase": "aster",
-    },
 }
 
-# Integrity: every family in a panel's order has a color and a Pfam accession.
-for _panel, _order in (("human", HUMAN_FAMILY_ORDER), ("evo2", EVO2_FAMILY_ORDER)):
-    assert set(_order) <= set(PFAM_ACCESSIONS), f"{_panel}: families missing a Pfam accession"
-    assert set(_order) == set(FAMILY_COLORS[_panel]), (
-        f"{_panel}: family_order vs FAMILY_COLORS mismatch"
-    )
+# Integrity: every family in the panel order has a color and a Pfam accession.
+assert set(HUMAN_FAMILY_ORDER) <= set(PFAM_ACCESSIONS), "families missing a Pfam accession"
+assert set(HUMAN_FAMILY_ORDER) == set(FAMILY_COLORS["human"]), (
+    "family_order vs FAMILY_COLORS mismatch"
+)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -441,12 +317,10 @@ _HUMAN_MEMBERS: dict[str, list[str]] | None = None
 
 
 def family_order(panel: str) -> list[str]:
-    """Canonical family ordering for a panel ('human' curated; 'evo2' = sorted family names)."""
+    """Canonical family ordering for the human paralog panel."""
     if panel == "human":
         return list(HUMAN_FAMILY_ORDER)
-    if panel == "evo2":
-        return sorted(FAMILY_KOS)  # matches the evo2 pipeline's runtime sorted(manifest.family)
-    raise ValueError(f"unknown panel {panel!r} (expected 'human' or 'evo2')")
+    raise ValueError(f"unknown panel {panel!r} (expected 'human')")
 
 
 def family_colors(panel: str) -> dict[str, str]:
@@ -475,21 +349,7 @@ def family_members(panel: str = "human") -> dict[str, list[str]]:
             )
             _HUMAN_MEMBERS = members
         return _HUMAN_MEMBERS
-    if panel == "evo2":
-        import csv
-
-        manifest = EVO2_DATA_DIR / "manifest.csv"
-        if not manifest.exists():
-            raise FileNotFoundError(
-                f"{manifest} not found — run "
-                "`uv run python scripts/gene_families.py build-ortholog` first."
-            )
-        out: dict[str, list[str]] = {}
-        with open(manifest, newline="") as fh:
-            for row in csv.DictReader(fh):
-                out.setdefault(row["family"], []).append(row["org_gene"])
-        return out
-    raise ValueError(f"unknown panel {panel!r} (expected 'human' or 'evo2')")
+    raise ValueError(f"unknown panel {panel!r} (expected 'human')")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -556,270 +416,6 @@ def build_human_paralogs() -> None:
     )
 
 
-# ── Evo2 panel: KEGG KOs -> per-family CDS FASTA + manifest.csv ──────────────────
-
-import re  # noqa: E402  (module-level: used by the evo2 builder's BRITE parser)
-
-_LEAF = re.compile(r"^([a-z][a-z0-9]{2,4})\s{2,}(.+)$")  # "hsa  Homo sapiens (human)"
-
-
-def _kegg_get(path: str) -> str:
-    """GET {KEGG}/{path} as text, with retries; '' on a 404-style empty body."""
-    import time
-    import urllib.request
-
-    for attempt in range(5):
-        try:
-            with urllib.request.urlopen(f"{KEGG}/{path}", timeout=60) as r:
-                return r.read().decode()
-        except Exception as e:  # noqa: BLE001
-            if attempt == 4:
-                print(f"  KEGG GET {path} failed after retries ({e})")
-                return ""
-            time.sleep(2 * 2**attempt)
-    return ""
-
-
-def _load_org_taxonomy() -> dict[str, tuple[str, str]]:
-    """Parse BRITE br08610 -> {org_code: (domain, group)} (domain = Eukaryota/Bacteria/Archaea)."""
-    import time
-
-    if BRITE_CACHE.exists():
-        text = BRITE_CACHE.read_text()
-    else:
-        print("Downloading KEGG BRITE organism taxonomy (br08610)...")
-        text = _kegg_get("get/br:br08610")
-        BRITE_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        BRITE_CACHE.write_text(text)
-        time.sleep(SLEEP)
-
-    org_tax: dict[str, tuple[str, str]] = {}
-    path: dict[str, str] = {}  # level-letter -> label
-    for line in text.splitlines():
-        if not line or line[0] < "A" or line[0] > "Z":
-            continue
-        letter, content = line[0], line[1:].strip()
-        if not content:
-            continue
-        m = _LEAF.match(content)
-        if m:  # leaf: an organism
-            org = m.group(1)
-            domain = path.get("A", "Unknown")
-            group = path.get("B") or path.get("C") or domain
-            org_tax[org] = (domain, group)
-        else:  # interior taxon node: update the path, clear deeper levels
-            path[letter] = content
-            for deeper in [chr(c) for c in range(ord(letter) + 1, ord("Z") + 1)]:
-                path.pop(deeper, None)
-    print(f"  Parsed taxonomy for {len(org_tax)} KEGG organisms")
-    return org_tax
-
-
-def _ko_members(ko: str) -> list[str]:
-    """All member genes (org:gene) linked to a KO via link/genes."""
-    import time
-
-    text = _kegg_get(f"link/genes/{ko}")
-    time.sleep(SLEEP)
-    members = []
-    for line in text.splitlines():
-        parts = line.split("\t")
-        if len(parts) == 2 and ":" in parts[1]:
-            members.append(parts[1])  # "org:gene"
-    return members
-
-
-def _stratified_sample(members, org_tax, n_target, seed):
-    """Round-robin across (domain, group) buckets to maximise taxonomic spread.
-
-    members: (org_gene, ko, label); returns (org_gene, ko, label, domain, group).
-    """
-    import random
-    from collections import defaultdict
-
-    rng = random.Random(seed)
-    buckets: dict[tuple[str, str], list] = defaultdict(list)
-    for org_gene, ko, label in members:
-        org = org_gene.split(":")[0]
-        domain, group = org_tax.get(org, ("Unknown", "Unknown"))
-        buckets[(domain, group)].append((org_gene, ko, label, domain, group))
-    for b in buckets.values():
-        rng.shuffle(b)
-    order = sorted(buckets)
-    chosen: list = []
-    while len(chosen) < n_target and any(buckets[k] for k in order):
-        for k in order:
-            if buckets[k]:
-                chosen.append(buckets[k].pop())
-                if len(chosen) >= n_target:
-                    break
-    return chosen
-
-
-def _fetch_ntseq(org_genes: list[str]) -> dict[str, str]:
-    """Batch-fetch nucleotide CDS for org:gene ids -> {org_gene: sequence}."""
-    import time
-
-    seqs: dict[str, str] = {}
-    for i in range(0, len(org_genes), NTSEQ_BATCH):
-        batch = org_genes[i : i + NTSEQ_BATCH]
-        text = _kegg_get(f"get/{'+'.join(batch)}/ntseq")
-        time.sleep(SLEEP)
-        cur_id, cur_seq = None, []
-        for line in text.splitlines():
-            if line.startswith(">"):
-                if cur_id:
-                    seqs[cur_id] = "".join(cur_seq)
-                cur_id = line[1:].split()[0]  # ">hsa:3043 K13823 ..." -> "hsa:3043"
-                cur_seq = []
-            elif line.strip():
-                cur_seq.append(line.strip().upper())
-        if cur_id:
-            seqs[cur_id] = "".join(cur_seq)
-        print(f"    fetched {min(i + NTSEQ_BATCH, len(org_genes))}/{len(org_genes)} CDS", end="\r")
-    print()
-    return seqs
-
-
-def _mmseqs_dedup(fasta_in: Path, tmp_dir: Path, min_id: float = 0.90) -> set[str]:
-    """Representative FASTA ids after easy-linclust, or all ids if mmseqs is unavailable."""
-    import shutil
-    import subprocess
-
-    if shutil.which("mmseqs") is None:
-        print("  mmseqs not found — skipping dedup (install via bioconda to enable).")
-        return {r.split()[0] for r in fasta_in.read_text().splitlines() if r.startswith(">")}
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    prefix = tmp_dir / "dedup"
-    subprocess.run(
-        [
-            "mmseqs",
-            "easy-linclust",
-            str(fasta_in),
-            str(prefix),
-            str(tmp_dir / "tmp"),
-            "--dbtype",
-            "2",
-            "--min-seq-id",
-            str(min_id),
-            "--cov-mode",
-            "1",
-            "-c",
-            "0.8",
-            "--cluster-mode",
-            "2",
-            "--threads",
-            "4",
-            "--remove-tmp-files",
-            "1",
-        ],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-    )
-    rep = Path(str(prefix) + "_rep_seq.fasta")
-    reps = {line[1:].split()[0] for line in rep.read_text().splitlines() if line.startswith(">")}
-    shutil.rmtree(tmp_dir, ignore_errors=True)
-    return reps
-
-
-def build_orthologs(
-    target: int = TARGET_PER_FAMILY,
-    families: list[str] | None = None,
-    no_dedup: bool = False,
-    seed: int = SUBSAMPLE_SEED,
-) -> None:
-    """Resolve the KEGG KOs in FAMILY_KOS -> per-family CDS FASTA + manifest.csv
-    (data/evo2_gene_families/).
-    """
-    import csv
-    import sys
-
-    families = families or list(FAMILY_KOS)
-    EVO2_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    org_tax = _load_org_taxonomy()
-
-    manifest_path = EVO2_DATA_DIR / "manifest.csv"
-    with open(manifest_path, "w", newline="") as mf:
-        writer = csv.DictWriter(
-            mf,
-            fieldnames=[
-                "family",
-                "ko",
-                "ko_label",
-                "org_gene",
-                "organism",
-                "domain",
-                "group",
-                "cds_len",
-            ],
-        )
-        writer.writeheader()
-
-        for family in families:
-            print(f"\n=== {family} ===")
-            members: list[tuple[str, str, str]] = []
-            for ko, label in FAMILY_KOS[family].items():
-                m = _ko_members(ko)
-                print(f"  {ko} ({label}): {len(m)} genes")
-                members.extend((og, ko, label) for og in m)
-
-            # _kegg_get returns '' on failure, so an empty member list usually means KEGG was
-            # unreachable rather than a real empty family — warn instead of building a tiny family.
-            if not members:
-                print(
-                    f"  WARNING: 0 members for '{family}' — KEGG may be down or KO ids changed; "
-                    "skipping.",
-                    file=sys.stderr,
-                )
-                continue
-
-            n_candidates = int(target * OVERSAMPLE)
-            chosen = _stratified_sample(members, org_tax, n_candidates, seed)
-            n_dom = len({c[3] for c in chosen})
-            print(
-                f"  {len(chosen)} candidates across {n_dom} domains "
-                f"({len({c[4] for c in chosen})} taxonomic groups)"
-            )
-
-            seqs = _fetch_ntseq([c[0] for c in chosen])
-            chosen = [c for c in chosen if c[0] in seqs and len(seqs[c[0]]) >= 100]
-
-            cand_fasta = EVO2_DATA_DIR / f"{family}.candidates.fasta"
-            with open(cand_fasta, "w") as fh:
-                for og, ko, label, _dom, _grp in chosen:
-                    fh.write(f">{og}|{family}|{ko}|{label}\n{seqs[og]}\n")
-            if no_dedup:
-                keep_ids = {c[0] for c in chosen}
-            else:
-                print("  MMseqs2 dedup (90% id)...")
-                reps = _mmseqs_dedup(cand_fasta, EVO2_DATA_DIR / f"tmp_{family}")
-                keep_ids = {rid.split("|")[0] for rid in reps}
-            chosen = [c for c in chosen if c[0] in keep_ids][:target]
-            cand_fasta.unlink(missing_ok=True)
-
-            fam_fasta = EVO2_DATA_DIR / f"{family}.fasta"
-            with open(fam_fasta, "w") as fh:
-                for og, ko, label, dom, grp in chosen:
-                    fh.write(f">{og}|{family}|{ko}|{label}\n{seqs[og]}\n")
-                    writer.writerow(
-                        {
-                            "family": family,
-                            "ko": ko,
-                            "ko_label": label,
-                            "org_gene": og,
-                            "organism": og.split(":")[0],
-                            "domain": dom,
-                            "group": grp,
-                            "cds_len": len(seqs[og]),
-                        }
-                    )
-            mf.flush()
-            print(f"  -> {len(chosen)} CDS written to {fam_fasta}")
-
-    print(f"\nManifest: {manifest_path}")
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # CLI
 # ══════════════════════════════════════════════════════════════════════════════
@@ -833,21 +429,10 @@ def main() -> None:
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("build-human-paralog", help="HGNC gene groups -> families_data.json")
-    pe = sub.add_parser("build-ortholog", help="KEGG KOs -> per-family CDS FASTA + manifest.csv")
-    pe.add_argument(
-        "--target", type=int, default=TARGET_PER_FAMILY, help="CDS per family after dedup"
-    )
-    pe.add_argument("--families", nargs="+", default=list(FAMILY_KOS), choices=list(FAMILY_KOS))
-    pe.add_argument("--no-dedup", action="store_true", help="Skip MMseqs2 dedup")
-    pe.add_argument("--seed", type=int, default=SUBSAMPLE_SEED)
     args = ap.parse_args()
 
     if args.cmd == "build-human-paralog":
         build_human_paralogs()
-    elif args.cmd == "build-ortholog":
-        build_orthologs(
-            target=args.target, families=args.families, no_dedup=args.no_dedup, seed=args.seed
-        )
 
 
 if __name__ == "__main__":
