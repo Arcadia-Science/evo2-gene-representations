@@ -5,8 +5,6 @@ import argparse
 import itertools
 import json
 import sys
-import time
-import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -14,426 +12,7 @@ import pandas as pd
 from scipy.stats import spearmanr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from baselines.cofactor_annotations import (  # noqa: E402
-    cofactor_similarity as _chebi_cofactor_similarity,
-)
-from baselines.cofactor_annotations import (
-    load_cofactor_annotations,
-)
-from gene_families import PFAM_ACCESSIONS  # noqa: E402  (single source of family Pfam accessions)
 from geodesic_utils import mantel_test, upper_triangle  # noqa: E402
-
-# Curated per-family annotations; the data-derived baselines check them.
-#   cofactors  scored via ChEBI-derived cofactor_similarity, role-blind
-#   ec         EC number ('non-enzyme' for receptors/carriers)
-#   homology_group, gas, process  panel metadata only — their baselines were removed
-FAMILY_ANNOTATIONS: dict[str, dict] = {
-    "globins": dict(
-        homology_group="globin",
-        cofactors=["heme_b"],
-        ec="non-enzyme",
-        gas="O2",
-        process="O2_transport",
-    ),
-    "hemerythrin": dict(
-        homology_group="hemerythrin",
-        cofactors=["nonheme_diiron"],
-        ec="non-enzyme",
-        gas="O2",
-        process="O2_transport",
-    ),
-    "heme_copper_oxidase": dict(
-        homology_group="HCO",
-        cofactors=["heme_a", "copper"],
-        ec="7.1.1.9",
-        gas="O2",
-        process="O2_respiration",
-    ),
-    "cytochrome_p450": dict(
-        homology_group="p450",
-        cofactors=["heme_b_thiolate"],
-        ec="1.14.14.1",
-        gas="O2",
-        process="redox_monooxygenation",
-    ),
-    "nitric_oxide_synthase": dict(
-        homology_group="nos",
-        cofactors=["heme_b_thiolate", "bh4"],
-        ec="1.14.13.39",
-        gas="NO",
-        process="NO_signalling",
-    ),
-    "heme_oxygenase": dict(
-        homology_group="heme_oxygenase",
-        cofactors=["heme_substrate"],
-        ec="1.14.14.18",
-        gas="CO",
-        process="heme_catabolism",
-    ),
-    "carbonic_anhydrase_alpha": dict(
-        homology_group="alpha_CA",
-        cofactors=["zinc"],
-        ec="4.2.1.1",
-        gas="CO2",
-        process="CO2_hydration",
-    ),
-    "carbonic_anhydrase_beta": dict(
-        homology_group="beta_CA",
-        cofactors=["zinc"],
-        ec="4.2.1.1",
-        gas="CO2",
-        process="CO2_hydration",
-    ),
-    "carbonic_anhydrase_gamma": dict(
-        homology_group="gamma_CA",
-        cofactors=["zinc", "iron"],
-        ec="4.2.1.1",
-        gas="CO2",
-        process="CO2_hydration",
-    ),
-    "methane_monooxygenase": dict(
-        homology_group="mmo",
-        cofactors=["nonheme_diiron", "copper"],
-        ec="1.14.13.25",
-        gas="CH4",
-        process="CH4_oxidation",
-    ),
-    "methyl_coenzyme_m_reductase": dict(
-        homology_group="mcr",
-        cofactors=["nickel_f430"],
-        ec="2.8.4.1",
-        gas="CH4",
-        process="methanogenesis",
-    ),
-    "nitrogenase": dict(
-        homology_group="ploop_ntpase",
-        cofactors=["femoco", "fe4s4"],
-        ec="1.18.6.1",
-        gas="N2",
-        process="N2_fixation",
-    ),
-    "ras_gtpases": dict(
-        homology_group="ploop_gtpase",
-        cofactors=["magnesium"],
-        ec="3.6.5.2",
-        gas="none",
-        process="signal_transduction",
-    ),
-    "olfactory_receptors": dict(
-        homology_group="classA_GPCR",
-        cofactors=[],
-        ec="non-enzyme",
-        gas="none",
-        process="GPCR_signalling",
-    ),
-    "opsins": dict(
-        homology_group="opsin_mixed",
-        cofactors=["retinal"],
-        ec="non-enzyme",
-        gas="none",
-        process="phototransduction",
-    ),
-    # Human-paralog panel additions.
-    # This carbonic anhydrase family is the alpha class (PF00194).
-    "carbonic_anhydrase": dict(
-        homology_group="alpha_CA",
-        cofactors=["zinc"],
-        ec="4.2.1.1",
-        gas="CO2",
-        process="CO2_hydration",
-    ),
-    # hox: homeobox developmental TFs — the panel's unrelated negative control.
-    "hox": dict(
-        homology_group="homeobox",
-        cofactors=[],
-        ec="non-enzyme",
-        gas="none",
-        process="developmental_regulation",
-    ),
-    # Redox, detoxification, metalloenzyme, GTPase, and GPCR families.
-    "peroxiredoxin": dict(
-        homology_group="peroxiredoxin",
-        cofactors=[],
-        ec="1.11.1.24",
-        gas="none",
-        process="peroxide_detox",
-    ),
-    "glutathione_peroxidase": dict(  # catalytic selenocysteine (a residue, not a bound cofactor)
-        homology_group="gpx", cofactors=[], ec="1.11.1.9", gas="none", process="peroxide_detox"
-    ),
-    "glutaredoxin": dict(
-        homology_group="glutaredoxin",
-        cofactors=["glutathione"],
-        ec="1.20.4.1",
-        gas="none",
-        process="thiol_redox",
-    ),
-    "peroxidase": dict(
-        homology_group="heme_peroxidase",
-        cofactors=["heme_b"],
-        ec="1.11.1.7",
-        gas="none",
-        process="peroxide_detox",
-    ),
-    "glutathione_s_transferase": dict(
-        homology_group="gst",
-        cofactors=["glutathione"],
-        ec="2.5.1.18",
-        gas="none",
-        process="detox_conjugation",
-    ),
-    "aldehyde_dehydrogenase": dict(
-        homology_group="aldh",
-        cofactors=["nad"],
-        ec="1.2.1.3",
-        gas="none",
-        process="aldehyde_oxidation",
-    ),
-    "aldo_keto_reductase": dict(
-        homology_group="akr",
-        cofactors=["nadp"],
-        ec="1.1.1.21",
-        gas="none",
-        process="carbonyl_reduction",
-    ),
-    "sulfotransferase": dict(
-        homology_group="sult", cofactors=[], ec="2.8.2.1", gas="none", process="detox_conjugation"
-    ),
-    "udp_glucuronosyltransferase": dict(
-        homology_group="ugt", cofactors=[], ec="2.4.1.17", gas="none", process="detox_conjugation"
-    ),
-    "nadph_oxidase": dict(
-        homology_group="nox",
-        cofactors=["heme_b", "fad"],
-        ec="1.6.3.1",
-        gas="O2",
-        process="ROS_generation",
-    ),
-    "arachidonate_lipoxygenase": dict(
-        homology_group="alox",
-        cofactors=["iron"],
-        ec="1.13.11.31",
-        gas="O2",
-        process="lipid_peroxidation",
-    ),
-    "flavin_monooxygenase": dict(
-        homology_group="fmo",
-        cofactors=["fad"],
-        ec="1.14.13.8",
-        gas="none",
-        process="redox_monooxygenation",
-    ),
-    "steap_metalloreductase": dict(
-        homology_group="steap",
-        cofactors=["fad", "heme_b"],
-        ec="1.16.1.-",
-        gas="none",
-        process="metal_reduction",
-    ),
-    "matrix_metalloproteinase": dict(
-        homology_group="mmp_m10",
-        cofactors=["zinc"],
-        ec="3.4.24.-",
-        gas="none",
-        process="proteolysis",
-    ),
-    "adam_metallopeptidase": dict(
-        homology_group="adam_m12b",
-        cofactors=["zinc"],
-        ec="3.4.24.-",
-        gas="none",
-        process="proteolysis",
-    ),
-    "adamts_metallopeptidase": dict(
-        homology_group="adamts_m12b",
-        cofactors=["zinc"],
-        ec="3.4.24.-",
-        gas="none",
-        process="proteolysis",
-    ),
-    "m14_carboxypeptidase": dict(
-        homology_group="cpa_m14",
-        cofactors=["zinc"],
-        ec="3.4.17.-",
-        gas="none",
-        process="proteolysis",
-    ),
-    "alcohol_dehydrogenase": dict(
-        homology_group="adh_zn",
-        cofactors=["zinc", "nad"],
-        ec="1.1.1.1",
-        gas="none",
-        process="alcohol_oxidation",
-    ),
-    "metallothionein": dict(
-        homology_group="metallothionein",
-        cofactors=["zinc", "copper"],
-        ec="non-enzyme",
-        gas="none",
-        process="metal_binding",
-    ),
-    "alkaline_phosphatase": dict(
-        homology_group="alp",
-        cofactors=["zinc", "magnesium"],
-        ec="3.1.3.1",
-        gas="none",
-        process="phosphate_hydrolysis",
-    ),
-    "histone_deacetylase_classI": dict(
-        homology_group="hdac",
-        cofactors=["zinc"],
-        ec="3.5.1.98",
-        gas="none",
-        process="deacetylation",
-    ),
-    "ectonucleotide_pyrophosphatase": dict(
-        homology_group="enpp",
-        cofactors=["zinc"],
-        ec="3.6.1.9",
-        gas="none",
-        process="nucleotide_hydrolysis",
-    ),
-    "phosphodiesterase": dict(
-        homology_group="pde",
-        cofactors=["zinc", "magnesium"],
-        ec="3.1.4.17",
-        gas="none",
-        process="cyclic_nucleotide_hydrolysis",
-    ),
-    "ferritin": dict(
-        homology_group="ferritin",
-        cofactors=["nonheme_diiron"],
-        ec="1.16.3.1",
-        gas="none",
-        process="iron_storage",
-    ),
-    "rab_gtpase": dict(
-        homology_group="ploop_gtpase",
-        cofactors=["magnesium"],
-        ec="3.6.5.2",
-        gas="none",
-        process="signal_transduction",
-    ),
-    "arf_gtpase": dict(
-        homology_group="ploop_gtpase",
-        cofactors=["magnesium"],
-        ec="3.6.5.2",
-        gas="none",
-        process="signal_transduction",
-    ),
-    "rho_gtpase": dict(
-        homology_group="ploop_gtpase",
-        cofactors=["magnesium"],
-        ec="3.6.5.2",
-        gas="none",
-        process="signal_transduction",
-    ),
-    "guanylate_binding_protein": dict(
-        homology_group="gbp_gtpase",
-        cofactors=["magnesium"],
-        ec="3.6.5.-",
-        gas="none",
-        process="signal_transduction",
-    ),
-    "taste2_receptor": dict(
-        homology_group="tas2r", cofactors=[], ec="non-enzyme", gas="none", process="GPCR_signalling"
-    ),
-    "serotonin_receptor": dict(
-        homology_group="classA_GPCR",
-        cofactors=[],
-        ec="non-enzyme",
-        gas="none",
-        process="GPCR_signalling",
-    ),
-    "adrenoceptor": dict(
-        homology_group="classA_GPCR",
-        cofactors=[],
-        ec="non-enzyme",
-        gas="none",
-        process="GPCR_signalling",
-    ),
-    "glutamate_metabotropic": dict(
-        homology_group="classC_GPCR",
-        cofactors=[],
-        ec="non-enzyme",
-        gas="none",
-        process="GPCR_signalling",
-    ),
-    "dopamine_receptor": dict(
-        homology_group="classA_GPCR",
-        cofactors=[],
-        ec="non-enzyme",
-        gas="none",
-        process="GPCR_signalling",
-    ),
-    "muscarinic_receptor": dict(
-        homology_group="classA_GPCR",
-        cofactors=[],
-        ec="non-enzyme",
-        gas="none",
-        process="GPCR_signalling",
-    ),
-    "histamine_receptor": dict(
-        homology_group="classA_GPCR",
-        cofactors=[],
-        ec="non-enzyme",
-        gas="none",
-        process="GPCR_signalling",
-    ),
-    "p2y_receptor": dict(
-        homology_group="classA_GPCR",
-        cofactors=[],
-        ec="non-enzyme",
-        gas="none",
-        process="GPCR_signalling",
-    ),
-    "cxc_chemokine_receptor": dict(
-        homology_group="classA_GPCR",
-        cofactors=[],
-        ec="non-enzyme",
-        gas="none",
-        process="GPCR_signalling",
-    ),
-    # Ser-His-Asp triad; contrasts with the M10/M12B/M14 zinc proteases.
-    "serine_protease": dict(
-        homology_group="serine_protease",
-        cofactors=[],
-        ec="3.4.21.-",
-        gas="none",
-        process="proteolysis",
-    ),
-    "histone_h4": dict(
-        homology_group="histone",
-        cofactors=[],
-        ec="non-enzyme",
-        gas="none",
-        process="chromatin_packaging",
-    ),
-}
-
-# Pfam accession per family (keys the Pfam-JSD and GO baselines) is imported from the shared
-# Pfam accessions shared by both panels.
-
-
-# Cofactor similarity, derived from ChEBI: 0.5*scaffold + 0.5*metal, where scaffold is the
-# Sørensen-Dice overlap of the two cofactors' ChEBI ancestor sets and metal the Jaccard overlap of
-# the elements parsed from the formula. Continuous in [0, 1] rather than a hand-picked class label.
-# Shared biochemical role is out of scope — EC and GO cover function, Pfam-JSD covers homology.
-_COFACTOR_ANN: dict[str, dict] | None = None
-
-
-def _cofactor_ann() -> dict[str, dict]:
-    """Lazily load (and cache in-process) the ChEBI-derived cofactor annotations."""
-    global _COFACTOR_ANN
-    if _COFACTOR_ANN is None:
-        _COFACTOR_ANN = load_cofactor_annotations()
-    return _COFACTOR_ANN
-
-
-def cofactor_similarity(x: str, y: str) -> float:
-    """Scaled ChEBI-derived cofactor similarity in [0, 1] (see cofactor_annotations)."""
-    return _chebi_cofactor_similarity(x, y, _cofactor_ann())
-
 
 # ── matrix builders
 
@@ -445,38 +24,6 @@ def _sym(fams: list[str], pair_fn) -> np.ndarray:
     for i, j in itertools.combinations(range(F), 2):
         D[i, j] = D[j, i] = pair_fn(fams[i], fams[j])
     return D
-
-
-def cofactor_matrix(fams: list[str]) -> np.ndarray:
-    """1 − max cofactor similarity over the two families' cofactor sets."""
-
-    def pair(a, b):
-        ca = FAMILY_ANNOTATIONS[a]["cofactors"]
-        cb = FAMILY_ANNOTATIONS[b]["cofactors"]
-        if not ca or not cb:  # a cofactor-less family (receptors) shares no chemistry
-            return 1.0
-        return 1.0 - max(cofactor_similarity(x, y) for x in ca for y in cb)
-
-    return _sym(fams, pair)
-
-
-def ec_matrix(fams: list[str]) -> np.ndarray:
-    """1 − shared EC prefix depth / 4. Non-enzymes: 0 to each other, 1 to enzymes."""
-
-    def pair(a, b):
-        ea, eb = FAMILY_ANNOTATIONS[a]["ec"], FAMILY_ANNOTATIONS[b]["ec"]
-        if ea == "non-enzyme" or eb == "non-enzyme":
-            return 0.0 if ea == eb else 1.0
-        la, lb = ea.split("."), eb.split(".")
-        shared = 0
-        for x, y in zip(la, lb, strict=False):
-            if x == y:
-                shared += 1
-            else:
-                break
-        return 1.0 - shared / 4.0
-
-    return _sym(fams, pair)
 
 
 def kmer_between_matrix(
@@ -501,91 +48,6 @@ def kmer_between_matrix(
 def gc_matrix(fams: list[str], gc_by_family: dict[str, float]) -> np.ndarray:
     """|mean GC fraction difference| between families."""
     return _sym(fams, lambda a, b: abs(gc_by_family[a] - gc_by_family[b]))
-
-
-# ── GO molecular-function
-# Terms come from GO's curated pfam2go mapping, keyed by Pfam accession like Pfam-JSD. A few
-# families have no pfam2go entry and get a minimal curated fill of their own canonical terms,
-# rather than dropping out of the analogy test. Distance = 1 - Jaccard over the MF term set.
-PFAM2GO_URL = "http://current.geneontology.org/ontology/external2go/pfam2go"
-PFAM2GO_CACHE = Path("data/cache/pfam2go.txt")
-GO_ASPECT_CACHE = Path("data/cache/go_aspects.json")
-QUICKGO_TERMS = "https://www.ebi.ac.uk/QuickGO/services/ontology/go/terms/{ids}"
-
-# Canonical GO terms for families pfam2go does not map at the Pfam level (fill only).
-CURATED_GO_FILL: dict[str, list[str]] = {
-    "carbonic_anhydrase_alpha": ["GO:0004089", "GO:0008270"],  # carbonate dehydratase; Zn
-    "carbonic_anhydrase_gamma": ["GO:0004089", "GO:0008270"],
-    "carbonic_anhydrase": ["GO:0004089", "GO:0008270"],
-    "hemerythrin": ["GO:0005344", "GO:0019825", "GO:0015671"],  # O2 carrier/binding; O2 transport
-    "methane_monooxygenase": ["GO:0004497", "GO:0016705"],  # monooxygenase activity
-}
-
-
-def load_pfam2go() -> dict[str, list[str]]:
-    """{Pfam accession -> [GO ids]} from GO's curated pfam2go mapping (cached)."""
-    import re
-
-    if not PFAM2GO_CACHE.exists():
-        PFAM2GO_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        req = urllib.request.Request(PFAM2GO_URL, headers={"User-Agent": "Mozilla/5.0 (research)"})
-        PFAM2GO_CACHE.write_bytes(urllib.request.urlopen(req, timeout=60).read())
-    out: dict[str, list[str]] = {}
-    for ln in PFAM2GO_CACHE.read_text().splitlines():
-        m = re.match(r"Pfam:(PF\d+)\s+.*?> GO:.+? ; (GO:\d+)", ln)
-        if m:
-            out.setdefault(m.group(1), []).append(m.group(2))
-    return out
-
-
-def go_aspects(go_ids: set[str]) -> dict[str, str]:
-    """{GO id -> aspect} (molecular_function / biological_process / cellular_component)
-    via QuickGO, cached. Only the panel's handful of unique terms are queried."""
-    cache: dict[str, str] = {}
-    if GO_ASPECT_CACHE.exists():
-        cache = json.loads(GO_ASPECT_CACHE.read_text())
-    need = sorted(go_ids - set(cache))
-    for i in range(0, len(need), 100):
-        chunk = need[i : i + 100]
-        url = QUICKGO_TERMS.format(ids=",".join(chunk))
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        try:
-            j = json.load(urllib.request.urlopen(req, timeout=60))
-            for r in j.get("results", []):
-                if r.get("aspect"):
-                    cache[r["id"]] = r["aspect"]
-        except Exception as e:  # noqa: BLE001
-            print(f"  QuickGO aspect fetch failed ({e})")
-        time.sleep(0.3)
-    GO_ASPECT_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    GO_ASPECT_CACHE.write_text(json.dumps(cache, indent=0))
-    return cache
-
-
-def go_matrices(fams: list[str], accessions: dict[str, str]) -> dict[str, np.ndarray]:
-    """Return {'go_mf': D}: 1 − Jaccard over each family's GO molecular-function term set."""
-    pf2go = load_pfam2go()
-    # Per-family raw GO set = pfam2go(acc) ∪ curated fill where pfam2go is empty.
-    raw: dict[str, set[str]] = {}
-    for f in fams:
-        terms = set(pf2go.get(accessions.get(f, ""), []))
-        if not terms:
-            terms = set(CURATED_GO_FILL.get(f, []))
-        raw[f] = terms
-    aspect = go_aspects(set().union(*raw.values()) if raw else set())
-
-    def matrix(want: str) -> np.ndarray:
-        sets = {f: {g for g in raw[f] if aspect.get(g) == want} for f in fams}
-
-        def pair(a, b):
-            sa, sb = sets[a], sets[b]
-            if not sa or not sb:
-                return 1.0
-            return 1.0 - len(sa & sb) / len(sa | sb)
-
-        return _sym(fams, pair)
-
-    return {"go_mf": matrix("molecular_function")}
 
 
 # ── FASTA GC
@@ -644,7 +106,7 @@ CONVERGENT_PAIRS: list[tuple[str, str, str]] = [
     ("glutathione_peroxidase", "peroxidase", "convergent_peroxide_detox"),
     ("matrix_metalloproteinase", "serine_protease", "convergent_proteolysis"),
     ("m14_carboxypeptidase", "serine_protease", "convergent_proteolysis"),
-    # Heme/O2 chemistry cluster (non-homologous, shared cofactor).
+    # Non-homologous families with shared heme/O2 chemistry.
     ("globins", "cytochrome_p450", "heme_cluster"),
     ("globins", "nitric_oxide_synthase", "heme_cluster"),
     ("globins", "heme_copper_oxidase", "heme_cluster"),
@@ -692,18 +154,12 @@ def convergent_pair_report(fams: list[str], mats: dict[str, np.ndarray]) -> pd.D
 
 # ── scoring
 
-# axis tag -> {baseline name -> matrix}; filled in main and scored uniformly.
+# Baseline name to axis label.
 AXIS_OF = {
     "pfam_jsd": "1_homology",
-    "cofactor": "2_mechanism",
-    "ec_number": "2_mechanism",
-    "go_mf": "2_mechanism",
     "kmer": "control",
     "gc_content": "control",
 }
-
-# Retire the uninformative categorical homology baseline.
-DEPRECATED_BASELINES = {"homology_tier"}
 
 
 def main() -> None:
@@ -729,15 +185,6 @@ def main() -> None:
         sys.exit(f"No *_centroid_distances.csv in {run_dir}")
     centroid = pd.read_csv(cen_files[0], index_col=0)
     fams = centroid.index.tolist()
-    missing = [f for f in fams if f not in FAMILY_ANNOTATIONS]
-    if missing:
-        print(
-            f"WARN: no curated annotation for {len(missing)} families; excluding from "
-            f"between-family axes: {missing}",
-            file=sys.stderr,
-        )
-        fams = [f for f in fams if f in FAMILY_ANNOTATIONS]
-        centroid = centroid.reindex(index=fams, columns=fams)
     geo = centroid.values.astype(np.float64)
 
     # Per-CDS metadata: family label and panel-specific member identifier.
@@ -753,29 +200,20 @@ def main() -> None:
             kmer_seq = None  # order would not align; fall back to the family-level CSV
 
     if args.distances_from:
-        # Sweep fast path: the per-axis matrices are sequence/annotation-derived and
-        # identical at every layer, so load them from a donor run instead of rebuilding
-        # (skips the GO/QuickGO + Pfam fetches). Only the scoring below is layer-dependent.
+        # Sweep fast path: the matrices are sequence-derived and identical at every layer.
         donor = Path(args.distances_from)
         mats = {}
         for csv in sorted(donor.glob("betweenfam_*_distances.csv")):
             name = csv.name[len("betweenfam_") : -len("_distances.csv")]
-            if name in DEPRECATED_BASELINES:
-                continue  # donor may still hold a deprecated matrix on disk; skip it
             if name not in AXIS_OF:
-                continue  # not one of ours: ot_between_family_sweep.py writes its own
-                # betweenfam_ot_*_distances.csv into the same run dir, and those have no
-                # axis — scoring them below would KeyError and lose the whole scores file.
+                continue
             mats[name] = pd.read_csv(csv, index_col=0).reindex(index=fams, columns=fams).values
         if not mats:
             sys.exit(f"--distances-from {donor}: no betweenfam_*_distances.csv to reuse")
         print(f"Reusing {len(mats)} cached between-family distance matrices from {donor}")
     else:
         print(f"Scoring {len(fams)} families against multi-axis baselines\n")
-        mats = {
-            "cofactor": cofactor_matrix(fams),
-            "ec_number": ec_matrix(fams),
-        }
+        mats = {}
         gc = gc_by_family(fams, fam_of)
         if gc:
             mats["gc_content"] = gc_matrix(fams, gc)
@@ -790,12 +228,6 @@ def main() -> None:
             mats["pfam_jsd"] = (
                 pd.read_csv(jsd_path, index_col=0).reindex(index=fams, columns=fams).values
             )
-        print("Fetching GO terms (pfam2go + QuickGO aspect, cached)...")
-        mats.update(go_matrices(fams, PFAM_ACCESSIONS))
-
-    # Remove retired matrices loaded from donor directories.
-    for _dep in DEPRECATED_BASELINES:
-        mats.pop(_dep, None)
 
     # Long-form matrix dump (every baseline, all family pairs) + per-baseline scores.
     long_rows, score_rows = [], []
@@ -854,8 +286,6 @@ def main() -> None:
             "relationship",
             "geodesic_pctile",
             "pfam_jsd_pctile",
-            "cofactor_pctile",
-            "ec_number_pctile",
         ]
         show = [c for c in cols if c in report.columns]
         print("\nConvergent-pair rank test (percentile among all family pairs; 0=closest):")

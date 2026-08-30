@@ -138,11 +138,7 @@ def cached_family_mats(cache_dir: Path, fam: str, members: list[str]) -> dict:
         return {}
     pos = {g: i for i, g in enumerate(cached)}
     order = [pos[g] for g in members]
-    out = {"patristic": np.load(npy)[np.ix_(order, order)]}
-    seq = cache_dir / f"{fam}.seqid.npy"
-    if seq.exists():
-        out["seqid"] = np.load(seq)[np.ix_(order, order)]
-    return out
+    return {"patristic": np.load(npy)[np.ix_(order, order)]}
 
 
 def main() -> None:
@@ -153,7 +149,7 @@ def main() -> None:
     ap.add_argument(
         "--cache",
         default=None,
-        help="per-family patristic/seqid cache (default: try Evo2 then human)",
+        help="per-family patristic cache (default: human panel cache)",
     )
     ap.add_argument(
         "--n-perms",
@@ -177,11 +173,7 @@ def main() -> None:
     ids = geo_df.index.tolist()
     pos = {g: i for i, g in enumerate(ids)}
     geo = geo_df.values
-    caches = (
-        [Path(args.cache)]
-        if args.cache
-        else [ROOT / "data/cache/human_patristic"]
-    )
+    caches = [Path(args.cache)] if args.cache else [ROOT / "data/cache/human_patristic"]
 
     families = sorted({fam_of[g] for g in ids if g in fam_of})
     print(

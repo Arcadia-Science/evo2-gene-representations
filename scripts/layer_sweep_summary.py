@@ -21,32 +21,23 @@ from plot_utils import set_pub_style  # noqa: E402
 # ── Shared style constants
 AXIS_COLORS = {
     "1_homology": acs.apc.dragon,
-    "2_mechanism": acs.apc.seaweed,
     "control": acs.apc.chateau,
 }
 AXIS_LABELS = {
     "1_homology": "Homology",
-    "2_mechanism": "Mechanism / chemistry",
     "control": "Composition (control)",
 }
 # Display order of the between-family baselines, grouped by axis.
 BETWEEN_ORDER = [
     ("pfam_jsd", "1_homology"),
-    ("cofactor", "2_mechanism"),
-    ("ec_number", "2_mechanism"),
-    ("go_mf", "2_mechanism"),
     ("gc_content", "control"),
     ("kmer", "control"),
 ]
-# Exclude retired baselines from compiled tables and figures.
-DEPRECATED_BASELINES = {"homology_tier"}
+ACTIVE_BETWEEN = {name for name, _axis in BETWEEN_ORDER}
 
 # Reader-facing names for the publication figure; the keys above are CSV column names.
 PUB_BASELINE_LABELS = {
     "pfam_jsd": "Pfam-domain JSD",
-    "cofactor": "Cofactor",
-    "ec_number": "EC number",
-    "go_mf": "GO molecular function",
     "gc_content": "GC content",
     "kmer": "k-mer composition",
 }
@@ -64,7 +55,6 @@ WITHIN_SPECS = [
         ["axisB_within_family_correlations.csv", "kmer_within_family_correlations.csv"],
         "spearman_geodesic_kmer",
     ),
-    ("sequence identity", ["within_family_seqid.csv"], "spearman_geodesic_seqid"),
     ("patristic tree", ["within_family_patristic.csv"], "spearman_geodesic_patristic"),
     ("taxonomy", ["axisB_within_family_correlations.csv"], "spearman_geodesic_taxonomy"),
     (
@@ -74,8 +64,7 @@ WITHIN_SPECS = [
     ),
     # mammalian ortholog panel: within-ortholog-group geodesic vs the INDEPENDENT species tree
     ("species tree (mammal)", ["within_family_speciestree.csv"], "spearman_geodesic_speciestree"),
-    # mononucleotide composition control — the floor under the k-mer panel. Written by
-    # Omit panels that do not provide the required column.
+    # Mononucleotide composition control.
     ("GC content (control)", ["within_family_gc.csv"], "spearman_geodesic_gc"),
 ]
 
@@ -124,7 +113,7 @@ def load_between(
             if df.empty:
                 continue
         for _, r in df.iterrows():
-            if r["baseline"] in DEPRECATED_BASELINES:
+            if r["baseline"] not in ACTIVE_BETWEEN:
                 continue
             rows.append(
                 {
@@ -638,7 +627,6 @@ WITHIN_GENELEVEL_FILES = [
 # <fam>.npy is renamed to <fam>.patristic.npy on copy.
 PATRISTIC_CACHE_FILES = [
     (".npy", ".patristic.npy"),
-    (".seqid.npy", ".seqid.npy"),
     (".ids.json", ".ids.json"),
 ]
 
@@ -664,8 +652,10 @@ def _copy_layer_invariant(
             all_names += [p.name for p in run_dir.glob(glob_pat)]
     copied = 0
     for name in sorted(set(all_names)):
-        if any(f"betweenfam_{dep}_distances.csv" == name for dep in DEPRECATED_BASELINES):
-            continue  # don't collect a deprecated baseline's matrix
+        if name.startswith("betweenfam_") and name.endswith("_distances.csv"):
+            baseline = name[len("betweenfam_") : -len("_distances.csv")]
+            if baseline not in ACTIVE_BETWEEN:
+                continue
         present = [
             (layer, run_dir / name) for layer, run_dir in layers if (run_dir / name).exists()
         ]
@@ -723,13 +713,13 @@ def collect_baselines(
     n_cache = 0
     if patristic_cache is None:
         print(
-            "  NOTE per-family patristic/seqid matrices not collected "
+            "  NOTE per-family patristic matrices not collected "
             "(pass --patristic-cache DIR only if that cache belongs to THIS panel)"
         )
     elif not patristic_cache.is_dir():
         print(
             f"  NOTE within per-family cache absent: {patristic_cache} "
-            f"(skipping patristic/seqid matrices)"
+            f"(skipping patristic matrices)"
         )
     else:
         for fam in families:
@@ -739,7 +729,7 @@ def collect_baselines(
                     shutil.copy2(src, within_dir / f"{fam}{dst_suffix}")
                     n_cache += 1
         manifest.append(
-            f"within_family/<fam>.{{patristic,seqid}}.npy + .ids.json"
+            f"within_family/<fam>.patristic.npy + .ids.json"
             f"\t-\t-\t{patristic_cache} ({len(families)} families)"
         )
 
@@ -935,7 +925,7 @@ def main() -> None:
         default=[],
         metavar="LABEL",
         help="within-family baseline LABELs to drop from the figure (exact WITHIN_SPECS "
-        "labels, e.g. 'sequence identity'). The CSV keeps every metric — this only "
+        "labels). The CSV keeps every metric — this only "
         "controls which panels are drawn. Recorded in SOURCE.md so the figure is "
         "reproducible. Use when two baselines are near-redundant and showing both "
         "overstates how many independent baselines agree.",
@@ -946,7 +936,7 @@ def main() -> None:
         default=[],
         metavar="BASELINE",
         help="between-family BASELINE keys to drop from the between figure (exact "
-        "BETWEEN_ORDER keys, e.g. cofactor ec_number go_mf). The CSV keeps every "
+        "BETWEEN_ORDER keys). The CSV keeps every "
         "baseline. An axis left only partially represented is dropped from the "
         "lead axis-means panel rather than averaged over a subset of itself.",
     )

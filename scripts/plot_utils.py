@@ -15,15 +15,8 @@ WITHIN_PALETTE = acs.WITHIN_PALETTE
 
 
 def within_csv_series(run_dir: Path, family_order: list) -> list:
-    """Load the sequence-identity and patristic within-family series."""
+    """Load the patristic within-family series."""
     specs = [
-        (
-            "within_family_seqid.csv",
-            "spearman_geodesic_seqid",
-            "p_seqid",
-            "vs seq identity",
-            "seqid",
-        ),
         (
             "within_family_patristic.csv",
             "spearman_geodesic_patristic",
