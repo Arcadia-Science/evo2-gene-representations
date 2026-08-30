@@ -16,7 +16,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts" / "steering"))
 
-from top_recon_steer_sweep import nt_aligner  # noqa: E402
+from alignment_metrics import nt_aligner  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("sites_nt", Path(__file__).with_name("sites_nt.py"))
 _sn = importlib.util.module_from_spec(_spec)

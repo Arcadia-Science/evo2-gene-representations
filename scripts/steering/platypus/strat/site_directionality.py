@@ -18,7 +18,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts" / "steering"))
 
-from top_recon_steer_sweep import nt_aligner  # noqa: E402
+from alignment_metrics import nt_aligner  # noqa: E402
 
 
 def _load(name: str):
