@@ -1,7 +1,6 @@
 """Embed mammalian ortholog loci and assemble a cached layer stack for scoring."""
 
 from __future__ import annotations
-
 import argparse
 import math
 import sys
@@ -15,7 +14,12 @@ from tqdm import tqdm
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "evo2"))
 from embed_and_geodesic_paralog import (  # noqa: E402  reuse the windowed Evo2 embedder + shuffles
-    CONTROL_FNS, EMBED_DIM, EVO2_WINDOW, N_BLOCKS, embed_all_blocks, load_model,
+    CONTROL_FNS,
+    EMBED_DIM,
+    EVO2_WINDOW,
+    N_BLOCKS,
+    embed_all_blocks,
+    load_model,
 )
 
 # genomic-applicable composition controls (transcript loci have no reading frame, so codon_shuffle/
@@ -23,13 +27,14 @@ from embed_and_geodesic_paralog import (  # noqa: E402  reuse the windowed Evo2 
 GENOMIC_CONTROLS = ["gc_match", "dinuc_shuffle", "kmer4_shuffle", "kmer6_shuffle"]
 
 MAX_WINDOWS = 24  # Bound long-locus cost by subsampling across the full span.
-                  # Mean pooling gives each locus an equal-window estimator.
-                  # 24 windows sample 192 kb; only about 3% of loci exceed
-                  # 12 windows, so the added cost is modest.
+# Mean pooling gives each locus an equal-window estimator.
+# 24 windows sample 192 kb; only about 3% of loci exceed
+# 12 windows, so the added cost is modest.
 
 
-def embed_capped(seq: str, model, device: str, window: int = EVO2_WINDOW,
-                 max_windows: int = MAX_WINDOWS) -> np.ndarray:
+def embed_capped(
+    seq: str, model, device: str, window: int = EVO2_WINDOW, max_windows: int = MAX_WINDOWS
+) -> np.ndarray:
     """(N_BLOCKS, 4096): second-half-pooled per window, averaged across windows. Contiguous tiling
     when it fits in max_windows; else evenly-spaced window centres across the locus."""
     L = len(seq)
@@ -48,6 +53,7 @@ def embed_capped(seq: str, model, device: str, window: int = EVO2_WINDOW,
         accum += embed_all_blocks(seq[a:b], model, device)
         torch.cuda.empty_cache()
     return (accum / len(bounds)).astype(np.float32)
+
 
 OUT = ROOT / "data" / "mammalian_orthologs"
 CACHE_ROOT = ROOT / "data" / "cache" / "mammal_embed"
@@ -80,8 +86,12 @@ def main() -> None:
     ap.add_argument("--arm", required=True, choices=["transcript", "cds"])
     ap.add_argument("--families", nargs="*", default=None)
     ap.add_argument("--window", type=int, default=EVO2_WINDOW)
-    ap.add_argument("--control", default=None, choices=GENOMIC_CONTROLS,
-                    help="Composition control: shuffle each locus before embedding (cache tagged).")
+    ap.add_argument(
+        "--control",
+        default=None,
+        choices=GENOMIC_CONTROLS,
+        help="Composition control: shuffle each locus before embedding (cache tagged).",
+    )
     args = ap.parse_args()
 
     rows = load_fastas(args.dataset, args.arm, args.families)
@@ -91,14 +101,18 @@ def main() -> None:
     cache = CACHE_ROOT / (f"{args.arm}_{args.control}" if args.control else args.arm)
     cache.mkdir(parents=True, exist_ok=True)
     todo = [r for r in rows if not (cache / f"{r[2]}__{r[3]}.npy").exists()]
-    print(f"{len(rows)} loci ({args.dataset}/{args.arm}, control={args.control}); "
-          f"{len(todo)} to embed", flush=True)
+    print(
+        f"{len(rows)} loci ({args.dataset}/{args.arm}, control={args.control}); "
+        f"{len(todo)} to embed",
+        flush=True,
+    )
 
     import random
+
     device = "cuda"
     model = load_model() if todo else None
     skipped = []
-    for locus_id, fam, group, species, seq in tqdm(todo, desc="embed"):
+    for locus_id, _fam, group, species, seq in tqdm(todo, desc="embed"):
         if args.control:  # deterministic per-locus composition shuffle
             rng = random.Random(f"{args.control}:{group}__{species}".__hash__() & 0xFFFFFFFF)
             seq = CONTROL_FNS[args.control](seq, rng)
@@ -111,7 +125,10 @@ def main() -> None:
             except torch.cuda.OutOfMemoryError:
                 torch.cuda.empty_cache()
                 skipped.append(locus_id)
-                print(f"  OOM skip (not cached, retries next run): {locus_id} len={len(seq)}", flush=True)
+                print(
+                    f"  OOM skip (not cached, retries next run): {locus_id} len={len(seq)}",
+                    flush=True,
+                )
                 continue
         np.save(cache / f"{group}__{species}.npy", vec.astype(np.float32))
         torch.cuda.empty_cache()  # per-locus reset to curb fragmentation across the long run
@@ -120,7 +137,7 @@ def main() -> None:
 
     # assemble stack + metadata (only loci with a cached embedding)
     meta, stack = [], []
-    for locus_id, fam, group, species, seq in rows:
+    for locus_id, fam, group, species, _seq in rows:
         p = cache / f"{group}__{species}.npy"
         if not p.exists():
             continue
@@ -130,8 +147,10 @@ def main() -> None:
     # per-dataset assembled stack, drawn from the shared per-locus cache
     np.save(cache / f"{args.dataset}_layer_stack.npy", arr.astype(np.float32))
     pd.DataFrame(meta).to_csv(cache / f"{args.dataset}_metadata.csv", index=False)
-    print(f"saved {args.dataset}_layer_stack {arr.shape} + metadata ({len(meta)} loci) -> {cache}",
-          flush=True)
+    print(
+        f"saved {args.dataset}_layer_stack {arr.shape} + metadata ({len(meta)} loci) -> {cache}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

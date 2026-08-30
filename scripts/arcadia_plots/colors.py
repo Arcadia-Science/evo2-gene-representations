@@ -5,33 +5,71 @@ from __future__ import annotations
 from matplotlib.colors import LinearSegmentedColormap
 
 __all__ = [
-    "COLORS", "PRIMARY", "SECONDARY", "NEUTRALS", "BACKGROUNDS", "SHADES",
-    "PALETTES", "BICOLOR", "HIGHLIGHT", "GRADIENTS", "HEATMAP_GRADIENTS",
-    "BLACK", "CHARCOAL", "CHATEAU", "WHITE",
-    "color", "palette", "gradient", "gradient_colors", "cmap", "register_cmaps",
-    "pycolor_available", "GRADIENT_STOPS", "DIVERGING",
+    "COLORS",
+    "PRIMARY",
+    "SECONDARY",
+    "NEUTRALS",
+    "BACKGROUNDS",
+    "SHADES",
+    "PALETTES",
+    "BICOLOR",
+    "HIGHLIGHT",
+    "GRADIENTS",
+    "HEATMAP_GRADIENTS",
+    "BLACK",
+    "CHARCOAL",
+    "CHATEAU",
+    "WHITE",
+    "color",
+    "palette",
+    "gradient",
+    "gradient_colors",
+    "cmap",
+    "register_cmaps",
+    "pycolor_available",
+    "GRADIENT_STOPS",
+    "DIVERGING",
 ]
 
 
 # Named colors
 
 PRIMARY = {
-    "aegean": "#5088C5", "amber": "#F28360", "canary": "#F7B846",
-    "aster": "#7A77AB", "seaweed": "#3B9886", "rose": "#F898AE",
-    "vital": "#73B5E3", "tangerine": "#FFB883", "oat": "#F5E4BE",
-    "wish": "#BABEE0", "lime": "#97CD78", "dragon": "#C85152",
+    "aegean": "#5088C5",
+    "amber": "#F28360",
+    "canary": "#F7B846",
+    "aster": "#7A77AB",
+    "seaweed": "#3B9886",
+    "rose": "#F898AE",
+    "vital": "#73B5E3",
+    "tangerine": "#FFB883",
+    "oat": "#F5E4BE",
+    "wish": "#BABEE0",
+    "lime": "#97CD78",
+    "dragon": "#C85152",
 }
 
 SECONDARY = {
-    "sky": "#C6E7F4", "dress": "#F8C5C1", "taupe": "#DBD1C3",
-    "denim": "#B6C8D4", "sage": "#B5BEA4", "mars": "#DA9085",
-    "marine": "#8A99AD", "shell": "#EDE0D6",
+    "sky": "#C6E7F4",
+    "dress": "#F8C5C1",
+    "taupe": "#DBD1C3",
+    "denim": "#B6C8D4",
+    "sage": "#B5BEA4",
+    "mars": "#DA9085",
+    "marine": "#8A99AD",
+    "shell": "#EDE0D6",
 }
 
 NEUTRALS = {
-    "white": "#FFFFFF", "gray": "#EBEDE8", "chateau": "#B9AFA7",
-    "bark": "#8F8885", "slate": "#43413F", "charcoal": "#484B50",
-    "crow": "#292928", "black": "#09090A", "forest": "#596F74",
+    "white": "#FFFFFF",
+    "gray": "#EBEDE8",
+    "chateau": "#B9AFA7",
+    "bark": "#8F8885",
+    "slate": "#43413F",
+    "charcoal": "#484B50",
+    "crow": "#292928",
+    "black": "#09090A",
+    "forest": "#596F74",
     # arcadia_pycolor calls the guide's Black "pitch" and reserves apc.black
     # for pure #000000. Both names resolve to the guide's value here.
     "pitch": "#09090A",
@@ -39,9 +77,15 @@ NEUTRALS = {
 
 # Tints that are legal as figure/panel backgrounds.
 BACKGROUNDS = {
-    "parchment": "#FEF7F1", "zephyr": "#F4FBFE", "lichen": "#F7FBEF",
-    "dawn": "#F8F4F1", "shell": "#EDE0D6", "marine": "#8A99AD",
-    "white": "#FFFFFF", "gray": "#EBEDE8", "black": "#09090A",
+    "parchment": "#FEF7F1",
+    "zephyr": "#F4FBFE",
+    "lichen": "#F7FBEF",
+    "dawn": "#F8F4F1",
+    "shell": "#EDE0D6",
+    "marine": "#8A99AD",
+    "white": "#FFFFFF",
+    "gray": "#EBEDE8",
+    "black": "#09090A",
     "forest": "#596F74",
 }
 
@@ -61,27 +105,60 @@ SHADES = {
 # Names for every shade above, plus the extra colors that only appear inside
 # gradients. Lets you write color("tumbleweed") without hunting the guide.
 _SHADE_NAMES = {
-    "sky": "#C6E7F4", "vital": "#73B5E3", "aegean": "#5088C5",
-    "lapis": "#2B66A2", "dusk": "#094468",
-    "melon": "#FFCFAF", "tangerine": "#FFB883", "amber": "#F28360",
-    "dragon": "#C85152", "cinnabar": "#9E3F41",
-    "oat": "#F5E4BE", "sun": "#FFD364", "canary": "#F7B846",
-    "mustard": "#D68D22", "umber": "#A85E28",
-    "iris": "#DCDFEF", "wish": "#BABEE0", "aster": "#7A77AB",
-    "tanzanite": "#54448C", "concord": "#341E60",
-    "glass": "#C3E2DB", "teal": "#6FBCAD", "seaweed": "#3B9886",
-    "asparagus": "#2A6B5E", "depths": "#09473E",
-    "putty": "#FFE3D4", "dress": "#F8C5C1", "rose": "#F898AE",
-    "candy": "#E2718F", "azalea": "#C04C70",
-    "stone": "#EDE6DA", "taupe": "#DBD1C3", "chateau": "#B9AFA7",
-    "mud": "#635C5A", "ice": "#E6EAED", "dove": "#CAD4DB",
-    "cloud": "#ABBAC4", "steel": "#687787",
+    "sky": "#C6E7F4",
+    "vital": "#73B5E3",
+    "aegean": "#5088C5",
+    "lapis": "#2B66A2",
+    "dusk": "#094468",
+    "melon": "#FFCFAF",
+    "tangerine": "#FFB883",
+    "amber": "#F28360",
+    "dragon": "#C85152",
+    "cinnabar": "#9E3F41",
+    "oat": "#F5E4BE",
+    "sun": "#FFD364",
+    "canary": "#F7B846",
+    "mustard": "#D68D22",
+    "umber": "#A85E28",
+    "iris": "#DCDFEF",
+    "wish": "#BABEE0",
+    "aster": "#7A77AB",
+    "tanzanite": "#54448C",
+    "concord": "#341E60",
+    "glass": "#C3E2DB",
+    "teal": "#6FBCAD",
+    "seaweed": "#3B9886",
+    "asparagus": "#2A6B5E",
+    "depths": "#09473E",
+    "putty": "#FFE3D4",
+    "dress": "#F8C5C1",
+    "rose": "#F898AE",
+    "candy": "#E2718F",
+    "azalea": "#C04C70",
+    "stone": "#EDE6DA",
+    "taupe": "#DBD1C3",
+    "chateau": "#B9AFA7",
+    "mud": "#635C5A",
+    "ice": "#E6EAED",
+    "dove": "#CAD4DB",
+    "cloud": "#ABBAC4",
+    "steel": "#687787",
     # gradient-only colors
-    "heather": "#A96789", "tumbleweed": "#E9A482", "wheat": "#F5DFB2",
-    "shire": "#4E7F72", "topaz": "#FFCC7B", "space": "#282A49",
-    "butter": "#FFFDBD", "redwood": "#52180A", "blossom": "#F4CAE3",
-    "soil": "#4D2500", "terracotta": "#964222", "blush": "#FFF3F4",
-    "ghost": "#FCF7FF", "fern": "#47784A", "lilac": "#6862AB",
+    "heather": "#A96789",
+    "tumbleweed": "#E9A482",
+    "wheat": "#F5DFB2",
+    "shire": "#4E7F72",
+    "topaz": "#FFCC7B",
+    "space": "#282A49",
+    "butter": "#FFFDBD",
+    "redwood": "#52180A",
+    "blossom": "#F4CAE3",
+    "soil": "#4D2500",
+    "terracotta": "#964222",
+    "blush": "#FFF3F4",
+    "ghost": "#FCF7FF",
+    "fern": "#47784A",
+    "lilac": "#6862AB",
 }
 
 COLORS: dict[str, str] = {}
@@ -179,14 +256,24 @@ def palette(n: int | str = 6, variant: str = "") -> list[str]:
 # Reverse a gradient when low values should appear pale.
 
 _LINE_GRADIENTS = {
-    "magma": [(0, "concord"), (0.217, "tanzanite"), (0.498, "heather"),
-              (0.799, "tumbleweed"), (1, "wheat")],
+    "magma": [
+        (0, "concord"),
+        (0.217, "tanzanite"),
+        (0.498, "heather"),
+        (0.799, "tumbleweed"),
+        (1, "wheat"),
+    ],
     "verde": [(0, "depths"), (0.357, "shire"), (0.909, "topaz"), (1, "putty")],
     "viridis": [(0, "space"), (0.468, "aegean"), (0.746, "lime"), (1, "butter")],
     "wine": [(0, "redwood"), (0.451, "dragon"), (0.828, "tangerine"), (1, "dawn")],
     "lisafrank": [(0, "depths"), (0.484, "aegean"), (0.862, "wish"), (1, "blossom")],
-    "sunset": [(0, "soil"), (0.407, "umber"), (0.767, "tumbleweed"),
-               (0.915, "topaz"), (1, "putty")],
+    "sunset": [
+        (0, "soil"),
+        (0.407, "umber"),
+        (0.767, "tumbleweed"),
+        (0.915, "topaz"),
+        (1, "putty"),
+    ],
 }
 
 _HEATMAP_SEQUENTIAL = {
@@ -202,12 +289,30 @@ _HEATMAP_SEQUENTIAL = {
 # meaningful midpoint, and center the norm on it. The doubled 0.5 anchor is a
 # hard midpoint: the two near-white stops meet without blending through gray.
 _HEATMAP_DIVERGING = {
-    "orange_sage": [(0.0, "terracotta"), (0.3805, "tangerine"), (0.5, "dawn"),
-                    (0.5, "lichen"), (0.6795, "sage"), (1.0, "asparagus")],
-    "red_blue": [(0.0, "cinnabar"), (0.106, "dragon"), (0.5, "blush"),
-                 (0.5, "zephyr"), (0.873, "aegean"), (1.0, "lapis")],
-    "purple_green": [(0.0, "lilac"), (0.072, "aster"), (0.5, "ghost"),
-                     (0.5, "lichen"), (0.689, "lime"), (1.0, "fern")],
+    "orange_sage": [
+        (0.0, "terracotta"),
+        (0.3805, "tangerine"),
+        (0.5, "dawn"),
+        (0.5, "lichen"),
+        (0.6795, "sage"),
+        (1.0, "asparagus"),
+    ],
+    "red_blue": [
+        (0.0, "cinnabar"),
+        (0.106, "dragon"),
+        (0.5, "blush"),
+        (0.5, "zephyr"),
+        (0.873, "aegean"),
+        (1.0, "lapis"),
+    ],
+    "purple_green": [
+        (0.0, "lilac"),
+        (0.072, "aster"),
+        (0.5, "ghost"),
+        (0.5, "lichen"),
+        (0.689, "lime"),
+        (1.0, "fern"),
+    ],
 }
 
 GRADIENT_STOPS = {**_LINE_GRADIENTS, **_HEATMAP_SEQUENTIAL, **_HEATMAP_DIVERGING}
@@ -307,9 +412,7 @@ def gradient(name: str) -> LinearSegmentedColormap:
     if reverse:
         key = key[:-2]
     if key not in GRADIENT_STOPS:
-        raise KeyError(
-            f"{name!r} is not an Arcadia gradient. Options: {sorted(GRADIENT_STOPS)}"
-        )
+        raise KeyError(f"{name!r} is not an Arcadia gradient. Options: {sorted(GRADIENT_STOPS)}")
     cm = _cmap_for(key)
     return cm.reversed() if reverse else cm
 

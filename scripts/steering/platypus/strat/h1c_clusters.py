@@ -1,7 +1,6 @@
 """H1c — are the per-gene direction residuals clustered, and who is in the clusters? CPU."""
 
 from __future__ import annotations
-
 import argparse
 import json
 from pathlib import Path
@@ -10,14 +9,15 @@ import numpy as np
 import pandas as pd
 from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import squareform
-from scipy.stats import kruskal, spearmanr
+from scipy.stats import kruskal
 
 K_RANGE = range(2, 9)
 N_NULL = 500
 N_BOOT = 500
 SEED = 20260807
 
-# Membership covariates. Only rate/conservation carry a test; the rest are descriptive by declaration.
+# Membership covariates. Only rate/conservation carry a test; the rest are descriptive by
+# declaration.
 TESTED = ["perc_id_hp"]
 DESCRIPTIVE = ["cds_len_human", "gc3_div", "delta_norm", "retained_frac"]
 
@@ -35,7 +35,9 @@ def partition(R: np.ndarray, k: int) -> np.ndarray:
 
 
 def silhouette(R: np.ndarray, lab: np.ndarray) -> float:
-    """Mean silhouette on angular distance. Returns 0 for a degenerate (single-cluster) partition."""
+    """
+    Mean silhouette on angular distance. Returns 0 for a degenerate (single-cluster) partition.
+    """
     if len(np.unique(lab)) < 2:
         return 0.0
     D = np.clip(1.0 - np.clip(unit(R) @ unit(R).T, -1.0, 1.0), 0.0, 2.0)
@@ -64,12 +66,14 @@ def dispersion(R: np.ndarray, lab: np.ndarray) -> float:
 
 
 def spectrum_null(R: np.ndarray, rng: np.random.Generator) -> np.ndarray:
-    """Gaussian with the observed covariance SPECTRUM, random orientation: rank kept, clusters killed."""
+    """Gaussian with the observed covariance SPECTRUM, random orientation: rank kept, clusters
+    killed.
+    """
     n = len(R)
     s = np.linalg.svd(R, compute_uv=False)
     Z = rng.standard_normal((n, len(s)))
-    Z /= np.linalg.norm(Z, axis=0, keepdims=True) / np.sqrt(n)   # columns to unit scale
-    return Z * s                                                  # apply the observed spectrum
+    Z /= np.linalg.norm(Z, axis=0, keepdims=True) / np.sqrt(n)  # columns to unit scale
+    return Z * s  # apply the observed spectrum
 
 
 def isotropic_null(R: np.ndarray, rng: np.random.Generator) -> np.ndarray:
@@ -78,12 +82,17 @@ def isotropic_null(R: np.ndarray, rng: np.random.Generator) -> np.ndarray:
 
 
 def ari(a: np.ndarray, b: np.ndarray) -> float:
-    """Adjusted Rand index. Written out rather than imported to keep the sklearn dep off this path."""
+    """
+    Adjusted Rand index. Written out rather than imported to keep the sklearn dep off this path.
+    """
     ca, cb = pd.factorize(a)[0], pd.factorize(b)[0]
     n = len(ca)
     M = np.zeros((ca.max() + 1, cb.max() + 1))
     np.add.at(M, (ca, cb), 1)
-    comb = lambda x: (x * (x - 1) / 2).sum()
+
+    def comb(x):
+        return (x * (x - 1) / 2).sum()
+
     idx = comb(M)
     ea, eb = comb(M.sum(1)), comb(M.sum(0))
     exp = ea * eb / comb(np.array([n]))
@@ -111,11 +120,14 @@ def read_fasta(p: Path) -> dict[str, str]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--run", type=Path, required=True)
     ap.add_argument("--layer", type=int, default=27, help="frozen layer; blocks 28-31 are unusable")
-    ap.add_argument("--mode", default="cds_mean", help="pooling mode; cds_mean is the only primary one")
+    ap.add_argument(
+        "--mode", default="cds_mean", help="pooling mode; cds_mean is the only primary one"
+    )
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
     out = args.out or (args.run / "h1c_clusters")
@@ -130,19 +142,25 @@ def main() -> None:
 
     a = npz[args.mode]
     D = (a[:, 1, args.layer, :] - a[:, 0, args.layer, :]).astype(np.float64)
-    R = D - D.mean(0)                       # residual after removing the shared direction
+    R = D - D.mean(0)  # residual after removing the shared direction
     n = len(R)
     print(f"{n} genes, layer {args.layer}, mode {args.mode}")
 
     # ---- 0. is the residual cloud non-isotropic at all? (context for the gates below) ----
     Ru = unit(R)
     off = (Ru @ Ru.T)[np.triu_indices(n, 1)]
-    null_off = np.concatenate([(lambda G: (G @ G.T)[np.triu_indices(n, 1)])(
-        unit(rng.standard_normal(R.shape))) for _ in range(50)])
+    null_off = np.concatenate(
+        [
+            (lambda G: (G @ G.T)[np.triu_indices(n, 1)])(unit(rng.standard_normal(R.shape)))
+            for _ in range(50)
+        ]
+    )
     s = np.linalg.svd(Ru, compute_uv=False) ** 2
-    pr = float(s.sum() ** 2 / (s ** 2).sum())
-    print(f"  residual pairwise-cos sd {off.std():.4f} vs isotropic {null_off.std():.4f} "
-          f"(x{off.std()/null_off.std():.1f});  participation ratio {pr:.1f}")
+    pr = float(s.sum() ** 2 / (s**2).sum())
+    print(
+        f"  residual pairwise-cos sd {off.std():.4f} vs isotropic {null_off.std():.4f} "
+        f"(x{off.std() / null_off.std():.1f});  participation ratio {pr:.1f}"
+    )
 
     # ---- 1. EXISTENCE: max-over-k silhouette excess vs the SPECTRUM-MATCHED null ----
     #
@@ -154,36 +172,43 @@ def main() -> None:
     labs = {k: partition(R, k) for k in ks}
     sil_obs = np.array([silhouette(R, labs[k]) for k in ks])
     disp_obs = np.array([dispersion(R, labs[k]) for k in ks])
-    nsil = np.array([[silhouette(N, partition(N, k)) for k in ks] for N in nulls])   # (rep, k)
+    nsil = np.array([[silhouette(N, partition(N, k)) for k in ks] for N in nulls])  # (rep, k)
     ndisp = np.array([[dispersion(N, partition(N, k)) for k in ks] for N in nulls])
     isil = np.array([[silhouette(N, partition(N, k)) for k in ks] for N in isos])
 
     excess = sil_obs - nsil.mean(0)
-    null_excess = nsil - nsil.mean(0)                      # centre each null on the same expectation
+    null_excess = nsil - nsil.mean(0)  # centre each null on the same expectation
     p_global = float((np.sum(null_excess.max(1) >= excess.max()) + 1) / (N_NULL + 1))
     kstar = int(ks[int(np.argmax(excess))])
     exists = bool(p_global < 0.05)
 
     rows = []
     for j, k in enumerate(ks):
-        rows.append({
-            "k": k, "sizes": ",".join(map(str, np.bincount(labs[k])[1:])),
-            "silhouette": round(float(sil_obs[j]), 4),
-            "sil_null_mean": round(float(nsil[:, j].mean()), 4),
-            "sil_null_sd": round(float(nsil[:, j].std(ddof=1)), 4),
-            "sil_excess": round(float(excess[j]), 4),
-            "sil_p_at_k": float((np.sum(nsil[:, j] >= sil_obs[j]) + 1) / (N_NULL + 1)),
-            "sil_isotropic_mean": round(float(isil[:, j].mean()), 4),
-            "gap": round(float(ndisp[:, j].mean() - disp_obs[j]), 4),
-            "gap_se": round(float(ndisp[:, j].std(ddof=1) * np.sqrt(1 + 1 / N_NULL)), 4),
-        })
-        print(f"  k={k}  sizes {rows[-1]['sizes']:20s} sil {sil_obs[j]:+.3f} "
-              f"(spectrum null {nsil[:, j].mean():+.3f}+/-{nsil[:, j].std(ddof=1):.3f}, "
-              f"excess {excess[j]:+.3f}, p={rows[-1]['sil_p_at_k']:.4f}; "
-              f"isotropic {isil[:, j].mean():+.3f})")
+        rows.append(
+            {
+                "k": k,
+                "sizes": ",".join(map(str, np.bincount(labs[k])[1:])),
+                "silhouette": round(float(sil_obs[j]), 4),
+                "sil_null_mean": round(float(nsil[:, j].mean()), 4),
+                "sil_null_sd": round(float(nsil[:, j].std(ddof=1)), 4),
+                "sil_excess": round(float(excess[j]), 4),
+                "sil_p_at_k": float((np.sum(nsil[:, j] >= sil_obs[j]) + 1) / (N_NULL + 1)),
+                "sil_isotropic_mean": round(float(isil[:, j].mean()), 4),
+                "gap": round(float(ndisp[:, j].mean() - disp_obs[j]), 4),
+                "gap_se": round(float(ndisp[:, j].std(ddof=1) * np.sqrt(1 + 1 / N_NULL)), 4),
+            }
+        )
+        print(
+            f"  k={k}  sizes {rows[-1]['sizes']:20s} sil {sil_obs[j]:+.3f} "
+            f"(spectrum null {nsil[:, j].mean():+.3f}+/-{nsil[:, j].std(ddof=1):.3f}, "
+            f"excess {excess[j]:+.3f}, p={rows[-1]['sil_p_at_k']:.4f}; "
+            f"isotropic {isil[:, j].mean():+.3f})"
+        )
     ex = pd.DataFrame(rows)
-    print(f"\n  max-over-k excess {excess.max():+.4f} at k* = {kstar}, "
-          f"global p = {p_global:.4f}  ->  EXISTENCE GATE: {'PASS' if exists else 'FAIL'}")
+    print(
+        f"\n  max-over-k excess {excess.max():+.4f} at k* = {kstar}, "
+        f"global p = {p_global:.4f}  ->  EXISTENCE GATE: {'PASS' if exists else 'FAIL'}"
+    )
 
     lab = labs[kstar]
 
@@ -191,24 +216,31 @@ def main() -> None:
     boot = []
     for _ in range(N_BOOT):
         idx = rng.choice(n, n, replace=True)
-        keep = np.unique(idx)                      # ARI needs each gene once
+        keep = np.unique(idx)  # ARI needs each gene once
         boot.append(ari(partition(R[keep], kstar), lab[keep]))
     half = []
     for _ in range(N_BOOT):
         p = rng.permutation(n)
-        h1, h2 = p[: n // 2], p[n // 2:]
+        h1, h2 = p[: n // 2], p[n // 2 :]
         # fit on one half, score agreement with the full-panel partition on the OTHER half
-        half.append(ari(partition(R[h2], kstar), lab[h2]) if len(np.unique(lab[h1])) > 1 else np.nan)
-    stab = {"k": kstar,
-            "bootstrap_ari_median": round(float(np.median(boot)), 4),
-            "bootstrap_ari_q05": round(float(np.quantile(boot, 0.05)), 4),
-            "half_ari_median": round(float(np.nanmedian(half)), 4)}
+        half.append(
+            ari(partition(R[h2], kstar), lab[h2]) if len(np.unique(lab[h1])) > 1 else np.nan
+        )
+    stab = {
+        "k": kstar,
+        "bootstrap_ari_median": round(float(np.median(boot)), 4),
+        "bootstrap_ari_q05": round(float(np.quantile(boot, 0.05)), 4),
+        "half_ari_median": round(float(np.nanmedian(half)), 4),
+    }
     stable = bool(stab["bootstrap_ari_median"] >= 0.5)
-    print(f"  bootstrap ARI {stab['bootstrap_ari_median']:.3f} "
-          f"[q05 {stab['bootstrap_ari_q05']:.3f}], half ARI {stab['half_ari_median']:.3f}"
-          f"  -> STABILITY GATE: {'PASS' if stable else 'FAIL'}")
+    print(
+        f"  bootstrap ARI {stab['bootstrap_ari_median']:.3f} "
+        f"[q05 {stab['bootstrap_ari_q05']:.3f}], half ARI {stab['half_ari_median']:.3f}"
+        f"  -> STABILITY GATE: {'PASS' if stable else 'FAIL'}"
+    )
 
-    # ---- 3. MEMBERSHIP: what are these clusters? Tested for rate; everything else descriptive. ----
+    # ---- 3. MEMBERSHIP: what are these clusters? Tested for rate; everything else descriptive.
+    # ----
     ch = read_fasta(args.run / "stage1" / "cds_human.fasta")
     cp = read_fasta(args.run / "stage1" / "cds_platypus.fasta")
     m = pairs.copy()
@@ -223,8 +255,10 @@ def main() -> None:
     rate_cols = []
     ts = args.run / "stage5" / "tree_stats.csv"
     dn = args.run / "stage5" / "dnds.csv"
-    for p, cols in [(ts, ["tree_len", "diameter", "treeness", "background_rate", "platypus_branch"]),
-                    (dn, ["dN_hp_yn", "dS_hp_yn", "omega_hp_yn"])]:
+    for p, cols in [
+        (ts, ["tree_len", "diameter", "treeness", "background_rate", "platypus_branch"]),
+        (dn, ["dN_hp_yn", "dS_hp_yn", "omega_hp_yn"]),
+    ]:
         if p.exists():
             d = pd.read_csv(p)
             have = [c for c in cols if c in d.columns]
@@ -235,21 +269,39 @@ def main() -> None:
     for c in TESTED + rate_cols:
         if c not in m.columns:
             continue
-        groups = [pd.to_numeric(m.loc[m.cluster == g, c], errors="coerce").dropna()
-                  for g in sorted(m.cluster.unique())]
+        groups = [
+            pd.to_numeric(m.loc[m.cluster == g, c], errors="coerce").dropna()
+            for g in sorted(m.cluster.unique())
+        ]
         groups = [g for g in groups if len(g) >= 3]
         if len(groups) < 2:
             continue
         h, p = kruskal(*groups)
-        mem.append({"variable": c, "role": "tested", "kruskal_H": round(float(h), 3), "p": float(p),
-                    "by_cluster": " / ".join(f"{g.mean():.3f}" for g in groups)})
+        mem.append(
+            {
+                "variable": c,
+                "role": "tested",
+                "kruskal_H": round(float(h), 3),
+                "p": float(p),
+                "by_cluster": " / ".join(f"{g.mean():.3f}" for g in groups),
+            }
+        )
     for c in DESCRIPTIVE:
         if c not in m.columns:
             continue
-        vals = [pd.to_numeric(m.loc[m.cluster == g, c], errors="coerce").dropna()
-                for g in sorted(m.cluster.unique())]
-        mem.append({"variable": c, "role": "descriptive", "kruskal_H": np.nan, "p": np.nan,
-                    "by_cluster": " / ".join(f"{v.mean():.3f}" for v in vals)})
+        vals = [
+            pd.to_numeric(m.loc[m.cluster == g, c], errors="coerce").dropna()
+            for g in sorted(m.cluster.unique())
+        ]
+        mem.append(
+            {
+                "variable": c,
+                "role": "descriptive",
+                "kruskal_H": np.nan,
+                "p": np.nan,
+                "by_cluster": " / ".join(f"{v.mean():.3f}" for v in vals),
+            }
+        )
     mem = pd.DataFrame(mem)
 
     print("\n  membership (tested variables carry a p; descriptive ones do not):")
@@ -260,22 +312,35 @@ def main() -> None:
     ex.to_csv(out / "existence.csv", index=False)
     mem.to_csv(out / "membership.csv", index=False)
     m[["gene", "block", "stratum", "cluster", "delta_norm", "perc_id_hp"]].to_csv(
-        out / "assignments.csv", index=False)
-    (out / "h1c_summary.json").write_text(json.dumps({
-        "layer": args.layer, "mode": args.mode, "n_genes": n, "seed": SEED,
-        "k_range": [K_RANGE.start, K_RANGE.stop - 1], "n_null": N_NULL, "n_boot": N_BOOT,
-        "algorithm": "average linkage on angular distance; k and existence both from the "
-                     "max-over-k silhouette excess, so searching k is free",
-        "p_global": p_global,
-        "null": "spectrum-matched Gaussian (covariance eigenvalues preserved, random orientation); "
+        out / "assignments.csv", index=False
+    )
+    (out / "h1c_summary.json").write_text(
+        json.dumps(
+            {
+                "layer": args.layer,
+                "mode": args.mode,
+                "n_genes": n,
+                "seed": SEED,
+                "k_range": [K_RANGE.start, K_RANGE.stop - 1],
+                "n_null": N_NULL,
+                "n_boot": N_BOOT,
+                "algorithm": "average linkage on angular distance; k and existence both from the "
+                "max-over-k silhouette excess, so searching k is free",
+                "p_global": p_global,
+                "null": "spectrum-matched Gaussian (fixed eigenvalues, random orientation); "
                 "isotropic null reported alongside as an anisotropy reference",
-        "residual_cos_sd": round(float(off.std()), 4),
-        "isotropic_cos_sd": round(float(null_off.std()), 4),
-        "participation_ratio": round(pr, 2),
-        "k_selected": kstar, "existence_gate": exists, "stability_gate": stable,
-        "stability": stab,
-        "tier_c_licensed": bool(exists and stable),
-    }, indent=2))
+                "residual_cos_sd": round(float(off.std()), 4),
+                "isotropic_cos_sd": round(float(null_off.std()), 4),
+                "participation_ratio": round(pr, 2),
+                "k_selected": kstar,
+                "existence_gate": exists,
+                "stability_gate": stable,
+                "stability": stab,
+                "tier_c_licensed": bool(exists and stable),
+            },
+            indent=2,
+        )
+    )
     print(f"\n-> {out}    Tier C licensed by H1c: {exists and stable}")
 
 

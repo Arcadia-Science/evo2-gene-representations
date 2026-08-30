@@ -1,7 +1,6 @@
 """Embed and score the Evo2 human-paralog panel."""
 
 from __future__ import annotations
-
 import argparse
 import datetime
 import hashlib
@@ -19,9 +18,17 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "evo2"))
 
-sys.path.insert(0, str(ROOT / "scripts" / "controls"))  # composition-shuffle fns live with the control scripts
+sys.path.insert(
+    0, str(ROOT / "scripts" / "controls")
+)  # composition-shuffle fns live with the control scripts
 import sample_human_genes as ss  # noqa: E402
-from evo2_embedding import MODEL_NAME, N_BLOCKS, embed_all_blocks, layer_type, load_model  # noqa: E402
+from evo2_embedding import (  # noqa: E402
+    MODEL_NAME,
+    N_BLOCKS,
+    embed_all_blocks,
+    layer_type,
+    load_model,
+)
 from make_control_sequences import (  # noqa: E402
     build_family_codon_usage,
     codon_shuffle,
@@ -64,7 +71,7 @@ SEQ_CACHE = Path("data/cache/evo2_human_genomic.json")  # gene -> GRCh38 genomic
 EMBED_DIM = 4096
 DEFAULT_MAX_LEN = 100_000  # matches sample_human_genes.EVO2_MAX_LEN (genomic-string fetch clip)
 EVO2_WINDOW = 8000  # max bp per Evo2-7B forward on a 23 GB A10G (attention is O(L^2)); longer
-                    # spans are tiled into windows of this size and pooled (see embed_all_layers)
+# spans are tiled into windows of this size and pooled (see embed_all_layers)
 
 
 # ── gene set + genomic sequences
@@ -111,13 +118,28 @@ def _seq_hash(s: str) -> str:
     return hashlib.sha1(s.encode()).hexdigest()[:12]
 
 
-def run_sweep(genes, fams, seqs, device, force, checkpoint_every, window=EVO2_WINDOW,
-              cache_dir=CACHE_DIR, control=None) -> np.ndarray:
+def run_sweep(
+    genes,
+    fams,
+    seqs,
+    device,
+    force,
+    checkpoint_every,
+    window=EVO2_WINDOW,
+    cache_dir=CACHE_DIR,
+    control=None,
+) -> np.ndarray:
     stack_path = cache_dir / "layer_stack.npy"
     meta_path = cache_dir / "metadata.csv"
     config_path = cache_dir / "config.json"
-    config = {"model": MODEL_NAME, "pool": "second_half", "n_blocks": N_BLOCKS,
-              "window": window, "control": control, "genes": genes}
+    config = {
+        "model": MODEL_NAME,
+        "pool": "second_half",
+        "n_blocks": N_BLOCKS,
+        "window": window,
+        "control": control,
+        "genes": genes,
+    }
     hashes = {g: _seq_hash(seqs[g]) for g in genes}
 
     # Reuse cached vectors by gene and verify sequence hashes when available.
@@ -137,8 +159,11 @@ def run_sweep(genes, fams, seqs, device, force, checkpoint_every, window=EVO2_WI
             # columns no longer align with the stale metadata's gene order. Reuse-by-column-index
             # would then silently misassign vectors, so refuse a stack whose width != metadata rows
             # (only ever true for a partial cache) and fall back to a full re-embed.
-            old_hash = (dict(zip(old_genes, old_meta["seq_hash"].astype(str)))
-                        if "seq_hash" in old_meta.columns else None)
+            old_hash = (
+                dict(zip(old_genes, old_meta["seq_hash"].astype(str), strict=False))
+                if "seq_hash" in old_meta.columns
+                else None
+            )
             want = set(genes) if old_stack.shape[1] == len(old_genes) else set()
             for i, g in enumerate(old_genes):
                 if g not in want:
@@ -158,7 +183,9 @@ def run_sweep(genes, fams, seqs, device, force, checkpoint_every, window=EVO2_WI
         print(f"  window={window} bp/forward, control={control}")
         model = load_model()
         idx = {g: i for i, g in enumerate(genes)}
-        for c, g in enumerate(tqdm(misses, desc=f"Embedding ({control or 'natural'}, all {N_BLOCKS} blocks)")):
+        for c, g in enumerate(
+            tqdm(misses, desc=f"Embedding ({control or 'natural'}, all {N_BLOCKS} blocks)")
+        ):
             stack[:, idx[g], :] = embed_all_layers(seqs[g], model, device, window)
             if (c + 1) % checkpoint_every == 0:
                 tmp = stack_path.with_suffix(".tmp.npy")
@@ -167,8 +194,9 @@ def run_sweep(genes, fams, seqs, device, force, checkpoint_every, window=EVO2_WI
                 tqdm.write(f"    [checkpoint] {c + 1}/{len(misses)}")
     print(f"  reused {N - len(misses)} / embedded {len(misses)} / total {N} genes")
     np.save(stack_path, stack)
-    pd.DataFrame({"gene": genes, "family": fams,
-                  "seq_hash": [hashes[g] for g in genes]}).to_csv(meta_path, index=False)
+    pd.DataFrame({"gene": genes, "family": fams, "seq_hash": [hashes[g] for g in genes]}).to_csv(
+        meta_path, index=False
+    )
     config_path.write_text(json.dumps(config, indent=2))
     print(f"  Saved layer stack {stack.shape} -> {stack_path}")
     return stack
@@ -177,8 +205,9 @@ def run_sweep(genes, fams, seqs, device, force, checkpoint_every, window=EVO2_WI
 # ── run dir at a chosen layer (geodesic + centroid; baseline-ready)
 
 
-def write_run_dir(stack, genes, fams, fam_order, layer_idx, model_tag="evo2_human", run_tag="",
-                  run_dir=None):
+def write_run_dir(
+    stack, genes, fams, fam_order, layer_idx, model_tag="evo2_human", run_tag="", run_dir=None
+):
     emb = stack[layer_idx]
     families_arr = np.array(fams)
     if run_dir:  # orchestrator-fixed dir; else stamp the date here
@@ -205,38 +234,73 @@ def write_run_dir(stack, genes, fams, fam_order, layer_idx, model_tag="evo2_huma
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--families", nargs="+", default=None, help="Restrict to these families (smoke test).")
-    p.add_argument("--max-len", type=int, default=DEFAULT_MAX_LEN, help="Center-clip genomic span to this many bp.")
-    p.add_argument("--window", type=int, default=EVO2_WINDOW, help="Max bp per Evo2 forward; longer spans are tiled.")
-    p.add_argument("--from-layer", type=int, default=None, help="Build a run dir at this block from the sweep cache.")
-    p.add_argument("--stack", default=None,
-                   help="Score an EXTERNAL layer-stack cache dir (dir with layer_stack.npy + "
-                        "metadata.csv), skipping embedding. Use with --from-layer + --run-dir. "
-                        "For the CDS-masked-transcript condition (embed_cds_masked_transcript.py).")
-    p.add_argument("--run-dir", default=None,
-                   help="Explicit output dir (pass from the sweep so the date is fixed once by "
-                        "the caller; else this script stamps results/<today>_..., which splits a "
-                        "sweep across two folders if it runs past midnight UTC).")
-    p.add_argument("--control", default=None, choices=CONTROL_CHOICES,
-                   help="Composition control: shuffle each sequence before embedding "
-                        "(gc_match / dinuc_shuffle / kmer4_shuffle / kmer6_shuffle; plus "
-                        "codon_shuffle / synonymous_recode, which require --input cds). "
-                        "Caches + run dir are control-tagged.")
-    p.add_argument("--input", default="genomic", choices=["genomic", "cds"],
-                   help="What Evo2 reads: 'genomic' transcript span (default) "
-                        "or 'cds' (diagnostic — same genes, CDS input, to isolate intron-dilution "
-                        "from the paralog gene set). CDS read from data/cache/cds_sequences.json.")
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument(
+        "--families", nargs="+", default=None, help="Restrict to these families (smoke test)."
+    )
+    p.add_argument(
+        "--max-len",
+        type=int,
+        default=DEFAULT_MAX_LEN,
+        help="Center-clip genomic span to this many bp.",
+    )
+    p.add_argument(
+        "--window",
+        type=int,
+        default=EVO2_WINDOW,
+        help="Max bp per Evo2 forward; longer spans are tiled.",
+    )
+    p.add_argument(
+        "--from-layer",
+        type=int,
+        default=None,
+        help="Build a run dir at this block from the sweep cache.",
+    )
+    p.add_argument(
+        "--stack",
+        default=None,
+        help="Score an EXTERNAL layer-stack cache dir (dir with layer_stack.npy + "
+        "metadata.csv), skipping embedding. Use with --from-layer + --run-dir. "
+        "For the CDS-masked-transcript condition (embed_cds_masked_transcript.py).",
+    )
+    p.add_argument(
+        "--run-dir",
+        default=None,
+        help="Explicit output dir (pass from the sweep so the date is fixed once by "
+        "the caller; else this script stamps results/<today>_..., which splits a "
+        "sweep across two folders if it runs past midnight UTC).",
+    )
+    p.add_argument(
+        "--control",
+        default=None,
+        choices=CONTROL_CHOICES,
+        help="Composition control: shuffle each sequence before embedding "
+        "(gc_match / dinuc_shuffle / kmer4_shuffle / kmer6_shuffle; plus "
+        "codon_shuffle / synonymous_recode, which require --input cds). "
+        "Caches + run dir are control-tagged.",
+    )
+    p.add_argument(
+        "--input",
+        default="genomic",
+        choices=["genomic", "cds"],
+        help="What Evo2 reads: 'genomic' transcript span (default) "
+        "or 'cds' (diagnostic — same genes, CDS input, to isolate intron-dilution "
+        "from the paralog gene set). CDS read from data/cache/cds_sequences.json.",
+    )
     p.add_argument("--force-reembed", action="store_true")
     p.add_argument("--checkpoint-every", type=int, default=50)
     return p.parse_args()
 
 
-def apply_control(seqs: dict[str, str], control: str,
-                  fam_of: dict[str, str] | None = None) -> dict[str, str]:
+def apply_control(
+    seqs: dict[str, str], control: str, fam_of: dict[str, str] | None = None
+) -> dict[str, str]:
     """Composition-preserving shuffle of each sequence (deterministic per gene)."""
     import random
     from collections import defaultdict
+
     out = {}
     if control in FAMILY_USAGE_CONTROLS:
         if fam_of is None:
@@ -248,8 +312,13 @@ def apply_control(seqs: dict[str, str], control: str,
         for g, s in seqs.items():
             rng = random.Random(f"synonymous_recode:{g}".__hash__() & 0xFFFFFFFF)
             recoded = synonymous_recode(s, usage[fam_of[g]], rng)
-            out[g] = recoded if control == "synonymous_recode" else missense_subset(
-                s, recoded, random.Random(f"{control}:{g}".__hash__() & 0xFFFFFFFF))
+            out[g] = (
+                recoded
+                if control == "synonymous_recode"
+                else missense_subset(
+                    s, recoded, random.Random(f"{control}:{g}".__hash__() & 0xFFFFFFFF)
+                )
+            )
         return out
     for g, s in seqs.items():
         rng = random.Random(f"{control}:{g}".__hash__() & 0xFFFFFFFF)
@@ -261,7 +330,9 @@ def main():
     args = parse_args()
 
     if args.stack:  # score an external stack (e.g. CDS-masked-transcript); no embedding
-        _, _, _, fam_order = ss.load_matched_panel(None, resolve_loci=False)  # canonical family order
+        _, _, _, fam_order = ss.load_matched_panel(
+            None, resolve_loci=False
+        )  # canonical family order
         meta = pd.read_csv(Path(args.stack) / "metadata.csv")
         stack = np.load(Path(args.stack) / "layer_stack.npy")
         if args.families:  # restrict the panel; the geodesic graph is global, so a subset
@@ -271,7 +342,10 @@ def main():
             meta, stack = meta[keep].reset_index(drop=True), stack[:, keep, :]
         genes, fams = meta["gene"].astype(str).tolist(), meta["family"].tolist()
         fam_order = [f for f in fam_order if f in set(fams)]
-        print(f"[stack] {stack.shape} from {args.stack}; {len(genes)} genes, {len(fam_order)} families")
+        print(
+            f"[stack] {stack.shape} from {args.stack}; {len(genes)} genes, "
+            f"{len(fam_order)} families"
+        )
         if args.from_layer is None:
             sys.exit("--stack requires --from-layer")
         write_run_dir(stack, genes, fams, fam_order, args.from_layer, run_dir=args.run_dir)
@@ -283,12 +357,13 @@ def main():
     # CDS input pulls sequences from cds_sequences.json and never uses the genomic locus, so skip
     # locus resolution for it (avoids ~hundreds of per-gene Ensembl REST calls + gene drops).
     genes, fams, locus_of, fam_order = ss.load_matched_panel(
-        args.families, require_both=False, resolve_loci=(args.input != "cds"))
+        args.families, require_both=False, resolve_loci=(args.input != "cds")
+    )
     print(f"  {len(genes)} genes across {len(fam_order)} families: {fam_order}")
 
     if args.input == "cds":
         cds = json.loads(Path("data/cache/cds_sequences.json").read_text())
-        keep = [(g, f) for g, f in zip(genes, fams) if g in cds]
+        keep = [(g, f) for g, f in zip(genes, fams, strict=False) if g in cds]
         genes, fams = [g for g, _ in keep], [f for _, f in keep]
         fam_order = [f for f in fam_order if f in set(fams)]
         seqs = {g: cds[g] for g in genes}
@@ -299,25 +374,35 @@ def main():
         seqs = load_or_fetch_genomic(genes, locus_of, args.max_len)
         base_cache, base_tag = CACHE_DIR, ""
     lens = sorted(len(seqs[g]) for g in genes)
-    print(f"  input lengths: median={lens[len(lens)//2]}  max={lens[-1]} bp")
+    print(f"  input lengths: median={lens[len(lens) // 2]}  max={lens[-1]} bp")
 
     cache_dir, run_tag = base_cache, base_tag
     if args.control:
         if args.control in CDS_ONLY_CONTROLS and args.input != "cds":
-            sys.exit(f"--control {args.control} requires --input cds (it needs an in-frame reading frame)")
+            sys.exit(f"--control {args.control} requires --input cds and an in-frame reading frame")
         print(f"[2b] Applying composition control: {args.control}")
-        seqs = apply_control(seqs, args.control, fam_of=dict(zip(genes, fams)))
+        seqs = apply_control(seqs, args.control, fam_of=dict(zip(genes, fams, strict=False)))
         cache_dir = base_cache.parent / f"{base_cache.name}_{args.control}"
         run_tag = f"{base_tag}-{args.control}"
 
     print(f"[3] Dense layer sweep ({N_BLOCKS} blocks, second-half pooled, window={args.window} bp)")
-    stack = run_sweep(genes, fams, seqs, device, args.force_reembed, args.checkpoint_every,
-                      args.window, cache_dir=cache_dir, control=args.control)
+    stack = run_sweep(
+        genes,
+        fams,
+        seqs,
+        device,
+        args.force_reembed,
+        args.checkpoint_every,
+        args.window,
+        cache_dir=cache_dir,
+        control=args.control,
+    )
 
     if args.from_layer is not None:
         print(f"[4] Run dir @ blocks.{args.from_layer} ({layer_type(args.from_layer)})")
-        write_run_dir(stack, genes, fams, fam_order, args.from_layer, run_tag=run_tag,
-                      run_dir=args.run_dir)
+        write_run_dir(
+            stack, genes, fams, fam_order, args.from_layer, run_tag=run_tag, run_dir=args.run_dir
+        )
     print("Done.")
 
 

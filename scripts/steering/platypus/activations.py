@@ -1,4 +1,6 @@
-"""Stage 1b — extract Evo2 residual-stream activations at the FINAL position of each 90-bp prefix."""
+"""
+Stage 1b — extract Evo2 residual-stream activations at the FINAL position of each 90-bp prefix.
+"""
 
 from __future__ import annotations
 import argparse
@@ -63,7 +65,8 @@ def extract(pairs: list[dict], out_dir: Path) -> None:
     if n_tok != PREFIX_BP:
         raise AssertionError(
             f"tokenizer emitted {n_tok} tokens for a {PREFIX_BP}-bp prefix (BOS/EOS?); "
-            "the final-position index assumption is invalid")
+            "the final-position index assumption is invalid"
+        )
     _assert_no_hooks(model)
 
     genes = [r["gene"] for r in pairs]
@@ -87,8 +90,15 @@ def extract(pairs: list[dict], out_dir: Path) -> None:
                     shape = (len(pairs), len(SPECIES), len(BLOCKS), vec.shape[0])
                     acts = np.zeros(shape, np.float32)
                 acts[gi, si, li] = vec
-                norms.append({"gene": r["gene"], "family": r["family"], "species": sp,
-                              "layer": li, "norm": float(np.linalg.norm(vec))})
+                norms.append(
+                    {
+                        "gene": r["gene"],
+                        "family": r["family"],
+                        "species": sp,
+                        "layer": li,
+                        "norm": float(np.linalg.norm(vec)),
+                    }
+                )
             del emb
         if (gi + 1) % 20 == 0:
             torch.cuda.empty_cache()
@@ -114,30 +124,38 @@ def extract(pairs: list[dict], out_dir: Path) -> None:
         w.writeheader()
         w.writerows(norms)
 
-    (out_dir / "activation_validation.json").write_text(json.dumps({
-        "n_genes": len(genes),
-        "shape": list(acts.shape),
-        "shape_meaning": "[gene, species(human,platypus), layer(blocks.0-31), hidden]",
-        "hidden_dim": int(acts.shape[-1]),
-        "prefix_bp": PREFIX_BP,
-        "tokens_per_prefix": n_tok,
-        "tokenizer_prepends_bos": n_tok != PREFIX_BP,
-        "final_position_index": n_tok - 1,
-        "pool_mode": "last",
-        "batch_size": 1,
-        "species_share_a_batch": False,
-        "hooks_registered_during_extraction": 0,
-        "layer_names_vs_hook_max_abs_diff": tap_diff,
-        "all_finite": True,
-    }, indent=2))
+    (out_dir / "activation_validation.json").write_text(
+        json.dumps(
+            {
+                "n_genes": len(genes),
+                "shape": list(acts.shape),
+                "shape_meaning": "[gene, species(human,platypus), layer(blocks.0-31), hidden]",
+                "hidden_dim": int(acts.shape[-1]),
+                "prefix_bp": PREFIX_BP,
+                "tokens_per_prefix": n_tok,
+                "tokenizer_prepends_bos": n_tok != PREFIX_BP,
+                "final_position_index": n_tok - 1,
+                "pool_mode": "last",
+                "batch_size": 1,
+                "species_share_a_batch": False,
+                "hooks_registered_during_extraction": 0,
+                "layer_names_vs_hook_max_abs_diff": tap_diff,
+                "all_finite": True,
+            },
+            indent=2,
+        )
+    )
     print(f"acts {acts.shape} -> {out_dir}/activations_last_pos.npz")
     print(f"layer_names vs hook max|diff| = {tap_diff:.3e}")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--stage1-dir", type=Path,
-                    default=ROOT / "results" / "2026-07-28_evo2-platypus-paired" / "stage1")
+    ap.add_argument(
+        "--stage1-dir",
+        type=Path,
+        default=ROOT / "results" / "2026-07-28_evo2-platypus-paired" / "stage1",
+    )
     args = ap.parse_args()
     with open(args.stage1_dir / "pairs.csv") as fh:
         pairs = list(csv.DictReader(fh))

@@ -1,7 +1,6 @@
 """Per-model control summary figures across all layers (x = layer)."""
 
 from __future__ import annotations
-
 import re
 import sys
 from pathlib import Path
@@ -133,7 +132,15 @@ def _line_by_condition(ax, df, value_col, title, ylabel):
     for c in sorted(df["condition"].unique()):
         s = df[df["condition"] == c].groupby("layer")[value_col].mean().sort_index()
         lw = 2.2 if c == "natural" else 1.3
-        ax.plot(s.index, s.values, "-o", ms=3, lw=lw, color=COND_COLOR.get(c, acs.CONTROL_FALLBACK), label=c)
+        ax.plot(
+            s.index,
+            s.values,
+            "-o",
+            ms=3,
+            lw=lw,
+            color=COND_COLOR.get(c, acs.CONTROL_FALLBACK),
+            label=c,
+        )
     ax.axhline(0, color=acs.ZERO_LINE, lw=0.6)
     ax.axhline(1, color=acs.GRID, lw=0.4, ls=":")
     ax.set_title(title, fontsize=10)
@@ -158,22 +165,37 @@ def main(with_recovery: bool = False) -> None:
         axs = axs[0]
 
         _line_by_condition(
-            axs[0], between, "rho_vs_natural_centroid",
-            "Between-family preservation", "ρ (control vs natural centroid geo)",
+            axs[0],
+            between,
+            "rho_vs_natural_centroid",
+            "Between-family preservation",
+            "ρ (control vs natural centroid geo)",
         )
         _line_by_condition(
-            axs[1], within, "rho_geodesic_vs_natural",
-            "Within-family preservation (mean over families)", "ρ (control vs natural geo)",
+            axs[1],
+            within,
+            "rho_geodesic_vs_natural",
+            "Within-family preservation (mean over families)",
+            "ρ (control vs natural geo)",
         )
         if has_recov:
             _line_by_condition(
-                axs[2], within, m["recov_col"],
-                m["recov_label"] + " (mean over families)", "ρ (control geo vs ground truth)",
+                axs[2],
+                within,
+                m["recov_col"],
+                m["recov_label"] + " (mean over families)",
+                "ρ (control geo vs ground truth)",
             )
             nat = _natural_recovery(m["slug"], m["natural_metric"])
             if nat is not None:
-                axs[2].plot(nat.index, nat.values, "-", color=acs.CONTROL_COLORS["natural"], lw=2.0,
-                            label="natural (uncontrolled)")
+                axs[2].plot(
+                    nat.index,
+                    nat.values,
+                    "-",
+                    color=acs.CONTROL_COLORS["natural"],
+                    lw=2.0,
+                    label="natural (uncontrolled)",
+                )
 
         axs[0].legend(fontsize=7, loc="best")
         if has_recov:
@@ -189,9 +211,13 @@ def main(with_recovery: bool = False) -> None:
 if __name__ == "__main__":
     import argparse
 
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--with-recovery", action="store_true",
-                    help="add the third panel (within-family recovery vs biological ground truth); "
-                         "off by default since 2026-08-14")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--with-recovery",
+        action="store_true",
+        help="add the third panel (within-family recovery vs biological ground truth); "
+        "off by default since 2026-08-14",
+    )
     main(with_recovery=ap.parse_args().with_recovery)

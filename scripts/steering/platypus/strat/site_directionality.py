@@ -1,6 +1,6 @@
 """Where does the recovery gain come from — toward platypus, or merely away from human? CPU only."""
-from __future__ import annotations
 
+from __future__ import annotations
 import argparse
 import gzip
 import importlib.util
@@ -55,9 +55,12 @@ def gc_class(h: str, p: str) -> str:
     return "gc_up" if pg else "gc_down"
 
 
-def ortholog_votes(plat_cds: str, cont_offset: int, sites: dict[int, tuple[str, str]],
-                   orthologs: dict[str, str]) -> tuple[dict[int, dict[str, int]], int]:
-    """{site index -> {base: how many sampled mammals carry it}} and the number of voting species."""
+def ortholog_votes(
+    plat_cds: str, cont_offset: int, sites: dict[int, tuple[str, str]], orthologs: dict[str, str]
+) -> tuple[dict[int, dict[str, int]], int]:
+    """
+    {site index -> {base: how many sampled mammals carry it}} and the number of voting species.
+    """
     votes: dict[int, dict[str, int]] = {i: {} for i in sites}
     voters = 0
     if not sites or not orthologs:
@@ -72,7 +75,7 @@ def ortholog_votes(plat_cds: str, cont_offset: int, sites: dict[int, tuple[str, 
         voters += 1
         o_aln, p_aln = str(a[0]), str(a[1])
         pcur = 0
-        for oc, pc in zip(o_aln, p_aln):
+        for oc, pc in zip(o_aln, p_aln, strict=False):
             if pc == "-":
                 continue
             key = pcur - cont_offset
@@ -92,14 +95,16 @@ def consensus_base(vote: dict[str, int]) -> int:
 
 
 def gen_at_target(gen: str, target: str) -> np.ndarray:
-    """Base the generation contributes at each position of `target`, as codes 0-3, -1 = not covered."""
+    """
+    Base the generation contributes at each position of `target`, as codes 0-3, -1 = not covered.
+    """
     out = np.full(len(target), -1, dtype=np.int8)
     if not gen or not target:
         return out
     a = nt_aligner().align(gen, target)[0]
     g_aln, t_aln = str(a[0]), str(a[1])
     tcur = 0
-    for gc, tc in zip(g_aln, t_aln):
+    for gc, tc in zip(g_aln, t_aln, strict=False):
         if tc == "-":
             continue
         out[tcur] = CODE.get(gc, -1)
@@ -121,8 +126,9 @@ def analytic_null(y: np.ndarray, p: np.ndarray, strat: np.ndarray) -> float:
     return 100.0 * tot / y.size
 
 
-def permutation_null(y: np.ndarray, p: np.ndarray, strat: np.ndarray,
-                     n_shuffle: int, rng: np.random.Generator) -> np.ndarray:
+def permutation_null(
+    y: np.ndarray, p: np.ndarray, strat: np.ndarray, n_shuffle: int, rng: np.random.Generator
+) -> np.ndarray:
     """Recovery percentage under `n_shuffle` within-stratum permutations of the base calls."""
     if y.size == 0 or n_shuffle <= 0:
         return np.full(max(n_shuffle, 1), np.nan)
@@ -139,45 +145,78 @@ def permutation_null(y: np.ndarray, p: np.ndarray, strat: np.ndarray,
 
 
 # per-record metrics
-def record_metrics(calls: np.ndarray, site: dict, n_shuffle: int,
-                   rng: np.random.Generator) -> dict:
+def record_metrics(calls: np.ndarray, site: dict, n_shuffle: int, rng: np.random.Generator) -> dict:
     """A / L / C / K, the GC-class breakdown and the shuffle null for ONE generation x site set."""
     idx, h, p = site["idx"], site["h"], site["p"]
     n_sites = idx.size
     out = {"n_sites": int(n_sites)}
     if n_sites == 0:
-        return {**out, "n_covered": 0, "K": np.nan, "A_cov": np.nan, "A_all": np.nan,
-                "L": np.nan, "C": np.nan, "n_eq_P": 0, "n_ne_H": 0,
-                "A_null": np.nan, "A_null_perm_mean": np.nan, "A_null_perm_sd": np.nan,
-                "excess": np.nan,
-                "A_M": np.nan, "C_M": np.nan, "frac_M_eq_P": np.nan, "n_consensus_sites": 0,
-                **{f"{c}_{k}": np.nan for c in GC_CLASSES for k in ("A", "n")}}
+        return {
+            **out,
+            "n_covered": 0,
+            "K": np.nan,
+            "A_cov": np.nan,
+            "A_all": np.nan,
+            "L": np.nan,
+            "C": np.nan,
+            "n_eq_P": 0,
+            "n_ne_H": 0,
+            "A_null": np.nan,
+            "A_null_perm_mean": np.nan,
+            "A_null_perm_sd": np.nan,
+            "excess": np.nan,
+            "A_M": np.nan,
+            "C_M": np.nan,
+            "frac_M_eq_P": np.nan,
+            "n_consensus_sites": 0,
+            **{f"{c}_{k}": np.nan for c in GC_CLASSES for k in ("A", "n")},
+        }
 
     y = calls[idx]
     cov = y >= 0
     n_cov = int(cov.sum())
     eq_p_all = int(((y == p) & cov).sum())
-    out.update({"n_covered": n_cov, "K": 100.0 * n_cov / n_sites,
-                "n_eq_P": eq_p_all,
-                # A_all counts alignment gaps as misses; A_cov uses covered sites only.
-                "A_all": 100.0 * eq_p_all / n_sites})
+    out.update(
+        {
+            "n_covered": n_cov,
+            "K": 100.0 * n_cov / n_sites,
+            "n_eq_P": eq_p_all,
+            # A_all counts alignment gaps as misses; A_cov uses covered sites only.
+            "A_all": 100.0 * eq_p_all / n_sites,
+        }
+    )
 
     if n_cov == 0:
-        out.update({"A_cov": np.nan, "L": np.nan, "C": np.nan, "n_ne_H": 0,
-                    "A_null": np.nan, "A_null_perm_mean": np.nan, "A_null_perm_sd": np.nan,
-                    "excess": np.nan,
-                    "A_M": np.nan, "C_M": np.nan, "frac_M_eq_P": np.nan,
-                    "n_consensus_sites": 0,
-                    **{f"{c}_{k}": np.nan for c in GC_CLASSES for k in ("A", "n")}})
+        out.update(
+            {
+                "A_cov": np.nan,
+                "L": np.nan,
+                "C": np.nan,
+                "n_ne_H": 0,
+                "A_null": np.nan,
+                "A_null_perm_mean": np.nan,
+                "A_null_perm_sd": np.nan,
+                "excess": np.nan,
+                "A_M": np.nan,
+                "C_M": np.nan,
+                "frac_M_eq_P": np.nan,
+                "n_consensus_sites": 0,
+                **{f"{c}_{k}": np.nan for c in GC_CLASSES for k in ("A", "n")},
+            }
+        )
         return out
 
     yc, hc, pc = y[cov], h[cov], p[cov]
     n_eq_p = int((yc == pc).sum())
     n_ne_h = int((yc != hc).sum())
-    out.update({"A_cov": 100.0 * n_eq_p / n_cov,
-                "L": 100.0 * n_ne_h / n_cov,
-                "C": (100.0 * n_eq_p / n_ne_h) if n_ne_h else np.nan,
-                "n_ne_H": n_ne_h})
+    out.update(
+        {
+            "A_cov": 100.0 * n_eq_p / n_cov,
+            "L": 100.0 * n_ne_h / n_cov,
+            "C": (100.0 * n_eq_p / n_ne_h) if n_ne_h else np.nan,
+            "n_ne_H": n_ne_h,
+        }
+    )
 
     # ---- the same two rates against the MAMMALIAN CONSENSUS base instead of the platypus base ----
     # The question this answers: when the model leaves the human base, is it going to platypus
@@ -185,7 +224,7 @@ def record_metrics(calls: np.ndarray, site: dict, n_shuffle: int,
     # construction, so A_M and A_cov are competing hypotheses there; on shared sites they often
     # coincide, which is exactly why the two site sets have to be looked at separately.
     mc = site["m"][cov]
-    ok = mc >= 0                                  # no votes, or a tie for modal: no consensus
+    ok = mc >= 0  # no votes, or a tie for modal: no consensus
     out["n_consensus_sites"] = int(ok.sum())
     if ok.any():
         n_eq_m = int((yc[ok] == mc[ok]).sum())
@@ -238,24 +277,35 @@ def build_sites(gene: str, human: str, target: str, cp: str, cont_offset: int) -
     if priv_from_votes != set(auta) or voters_v != voters:
         raise AssertionError(
             f"{gene}: private set from ortholog votes ({len(priv_from_votes)} sites, {voters_v} "
-            f"voters) disagrees with autapomorphic_subset ({len(auta)}, {voters})")
+            f"voters) disagrees with autapomorphic_subset ({len(auta)}, {voters})"
+        )
 
     idx_all = np.array(sorted(pairs), dtype=np.int32)
     shared = set(pairs) - priv_from_votes
     out = {"gene": gene, "n_voting_species": voters, "sets": {}}
-    for name, keys in (("private", priv_from_votes), ("shared_not_private", shared),
-                       ("platy_not_human", set(pairs))):
+    for name, keys in (
+        ("private", priv_from_votes),
+        ("shared_not_private", shared),
+        ("platy_not_human", set(pairs)),
+    ):
         idx = np.array([i for i in idx_all if i in keys], dtype=np.int32)
         h = np.array([CODE[pairs[i][0]] for i in idx], dtype=np.int8)
         p = np.array([CODE[pairs[i][1]] for i in idx], dtype=np.int8)
         m = np.array([consensus_base(votes[i]) for i in idx], dtype=np.int8)
-        cls = np.array([GC_CLASSES.index(gc_class(pairs[i][0], pairs[i][1])) for i in idx],
-                       dtype=np.int8)
+        cls = np.array(
+            [GC_CLASSES.index(gc_class(pairs[i][0], pairs[i][1])) for i in idx], dtype=np.int8
+        )
         cpos = (idx % 3).astype(np.int8)
-        out["sets"][name] = {"idx": idx, "h": h, "p": p, "m": m, "gc_class": cls,
-                             "codon_pos": cpos,
-                             # 12 strata: (human base, codon position). The null preserves both.
-                             "strat": (h.astype(np.int16) * 3 + cpos).astype(np.int16)}
+        out["sets"][name] = {
+            "idx": idx,
+            "h": h,
+            "p": p,
+            "m": m,
+            "gc_class": cls,
+            "codon_pos": cpos,
+            # 12 strata: (human base, codon position). The null preserves both.
+            "strat": (h.astype(np.int16) * 3 + cpos).astype(np.int16),
+        }
     # a gene with NO ortholog evidence has an empty private set for a different reason than a gene
     # whose diagnostic sites are all shared -- carried through so the tables can tell them apart
     out["has_ortholog_evidence"] = bool(voters > 0)
@@ -272,27 +322,34 @@ def _one_gene(gene: str) -> tuple[list[dict], list[dict], list[dict]]:
     nt = plan["n_tokens"]
     cont_offset = plan["off_p"] + 90
     target = cp[cont_offset:][:nt]
-    human = ch[plan["off_h"] + 90:][:nt]
+    human = ch[plan["off_h"] + 90 :][:nt]
     site = build_sites(gene, human, target, cp, cont_offset)
     n_shuffle, seed = _G["n_shuffle"], _G["seed"]
 
-    site_rows = [{"gene": gene, "site_set": name, "n_sites": int(s["idx"].size),
-                  "n_voting_species": site["n_voting_species"],
-                  "has_ortholog_evidence": site["has_ortholog_evidence"],
-                  "n_tokens": nt,
-                  **{f"{c}_n": int((s["gc_class"] == i).sum())
-                     for i, c in enumerate(GC_CLASSES)}}
-                 for name, s in site["sets"].items()]
+    site_rows = [
+        {
+            "gene": gene,
+            "site_set": name,
+            "n_sites": int(s["idx"].size),
+            "n_voting_species": site["n_voting_species"],
+            "has_ortholog_evidence": site["has_ortholog_evidence"],
+            "n_tokens": nt,
+            **{f"{c}_n": int((s["gc_class"] == i).sum()) for i, c in enumerate(GC_CLASSES)},
+        }
+        for name, s in site["sets"].items()
+    ]
 
     # ---- controls: exact by construction, so any deviation is a bug, not a result -------------
     ctrl_rows = []
     if _G["controls"]:
         rng = np.random.default_rng(seed)
         shuf = list(human)
-        random.Random(seed).shuffle(shuf)          # mononucleotide shuffle: composition kept,
-        controls = {"human_window": human,          # sequence destroyed -> the chance floor
-                    "platypus_target": target,
-                    "shuffled_human": "".join(shuf)}
+        random.Random(seed).shuffle(shuf)  # mononucleotide shuffle: composition kept,
+        controls = {
+            "human_window": human,  # sequence destroyed -> the chance floor
+            "platypus_target": target,
+            "shuffled_human": "".join(shuf),
+        }
         for cname, seq in controls.items():
             calls = gen_at_target(seq, target)
             for name, s in site["sets"].items():
@@ -306,32 +363,54 @@ def _one_gene(gene: str) -> tuple[list[dict], list[dict], list[dict]]:
             # Seeded per (gene, condition, sample): the null is reproducible record by record and
             # independent of how genes happen to fall across workers. crc32, NOT hash() -- Python
             # salts string hashing per process, so hash() would reseed differently on every run.
-            rng = np.random.default_rng(zlib.crc32(
-                f"{seed}|{gene}|{rec['condition']}|{rec['sample']}".encode()))
+            rng = np.random.default_rng(
+                zlib.crc32(f"{seed}|{gene}|{rec['condition']}|{rec['sample']}".encode())
+            )
             for name, s in site["sets"].items():
                 m = record_metrics(calls, s, n_shuffle, rng)
-                rows.append({"gene": gene, "condition": rec["condition"],
-                             "sample": rec["sample"], "site_set": name,
-                             "n_voting_species": site["n_voting_species"], **m})
+                rows.append(
+                    {
+                        "gene": gene,
+                        "condition": rec["condition"],
+                        "sample": rec["sample"],
+                        "site_set": name,
+                        "n_voting_species": site["n_voting_species"],
+                        **m,
+                    }
+                )
     return rows, site_rows, ctrl_rows
 
 
 # aggregation
-METRICS = ["A_cov", "A_all", "L", "C", "K", "excess", "A_null",
-           "A_M", "C_M", "frac_M_eq_P",
-           *[f"{c}_A" for c in GC_CLASSES]]
+METRICS = [
+    "A_cov",
+    "A_all",
+    "L",
+    "C",
+    "K",
+    "excess",
+    "A_null",
+    "A_M",
+    "C_M",
+    "frac_M_eq_P",
+    *[f"{c}_A" for c in GC_CLASSES],
+]
 
 
 def per_gene_table(df: pd.DataFrame) -> pd.DataFrame:
     """Average samples within each gene and retain sample counts."""
     keys = ["gene", "condition", "site_set"]
-    agg = df.groupby(keys, dropna=False).agg(
-        n_samples=("sample", "nunique"),
-        n_sites=("n_sites", "mean"),
-        n_voting_species=("n_voting_species", "first"),
-        **{m: (m, "mean") for m in METRICS},
-        **{f"{c}_n": (f"{c}_n", "mean") for c in GC_CLASSES},
-    ).reset_index()
+    agg = (
+        df.groupby(keys, dropna=False)
+        .agg(
+            n_samples=("sample", "nunique"),
+            n_sites=("n_sites", "mean"),
+            n_voting_species=("n_voting_species", "first"),
+            **{m: (m, "mean") for m in METRICS},
+            **{f"{c}_n": (f"{c}_n", "mean") for c in GC_CLASSES},
+        )
+        .reset_index()
+    )
     return agg
 
 
@@ -339,11 +418,14 @@ def levels_table(per: pd.DataFrame) -> pd.DataFrame:
     """ABSOLUTE levels of A, L, C, K per condition -- mean and SD over genes, not deltas."""
     rows = []
     for (site_set, cond), d in per.groupby(["site_set", "condition"]):
-        row = {"site_set": site_set, "condition": cond, "n_genes": int(d.gene.nunique()),
-               "n_samples_median": float(d.n_samples.median()),
-               "n_sites_per_gene": float(d.n_sites.mean())}
-        for m in ("A_cov", "A_all", "L", "C", "K", "A_null", "excess", "A_M", "C_M",
-                  "frac_M_eq_P"):
+        row = {
+            "site_set": site_set,
+            "condition": cond,
+            "n_genes": int(d.gene.nunique()),
+            "n_samples_median": float(d.n_samples.median()),
+            "n_sites_per_gene": float(d.n_sites.mean()),
+        }
+        for m in ("A_cov", "A_all", "L", "C", "K", "A_null", "excess", "A_M", "C_M", "frac_M_eq_P"):
             v = d[m].dropna()
             row[f"{m}_mean"] = float(v.mean()) if len(v) else np.nan
             row[f"{m}_sd"] = float(v.std(ddof=1)) if len(v) > 1 else np.nan
@@ -356,16 +438,30 @@ def describe(delta: pd.Series) -> dict:
     """Observed spread of a per-gene delta, without resampling or inference."""
     d = delta.dropna()
     if d.empty:
-        return {"n_genes": 0, "mean": np.nan, "median": np.nan, "sd": np.nan,
-                "q25": np.nan, "q75": np.nan, "frac_improved": np.nan}
-    return {"n_genes": int(d.size), "mean": float(d.mean()), "median": float(d.median()),
-            "sd": float(d.std(ddof=1)) if d.size > 1 else np.nan,
-            "q25": float(d.quantile(0.25)), "q75": float(d.quantile(0.75)),
-            "frac_improved": float((d > 0).mean())}
+        return {
+            "n_genes": 0,
+            "mean": np.nan,
+            "median": np.nan,
+            "sd": np.nan,
+            "q25": np.nan,
+            "q75": np.nan,
+            "frac_improved": np.nan,
+        }
+    return {
+        "n_genes": int(d.size),
+        "mean": float(d.mean()),
+        "median": float(d.median()),
+        "sd": float(d.std(ddof=1)) if d.size > 1 else np.nan,
+        "q25": float(d.quantile(0.25)),
+        "q75": float(d.quantile(0.75)),
+        "frac_improved": float((d > 0).mean()),
+    }
 
 
 def summarise(per: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Paired per-gene deltas against the SAME gene's unsteered generation, per condition x site set."""
+    """Paired per-gene deltas against the SAME gene's unsteered generation, per condition x site
+    set.
+    """
     rows, gc_rows = [], []
     for site_set, d in per.groupby("site_set"):
         base = d[d.condition == BASELINE].set_index("gene")
@@ -374,9 +470,13 @@ def summarise(per: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         for cond, c in d[d.condition != BASELINE].groupby("condition"):
             c = c.set_index("gene")
             common = base.index.intersection(c.index)
-            row = {"site_set": site_set, "condition": cond, "n_genes_total": len(common),
-                   "n_samples_median": float(c.loc[common, "n_samples"].median()),
-                   "n_sites_mean": float(c.loc[common, "n_sites"].mean())}
+            row = {
+                "site_set": site_set,
+                "condition": cond,
+                "n_genes_total": len(common),
+                "n_samples_median": float(c.loc[common, "n_samples"].median()),
+                "n_sites_mean": float(c.loc[common, "n_sites"].mean()),
+            }
             for m in METRICS:
                 delta = c.loc[common, m] - base.loc[common, m]
                 st = describe(delta)
@@ -391,17 +491,24 @@ def summarise(per: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
             rows.append(row)
             for cls in GC_CLASSES:
                 st = describe(c.loc[common, f"{cls}_A"] - base.loc[common, f"{cls}_A"])
-                gc_rows.append({"site_set": site_set, "condition": cond, "gc_class": cls,
-                                "n_sites_per_gene": float(c.loc[common, f"{cls}_n"].mean()),
-                                "level": float(c.loc[common, f"{cls}_A"].mean()),
-                                "base_level": float(base.loc[common, f"{cls}_A"].mean()),
-                                **{f"d_A_{k}": v for k, v in st.items()}})
+                gc_rows.append(
+                    {
+                        "site_set": site_set,
+                        "condition": cond,
+                        "gc_class": cls,
+                        "n_sites_per_gene": float(c.loc[common, f"{cls}_n"].mean()),
+                        "level": float(c.loc[common, f"{cls}_A"].mean()),
+                        "base_level": float(base.loc[common, f"{cls}_A"].mean()),
+                        **{f"d_A_{k}": v for k, v in st.items()},
+                    }
+                )
     return pd.DataFrame(rows), pd.DataFrame(gc_rows)
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--run", type=Path, required=True)
     ap.add_argument("--dir", default="stage4_cds_mean_blocks27")
     ap.add_argument("--out", default="site_directionality")
@@ -409,12 +516,18 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--workers", type=int, default=14)
     ap.add_argument("--genes", nargs="*", default=None)
-    ap.add_argument("--controls-only", action="store_true",
-                    help="run only the four structural controls and stop")
+    ap.add_argument(
+        "--controls-only",
+        action="store_true",
+        help="run only the four structural controls and stop",
+    )
     ap.add_argument("--no-controls", action="store_true")
-    ap.add_argument("--tables-only", action="store_true",
-                    help="rebuild the aggregate tables from the saved per_record.csv.gz, skipping "
-                         "all realignment -- for adding or changing a table without a 10-minute rerun")
+    ap.add_argument(
+        "--tables-only",
+        action="store_true",
+        help="rebuild the aggregate tables from the saved per_record.csv.gz, skipping "
+        "all realignment -- for adding or changing a table without a 10-minute rerun",
+    )
     args = ap.parse_args()
     d = args.run / args.dir
     out = args.run / args.out
@@ -453,10 +566,14 @@ def main() -> None:
     # codon position = idx % 3 is only meaningful if the continuation starts in frame
     bad = plan_df[(plan_df.off_p % 3 != 0) | (plan_df.off_h % 3 != 0)]
     if len(bad):
-        raise SystemExit(f"{len(bad)} genes have an out-of-frame offset; codon position would be "
-                         f"wrong: {list(bad.gene)[:5]}")
-    plan = {r.gene: {"n_tokens": int(r.n_tokens), "off_h": int(r.off_h), "off_p": int(r.off_p)}
-            for r in plan_df.itertuples()}
+        raise SystemExit(
+            f"{len(bad)} genes have an out-of-frame offset; codon position would be "
+            f"wrong: {list(bad.gene)[:5]}"
+        )
+    plan = {
+        r.gene: {"n_tokens": int(r.n_tokens), "off_h": int(r.off_h), "off_p": int(r.off_p)}
+        for r in plan_df.itertuples()
+    }
 
     gens: dict[str, list[dict]] = defaultdict(list)
     n_read = 0
@@ -472,13 +589,22 @@ def main() -> None:
     genes = [g for g in plan if g in gens and g in ch and g in cp]
     if args.genes:
         genes = [g for g in genes if g in set(args.genes)]
-    print(f"genes {len(genes)} | generation records {n_read} | "
-          f"ortholog fastas {sum(1 for g in genes if (ORTHO_DIR / f'{g}.fasta').exists())}"
-          f"/{len(genes)} | shuffles {args.n_shuffle}")
+    print(
+        f"genes {len(genes)} | generation records {n_read} | "
+        f"ortholog fastas {sum(1 for g in genes if (ORTHO_DIR / f'{g}.fasta').exists())}"
+        f"/{len(genes)} | shuffles {args.n_shuffle}"
+    )
 
-    payload = {"plan": plan, "ch": ch, "cp": cp, "gens": gens, "n_shuffle": args.n_shuffle,
-               "seed": args.seed, "controls_only": args.controls_only,
-               "controls": not args.no_controls}
+    payload = {
+        "plan": plan,
+        "ch": ch,
+        "cp": cp,
+        "gens": gens,
+        "n_shuffle": args.n_shuffle,
+        "seed": args.seed,
+        "controls_only": args.controls_only,
+        "controls": not args.no_controls,
+    }
     rows, site_rows, ctrl_rows = [], [], []
     with Pool(args.workers, initializer=_init, initargs=(payload,)) as pool:
         for i, (r, s, c) in enumerate(pool.imap_unordered(_one_gene, genes, chunksize=1), 1):
@@ -491,33 +617,48 @@ def main() -> None:
     sites = pd.DataFrame(site_rows)
     sites.to_csv(out / "sites_per_gene.csv", index=False)
     print("\nPredefined sites per gene (mean over genes):")
-    print(sites.groupby("site_set")[["n_sites", *[f"{c}_n" for c in GC_CLASSES]]]
-          .mean().round(1).to_string())
+    print(
+        sites.groupby("site_set")[["n_sites", *[f"{c}_n" for c in GC_CLASSES]]]
+        .mean()
+        .round(1)
+        .to_string()
+    )
 
     # ---- controls -----------------------------------------------------------------------------
     if ctrl_rows:
         ctrl = pd.DataFrame(ctrl_rows)
         ctrl.to_csv(out / "controls_per_gene.csv", index=False)
-        cs = ctrl.groupby(["control", "site_set"])[
-            ["A_cov", "A_all", "L", "C", "K", "A_null", "excess"]].mean().round(3)
+        cs = (
+            ctrl.groupby(["control", "site_set"])[
+                ["A_cov", "A_all", "L", "C", "K", "A_null", "excess"]
+            ]
+            .mean()
+            .round(3)
+        )
         cs.to_csv(out / "controls.csv")
-        print("\nCONTROLS (mean over genes) -- human_window must read A=L=0, "
-              "platypus_target must read 100:")
+        print(
+            "\nCONTROLS (mean over genes) -- human_window must read A=L=0, "
+            "platypus_target must read 100:"
+        )
         print(cs.to_string())
         fails = []
         for ss in SITE_SETS:
             hw = ctrl[(ctrl.control == "human_window") & (ctrl.site_set == ss)]
             pt = ctrl[(ctrl.control == "platypus_target") & (ctrl.site_set == ss)]
             if hw.A_cov.abs().max() > 1e-9 or hw.L.abs().max() > 1e-9:
-                fails.append(f"{ss}: human window scores A={hw.A_cov.max():.4f} L={hw.L.max():.4f}, "
-                             f"must be 0")
+                fails.append(
+                    f"{ss}: human window scores A={hw.A_cov.max():.4f} L={hw.L.max():.4f}, "
+                    f"must be 0"
+                )
             for col in ("A_cov", "L", "C", "K"):
                 if pt[col].notna().any() and abs(pt[col].min() - 100) > 1e-9:
-                    fails.append(f"{ss}: platypus target scores {col}={pt[col].min():.4f}, "
-                                 f"must be 100")
+                    fails.append(
+                        f"{ss}: platypus target scores {col}={pt[col].min():.4f}, must be 100"
+                    )
         if fails:
-            raise SystemExit("STRUCTURAL CONTROL FAILED -- no result is reportable:\n  "
-                             + "\n  ".join(fails))
+            raise SystemExit(
+                "STRUCTURAL CONTROL FAILED -- no result is reportable:\n  " + "\n  ".join(fails)
+            )
         print("  all structural controls pass exactly")
     if args.controls_only:
         print(f"\n-> {out}")
@@ -531,10 +672,14 @@ def main() -> None:
     # the permutation null must agree with its closed form; disagreement means the shuffle is wrong
     ok = df[["A_null", "A_null_perm_mean", "A_null_perm_sd"]].dropna()
     if len(ok):
-        z = (ok.A_null_perm_mean - ok.A_null) / (ok.A_null_perm_sd / np.sqrt(args.n_shuffle) + 1e-12)
+        z = (ok.A_null_perm_mean - ok.A_null) / (
+            ok.A_null_perm_sd / np.sqrt(args.n_shuffle) + 1e-12
+        )
         worst = float(np.abs(z).max())
-        print(f"\nshuffle null vs closed form: max |z| = {worst:.2f} over {len(ok)} records "
-              f"(mean abs diff {float((ok.A_null_perm_mean - ok.A_null).abs().mean()):.4f} pp)")
+        print(
+            f"\nshuffle null vs closed form: max |z| = {worst:.2f} over {len(ok)} records "
+            f"(mean abs diff {float((ok.A_null_perm_mean - ok.A_null).abs().mean()):.4f} pp)"
+        )
         if worst > 8:
             raise SystemExit("permutation null disagrees with its closed form -- shuffle is wrong")
 
@@ -546,17 +691,33 @@ def main() -> None:
     gc.to_csv(out / "gc_class.csv", index=False)
     levels_table(per).to_csv(out / "levels_by_condition.csv", index=False)
 
-    (out / "config.json").write_text(json.dumps({
-        "run": str(args.run), "arm_dir": args.dir, "n_shuffle": args.n_shuffle,
-        "seed": args.seed, "site_sets": list(SITE_SETS), "baseline": BASELINE,
-        "generation_records_read": n_read, "genes": len(genes),
-        "null_strata": "(human base, codon position) = 12",
-        "null_point_estimate": "closed form (analytic_null); permutations run as a check only",
-        "resampling": "none -- observed per-gene deltas only (user, 2026-08-22)",
-        "definitions": {"A_cov": "(Y==P)/covered", "A_all": "(Y==P)/all sites (published defn)",
-                        "L": "(Y!=H)/covered", "C": "(Y==P)/(Y!=H)", "K": "covered/all sites",
-                        "excess": "A_cov - expected A under within-(H,codon-pos) shuffle"},
-    }, indent=2) + "\n")
+    (out / "config.json").write_text(
+        json.dumps(
+            {
+                "run": str(args.run),
+                "arm_dir": args.dir,
+                "n_shuffle": args.n_shuffle,
+                "seed": args.seed,
+                "site_sets": list(SITE_SETS),
+                "baseline": BASELINE,
+                "generation_records_read": n_read,
+                "genes": len(genes),
+                "null_strata": "(human base, codon position) = 12",
+                "null_point_estimate": "closed form; permutations are a check only",
+                "resampling": "none -- observed per-gene deltas only (user, 2026-08-22)",
+                "definitions": {
+                    "A_cov": "(Y==P)/covered",
+                    "A_all": "(Y==P)/all sites (published defn)",
+                    "L": "(Y!=H)/covered",
+                    "C": "(Y==P)/(Y!=H)",
+                    "K": "covered/all sites",
+                    "excess": "A_cov - expected A under within-(H,codon-pos) shuffle",
+                },
+            },
+            indent=2,
+        )
+        + "\n"
+    )
 
     pd.set_option("display.width", 250)
     for ss in SITE_SETS:

@@ -1,6 +1,8 @@
-"""Fetch 1:1 mammalian ortholog CDS for the platypus-strat panel, so platypus AUTAPOMORPHIES can be defined for it. CPU + network only, no GPU."""
-from __future__ import annotations
+"""Fetch 1:1 mammalian ortholog CDS for the platypus-strat panel, so platypus AUTAPOMORPHIES can be
+defined for it. CPU + network only, no GPU.
+"""
 
+from __future__ import annotations
 import argparse
 import csv
 import json
@@ -133,8 +135,10 @@ def main() -> None:
     with ThreadPoolExecutor(max_workers=args.workers) as ex:
         list(ex.map(resolve_one, todo))
     n_sp = [len(v) for v in homs.values()]
-    log(f"homologies done: median {sorted(n_sp)[len(n_sp)//2]} species/gene, "
-        f"{sum(1 for v in n_sp if v == 0)} genes with none")
+    log(
+        f"homologies done: median {sorted(n_sp)[len(n_sp) // 2]} species/gene, "
+        f"{sum(1 for v in n_sp if v == 0)} genes with none"
+    )
 
     # ---- 2. CDS per (gene, species) ------------------------------------------------------------
     jobs = [(g, sp, gid) for g, keep in homs.items() for sp, gid in keep.items() if gid]
@@ -146,9 +150,17 @@ def main() -> None:
         gene, sp, gid = job
         rec = fetch_cds(gid, sp)
         ok, flags = qc(rec["cds"])
-        man.append({"gene": gene, "species": sp, "ortholog_gene_id": gid, "transcript": rec["tx"],
-                    "cds_len": len(rec["cds"]), "qc_pass": ok,
-                    "qc_flags": flags or rec.get("err", "")})
+        man.append(
+            {
+                "gene": gene,
+                "species": sp,
+                "ortholog_gene_id": gid,
+                "transcript": rec["tx"],
+                "cds_len": len(rec["cds"]),
+                "qc_pass": ok,
+                "qc_flags": flags or rec.get("err", ""),
+            }
+        )
         got[0] += 1
         if got[0] % 250 == 0:
             log(f"  cds {got[0]}/{len(jobs)}")
@@ -170,14 +182,30 @@ def main() -> None:
             lines.append(f">{gene}|{m['species']}|{m['ortholog_gene_id']}\n{rec['cds']}")
             if m["species"] == PLATYPUS:
                 s1 = stage1_plat.get(gene, "")
-                agree.append({"gene": gene, "stage1_len": len(s1), "ensembl_len": len(rec["cds"]),
-                              "identical": s1 == rec["cds"]})
+                agree.append(
+                    {
+                        "gene": gene,
+                        "stage1_len": len(s1),
+                        "ensembl_len": len(rec["cds"]),
+                        "identical": s1 == rec["cds"],
+                    }
+                )
         if lines:
             (OUT_DIR / "cds" / f"{gene}.fasta").write_text("\n".join(lines) + "\n")
 
     with (OUT_DIR / "ortholog_manifest.csv").open("w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=["gene", "species", "ortholog_gene_id", "transcript",
-                                           "cds_len", "qc_pass", "qc_flags"])
+        w = csv.DictWriter(
+            fh,
+            fieldnames=[
+                "gene",
+                "species",
+                "ortholog_gene_id",
+                "transcript",
+                "cds_len",
+                "qc_pass",
+                "qc_flags",
+            ],
+        )
         w.writeheader()
         w.writerows(sorted(man, key=lambda m: (m["gene"], m["species"])))
     if agree:
@@ -189,12 +217,17 @@ def main() -> None:
     npass = sum(1 for m in man if m["qc_pass"])
     per = sorted(sum(1 for m in ms if m["qc_pass"]) for ms in by_gene.values())
     log(f"\nCDS: {npass}/{len(man)} passed QC")
-    log(f"genes with a fasta: {sum(1 for ms in by_gene.values() if any(m['qc_pass'] for m in ms))}"
-        f"/{len(panel)}")
+    log(
+        f"genes with a fasta: {sum(1 for ms in by_gene.values() if any(m['qc_pass'] for m in ms))}"
+        f"/{len(panel)}"
+    )
     if per:
-        log(f"voting species per gene: median {per[len(per)//2]}, min {per[0]}, max {per[-1]}")
+        log(f"voting species per gene: median {per[len(per) // 2]}, min {per[0]}, max {per[-1]}")
     if agree:
-        log(f"platypus stage1 vs Ensembl identical: {sum(a['identical'] for a in agree)}/{len(agree)}")
+        log(
+            "platypus stage1 vs Ensembl identical: "
+            f"{sum(a['identical'] for a in agree)}/{len(agree)}"
+        )
     log(f"[wrote] {OUT_DIR}")
 
 

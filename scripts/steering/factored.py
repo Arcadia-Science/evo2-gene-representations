@@ -22,19 +22,28 @@ def species_deviations(embeds: dict[str, np.ndarray]):
 def species_subspace(embeds: dict[str, np.ndarray], k: int = 3):
     """PCA of the species deviations."""
     sp, dev, abstract = species_deviations(embeds)
-    # SVD of the (already mean-zero) deviations: dev = Us · diag(s) · Vt ; principal dirs = rows of Vt.
+    # SVD of the (already mean-zero) deviations: dev = Us · diag(s) · Vt ; principal dirs = rows of
+    # Vt.
     _, s, Vt = np.linalg.svd(dev, full_matrices=False)
     kk = int(min(k, Vt.shape[0], np.count_nonzero(s > 1e-12)))
-    U = Vt[:kk].T.copy()                                   # (H,kk), orthonormal columns
-    coords = {name: dev[i] @ U for i, name in enumerate(sp)}   # (kk,) per species
+    U = Vt[:kk].T.copy()  # (H,kk), orthonormal columns
+    coords = {name: dev[i] @ U for i, name in enumerate(sp)}  # (kk,) per species
     var = s[:kk] ** 2
-    evr = var / (np.sum(s ** 2) + 1e-12)
+    evr = var / (np.sum(s**2) + 1e-12)
     return {"abstract": abstract, "U": U, "coords": coords, "evr": evr, "species": sp}
 
 
-def species_direction(embeds: dict[str, np.ndarray], target: str, reference: np.ndarray | None = None):
-    """Unit species direction toward `target` and its scalar set-point, for steer_ops.clamp_direction."""
-    ref = abstract_gene_vector(embeds) if reference is None else np.asarray(reference, dtype=np.float64)
+def species_direction(
+    embeds: dict[str, np.ndarray], target: str, reference: np.ndarray | None = None
+):
+    """Unit species direction toward `target` and its scalar set-point, for
+    steer_ops.clamp_direction.
+    """
+    ref = (
+        abstract_gene_vector(embeds)
+        if reference is None
+        else np.asarray(reference, dtype=np.float64)
+    )
     tgt = np.asarray(embeds[target], dtype=np.float64)
     d = tgt - ref
     u = d / (np.linalg.norm(d) + 1e-8)
@@ -49,14 +58,17 @@ def anisotropic_axis(store: dict[str, np.ndarray], layer_idx: int) -> np.ndarray
 
 
 def species_direction_orth(embeds: dict[str, np.ndarray], target: str, axis: np.ndarray):
-    """ANISOTROPY-ORTHOGONALISED species direction — the control for "is this steering the species, or just pushing along the shared norm axis?"."""
+    """
+    ANISOTROPY-ORTHOGONALISED species direction — the control for "is this steering the species, or
+    just pushing along the shared norm axis?".
+    """
     u, _ = species_direction(embeds, target)
     a = np.asarray(axis, dtype=np.float64)
     a = a / (np.linalg.norm(a) + 1e-12)
     u = np.asarray(u, dtype=np.float64)
     u_perp = u - (u @ a) * a
     n = np.linalg.norm(u_perp)
-    if n < 1e-8:                      # û was essentially the anisotropic axis itself
+    if n < 1e-8:  # û was essentially the anisotropic axis itself
         return None, 0.0
     u_perp = u_perp / n
     tgt = np.asarray(embeds[target], dtype=np.float64)
@@ -65,7 +77,9 @@ def species_direction_orth(embeds: dict[str, np.ndarray], target: str, axis: np.
 
 # --------------------------------------------------------------------------- self-check (no Evo2)
 def _test(tol: float = 1e-6) -> None:
-    """CPU-only sanity check on fake embeddings: subspace round-trips, coords match, abstract = mean."""
+    """CPU-only sanity check on fake embeddings: subspace round-trips, coords match, abstract =
+    mean.
+    """
     rng = np.random.default_rng(0)
     H, S, k = 40, 6, 3
     names = [f"sp{i}" for i in range(S)]
@@ -99,8 +113,10 @@ def _test(tol: float = 1e-6) -> None:
 
     print("factored self-check PASSED")
     print(f"  orth: û⊥·â = {r_perp:.2e}, ‖û⊥‖ = {np.linalg.norm(up):.6f}")
-    print(f"  species={S} H={H} k_req={k} k_eff={U.shape[1]}  evr={np.round(dec['evr'], 3).tolist()}")
-    print(f"  U orthonormal, abstract==mean, coords==Uᵀdev, set-point consistent")
+    print(
+        f"  species={S} H={H} k_req={k} k_eff={U.shape[1]}  evr={np.round(dec['evr'], 3).tolist()}"
+    )
+    print("  U orthonormal, abstract==mean, coords==Uᵀdev, set-point consistent")
 
 
 if __name__ == "__main__":

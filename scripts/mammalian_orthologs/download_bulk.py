@@ -1,7 +1,6 @@
 """Download resumable Ensembl GTF, genome FASTA, and validation CDS files for the mammal panel."""
 
 from __future__ import annotations
-
 import gzip
 import json
 import re
@@ -24,7 +23,7 @@ def _listing(url: str, tries: int = 4) -> str:
         try:
             return urllib.request.urlopen(url, timeout=30).read().decode()
         except Exception:
-            time.sleep(2 ** a)
+            time.sleep(2**a)
     return ""
 
 
@@ -50,11 +49,14 @@ def _download(url: str, dest: Path, decompress_gz: bool = False) -> None:
                     with open(tmp, "wb") as out:
                         shutil.copyfileobj(r, out, length=1 << 22)
             tmp.replace(dest)
-            print(f"    {dest.name}  ({dest.stat().st_size/1e6:.0f} MB, {time.time()-t:.0f}s)", flush=True)
+            print(
+                f"    {dest.name}  ({dest.stat().st_size / 1e6:.0f} MB, {time.time() - t:.0f}s)",
+                flush=True,
+            )
             return
         except Exception as e:
             print(f"    retry {dest.name} ({type(e).__name__})", flush=True)
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
     print(f"    FAILED {dest.name}", flush=True)
 
 
@@ -76,10 +78,10 @@ def main() -> None:
             continue
         # assembly token = middle of the filename: <Species>.<assembly>.dna.toplevel.fa.gz
         asm = dna.replace(".dna.toplevel.fa.gz", "").split(".", 1)[1]
-        _download(f"{BASE}/gtf/{sp}/{gtf}", d / gtf)                       # required
+        _download(f"{BASE}/gtf/{sp}/{gtf}", d / gtf)  # required
         _download(f"{BASE}/fasta/{sp}/dna/{dna}", d / dna[:-3], decompress_gz=True)  # required
         if cds:
-            _download(f"{BASE}/fasta/{sp}/cds/{cds}", d / cds)             # validation only
+            _download(f"{BASE}/fasta/{sp}/cds/{cds}", d / cds)  # validation only
         prov["species"][sp] = {"assembly": asm, "gtf": gtf, "dna": dna[:-3], "cds": cds}
         (DEST / "provenance.json").write_text(json.dumps(prov, indent=2))
     print("DOWNLOADS DONE", flush=True)

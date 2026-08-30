@@ -1,11 +1,11 @@
-"""Resolve high-confidence 1:1 mammalian orthologs for every human gene in the panel via Ensembl Compara, one ortholog group per human gene (paralogs kept separate)."""
+"""Resolve high-confidence 1:1 mammalian orthologs for every human gene in the panel via Ensembl
+Compara, one ortholog group per human gene (paralogs kept separate).
+"""
 
 from __future__ import annotations
-
 import json
-import sys
-import time
 import os
+import time
 import urllib.request
 from pathlib import Path
 
@@ -60,10 +60,10 @@ def _get(path: str, tries: int = 5) -> dict | None:
         except urllib.error.HTTPError as e:
             if e.code in (400, 404):
                 return None
-            wait = float(e.headers.get("Retry-After", 2 ** attempt)) if e.code == 429 else 2 ** attempt
+            wait = float(e.headers.get("Retry-After", 2**attempt)) if e.code == 429 else 2**attempt
             time.sleep(wait)
         except Exception:
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
     return None
 
 
@@ -75,8 +75,10 @@ def fetch_homologies(symbol: str, gene_id: str | None = None) -> list[dict]:
         return json.loads(cache.read_text())
     # target_taxon=40674 (Mammalia) shrinks the server-side homology set ~24s->7s per gene and keeps
     # only mammalian orthologs (our whole panel is mammalian anyway).
-    q = ("?type=orthologues;format=condensed;content-type=application/json;"
-         "compara=vertebrates;target_taxon=40674")
+    q = (
+        "?type=orthologues;format=condensed;content-type=application/json;"
+        "compara=vertebrates;target_taxon=40674"
+    )
     if gene_id:
         data = _get(f"/homology/id/homo_sapiens/{gene_id}{q}")
     else:
@@ -93,9 +95,11 @@ def fetch_homologies(symbol: str, gene_id: str | None = None) -> list[dict]:
         # Symbol path with a genuinely ambiguous symbol. There is no correct answer without a gene
         # id, so say so loudly and take the richest entry -- which recovers the HSD17B7 case -- but
         # this is a heuristic, not a fix. The fix is to pass gene_id.
-        print(f"  AMBIGUOUS SYMBOL {symbol}: maps to {len(entries)} Ensembl genes "
-              f"{[e.get('id') for e in entries]}; taking the one with the most homologies. "
-              f"Pass gene_id to disambiguate.")
+        print(
+            f"  AMBIGUOUS SYMBOL {symbol}: maps to {len(entries)} Ensembl genes "
+            f"{[e.get('id') for e in entries]}; taking the one with the most homologies. "
+            f"Pass gene_id to disambiguate."
+        )
         entries = sorted(entries, key=lambda e: len(e.get("homologies") or []), reverse=True)
     homs = (entries[0].get("homologies") or []) if entries else []
     # Leave empty responses uncached because they may represent transient server failures.
@@ -116,15 +120,18 @@ def resolve() -> None:
     # Parallel prefetch (fetch is 100% network/server-latency-bound; parsing is trivial). Cached, so
     # this is idempotent and resumable. Bounded pool stays within Ensembl fair-use.
     from concurrent.futures import ThreadPoolExecutor
+
     all_genes = [g for fam in order for g in gene_families[fam]]
     todo = [g for g in all_genes if not (CACHE_DIR / f"{g}.json").exists()]
     print(f"Prefetching {len(todo)}/{len(all_genes)} uncached homology queries (pool=6)...")
     done = [0]
+
     def _pf(g):
         fetch_homologies(g)
         done[0] += 1
         if done[0] % 25 == 0:
             print(f"  prefetched {done[0]}/{len(todo)}", flush=True)
+
     if todo:
         with ThreadPoolExecutor(max_workers=6) as ex:
             list(ex.map(_pf, todo))
@@ -144,19 +151,36 @@ def resolve() -> None:
                 if sp in species_set and h.get("type") == "ortholog_one2one" and sp not in per_sp:
                     per_sp[sp] = h.get("id")
             for sp, gid in per_sp.items():
-                rows.append({
-                    "family": fam, "human_gene": g, "species": sp,
-                    "clade": SPECIES[sp][1], "common_name": SPECIES[sp][0],
-                    "ortholog_gene_id": gid, "type": "ortholog_one2one",
-                })
+                rows.append(
+                    {
+                        "family": fam,
+                        "human_gene": g,
+                        "species": sp,
+                        "clade": SPECIES[sp][1],
+                        "common_name": SPECIES[sp][0],
+                        "ortholog_gene_id": gid,
+                        "type": "ortholog_one2one",
+                    }
+                )
             if (i + 1) % 25 == 0:
-                print(f"  {i+1}/{len(genes)} genes resolved")
+                print(f"  {i + 1}/{len(genes)} genes resolved")
     # write
     import csv
+
     res = OUT_DIR / "ortholog_resolution.csv"
     with open(res, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["family", "human_gene", "species", "clade",
-                                          "common_name", "ortholog_gene_id", "type"])
+        w = csv.DictWriter(
+            f,
+            fieldnames=[
+                "family",
+                "human_gene",
+                "species",
+                "clade",
+                "common_name",
+                "ortholog_gene_id",
+                "type",
+            ],
+        )
         w.writeheader()
         w.writerows(rows)
     print(f"\nWrote {res}  ({len(rows)} one2one ortholog loci, human query gene excluded)")
@@ -164,6 +188,7 @@ def resolve() -> None:
     # per-family sizes. n_loci counts non-human orthologs; +1 human locus per group is added when
     # loci are actually extracted (the human gene is the query, always present).
     import pandas as pd
+
     df = pd.DataFrame(rows)
     sizes = []
     for fam in order:
@@ -172,22 +197,26 @@ def resolve() -> None:
         groups = sub["human_gene"].nunique()
         n_nonhuman = len(sub)
         n_total = n_nonhuman + n_genes  # + human locus per human gene
-        sizes.append({
-            "family": fam,
-            "n_human_genes": n_genes,
-            "groups_with_orthologs": groups,
-            "loci_nonhuman": n_nonhuman,
-            "loci_total_incl_human": n_total,
-            "mean_species_per_group": round(n_total / n_genes, 1) if n_genes else 0,
-        })
+        sizes.append(
+            {
+                "family": fam,
+                "n_human_genes": n_genes,
+                "groups_with_orthologs": groups,
+                "loci_nonhuman": n_nonhuman,
+                "loci_total_incl_human": n_total,
+                "mean_species_per_group": round(n_total / n_genes, 1) if n_genes else 0,
+            }
+        )
     sz = pd.DataFrame(sizes)
     sz.to_csv(OUT_DIR / "family_sizes.csv", index=False)
-    print(f"Wrote {OUT_DIR/'family_sizes.csv'}")
+    print(f"Wrote {OUT_DIR / 'family_sizes.csv'}")
     print("\n" + sz.to_string(index=False))
     tot = int(sz["loci_total_incl_human"].sum())
     print(f"\nTOTAL loci (incl. human, one2one, pre-locus-QC): {tot}")
-    print("Note: still to be trimmed by locus QC (complete start/stop, N-content, length, "
-          "syntenic-neighbor); %id + synteny added at extraction.")
+    print(
+        "Note: still to be trimmed by locus QC (complete start/stop, N-content, length, "
+        "syntenic-neighbor); %id + synteny added at extraction."
+    )
 
 
 if __name__ == "__main__":

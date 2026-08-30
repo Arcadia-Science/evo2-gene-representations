@@ -1,7 +1,6 @@
 """Generate composition-matched control sequence sets for the Evo2 gene-family panel."""
 
 from __future__ import annotations
-
 import argparse
 import random
 from collections import defaultdict
@@ -13,22 +12,84 @@ DATA_DIR = Path("data/evo2_gene_families")
 CONTROL_ROOT = DATA_DIR / "controls"
 # kmer4/kmer6 preserve exact k-mer spectra. `missense_subset` is nested within each recode.
 # The paired-p3 arms share edited sites and rates and should be compared only with each other.
-CONTROLS = ["dinuc_shuffle", "codon_shuffle", "synonymous_recode", "gc_match",
-            "kmer4_shuffle", "kmer6_shuffle", "missense_subset",
-            "paired_p3_syn", "paired_p3_missense"]
+CONTROLS = [
+    "dinuc_shuffle",
+    "codon_shuffle",
+    "synonymous_recode",
+    "gc_match",
+    "kmer4_shuffle",
+    "kmer6_shuffle",
+    "missense_subset",
+    "paired_p3_syn",
+    "paired_p3_missense",
+]
 SEED = 1234
 
 # Standard genetic code (frame-0 translation for amino-acid grouping).
 _CODON = {
-    "TTT": "F", "TTC": "F", "TTA": "L", "TTG": "L", "CTT": "L", "CTC": "L", "CTA": "L",
-    "CTG": "L", "ATT": "I", "ATC": "I", "ATA": "I", "ATG": "M", "GTT": "V", "GTC": "V",
-    "GTA": "V", "GTG": "V", "TCT": "S", "TCC": "S", "TCA": "S", "TCG": "S", "CCT": "P",
-    "CCC": "P", "CCA": "P", "CCG": "P", "ACT": "T", "ACC": "T", "ACA": "T", "ACG": "T",
-    "GCT": "A", "GCC": "A", "GCA": "A", "GCG": "A", "TAT": "Y", "TAC": "Y", "TAA": "*",
-    "TAG": "*", "CAT": "H", "CAC": "H", "CAA": "Q", "CAG": "Q", "AAT": "N", "AAC": "N",
-    "AAA": "K", "AAG": "K", "GAT": "D", "GAC": "D", "GAA": "E", "GAG": "E", "TGT": "C",
-    "TGC": "C", "TGA": "*", "TGG": "W", "CGT": "R", "CGC": "R", "CGA": "R", "CGG": "R",
-    "AGT": "S", "AGC": "S", "AGA": "R", "AGG": "R", "GGT": "G", "GGC": "G", "GGA": "G",
+    "TTT": "F",
+    "TTC": "F",
+    "TTA": "L",
+    "TTG": "L",
+    "CTT": "L",
+    "CTC": "L",
+    "CTA": "L",
+    "CTG": "L",
+    "ATT": "I",
+    "ATC": "I",
+    "ATA": "I",
+    "ATG": "M",
+    "GTT": "V",
+    "GTC": "V",
+    "GTA": "V",
+    "GTG": "V",
+    "TCT": "S",
+    "TCC": "S",
+    "TCA": "S",
+    "TCG": "S",
+    "CCT": "P",
+    "CCC": "P",
+    "CCA": "P",
+    "CCG": "P",
+    "ACT": "T",
+    "ACC": "T",
+    "ACA": "T",
+    "ACG": "T",
+    "GCT": "A",
+    "GCC": "A",
+    "GCA": "A",
+    "GCG": "A",
+    "TAT": "Y",
+    "TAC": "Y",
+    "TAA": "*",
+    "TAG": "*",
+    "CAT": "H",
+    "CAC": "H",
+    "CAA": "Q",
+    "CAG": "Q",
+    "AAT": "N",
+    "AAC": "N",
+    "AAA": "K",
+    "AAG": "K",
+    "GAT": "D",
+    "GAC": "D",
+    "GAA": "E",
+    "GAG": "E",
+    "TGT": "C",
+    "TGC": "C",
+    "TGA": "*",
+    "TGG": "W",
+    "CGT": "R",
+    "CGC": "R",
+    "CGA": "R",
+    "CGG": "R",
+    "AGT": "S",
+    "AGC": "S",
+    "AGA": "R",
+    "AGG": "R",
+    "GGT": "G",
+    "GGC": "G",
+    "GGA": "G",
     "GGG": "G",
 }
 
@@ -46,12 +107,12 @@ def _random_arborescence(edges: dict, verts: set, last, rng: random.Random) -> d
         if v in in_tree:
             continue
         u = v
-        while u not in in_tree:                      # random walk, erasing loops as it goes
+        while u not in in_tree:  # random walk, erasing loops as it goes
             succ = edges[u]
             next_edge[u] = succ[rng.randrange(len(succ))]
             u = next_edge[u]
         u = v
-        while u not in in_tree:                      # commit the loop-erased path
+        while u not in in_tree:  # commit the loop-erased path
             in_tree.add(u)
             u = next_edge[u]
     return next_edge
@@ -65,7 +126,7 @@ def _euler_shuffle(symbols: list, rng: random.Random) -> list:
     last = symbols[-1]
     verts = set(symbols)
     edges: dict = defaultdict(list)
-    for a, b in zip(symbols[:-1], symbols[1:]):
+    for a, b in zip(symbols[:-1], symbols[1:], strict=False):
         edges[a].append(b)
     # Every vertex other than `last` has an outgoing edge: a symbol occurring only at the
     # final position IS `last`. So the walk in _random_arborescence cannot dead-end.
@@ -73,11 +134,11 @@ def _euler_shuffle(symbols: list, rng: random.Random) -> list:
 
     avail = {x: list(edges.get(x, [])) for x in verts}
     for x, e in last_edge.items():
-        avail[x].remove(e)                           # reserve the tree edge for last
+        avail[x].remove(e)  # reserve the tree edge for last
     for x in verts:
         rng.shuffle(avail[x])
         if x in last_edge:
-            avail[x].append(last_edge[x])            # terminal edge consumed last
+            avail[x].append(last_edge[x])  # terminal edge consumed last
     out = [symbols[0]]
     cur = symbols[0]
     idx = {x: 0 for x in verts}
@@ -160,11 +221,12 @@ _SENSE_CODONS = [c for c in _ALL_CODONS if _CODON[c] != "*"]
 
 
 def _hamming(a: str, b: str) -> int:
-    return sum(x != y for x, y in zip(a, b))
+    return sum(x != y for x, y in zip(a, b, strict=False))
 
 
 # ── Matched synonymous/missense pair
-# Both arms edit the same eligible position-3 sites at the same rate; only the protein outcome differs.
+# Both arms edit the same eligible position-3 sites at the same rate; only the protein outcome
+# differs.
 # Compare these arms with each other, not with `synonymous_recode`, which has a different edit rate.
 def _p3_alternatives(cod: str) -> tuple[list[str], list[str]]:
     """(synonymous, missense) position-3 alternatives of `cod`, stops never included."""
@@ -191,9 +253,9 @@ def paired_p3(seq: str, fam_usage: dict, rng: random.Random, arm: str) -> str:
     ncod = len(s) // 3
     out = []
     for i in range(ncod):
-        cod = s[i * 3:i * 3 + 3]
+        cod = s[i * 3 : i * 3 + 3]
         syn, mis = _p3_alternatives(cod)
-        if not syn or not mis:               # 4-fold (no missense) or 1-fold (no synonym): skip
+        if not syn or not mis:  # 4-fold (no missense) or 1-fold (no synonym): skip
             out.append(cod)
             continue
         if arm == "missense":
@@ -204,33 +266,38 @@ def paired_p3(seq: str, fam_usage: dict, rng: random.Random, arm: str) -> str:
                 out.append(rng.choice(syn))
             else:
                 codons, weights = usage
-                w = [dict(zip(codons, weights)).get(c, 0) for c in syn]
-                out.append(rng.choices(syn, weights=w, k=1)[0] if sum(w) > 0
-                           else rng.choice(syn))
-    return "".join(out) + s[ncod * 3:]
+                w = [dict(zip(codons, weights, strict=False)).get(c, 0) for c in syn]
+                out.append(rng.choices(syn, weights=w, k=1)[0] if sum(w) > 0 else rng.choice(syn))
+    return "".join(out) + s[ncod * 3 :]
 
 
 def missense_subset(seq: str, recoded: str, rng: random.Random) -> str:
-    """The NONSYNONYMOUS counterpart of a `synonymous_recode`, changing ONLY bases the recode itself changed — a strict subset of the recode's edits, never a base the recode left alone."""
+    """The NONSYNONYMOUS counterpart of a `synonymous_recode`, changing ONLY bases the recode itself
+    changed — a strict subset of the recode's edits, never a base the recode left alone.
+    """
     s, r = seq.upper(), recoded.upper()
     ncod = min(len(s), len(r)) // 3
     out = []
     for i in range(ncod):
-        src, rec = s[i * 3:i * 3 + 3], r[i * 3:i * 3 + 3]
+        src, rec = s[i * 3 : i * 3 + 3], r[i * 3 : i * 3 + 3]
         aa = _CODON.get(src)
         if aa is None or src == rec:
-            out.append(src)                    # non-ACGT, or the recode left this codon alone
+            out.append(src)  # non-ACGT, or the recode left this codon alone
             continue
         allowed = {j for j in range(3) if src[j] != rec[j]}
-        cands = [c for c in _SENSE_CODONS
-                 if c != src and _CODON[c] != aa
-                 and all(c[j] == src[j] for j in range(3) if j not in allowed)]
+        cands = [
+            c
+            for c in _SENSE_CODONS
+            if c != src
+            and _CODON[c] != aa
+            and all(c[j] == src[j] for j in range(3) if j not in allowed)
+        ]
         if not cands:
-            out.append(src)                    # no missense reachable inside the recode's sites
+            out.append(src)  # no missense reachable inside the recode's sites
             continue
-        best = max(_hamming(c, src) for c in cands)   # use as much of `allowed` as possible
+        best = max(_hamming(c, src) for c in cands)  # use as much of `allowed` as possible
         out.append(rng.choice([c for c in cands if _hamming(c, src) == best]))
-    return "".join(out) + s[ncod * 3:]
+    return "".join(out) + s[ncod * 3 :]
 
 
 def gc_match(seq: str, rng: random.Random) -> str:
@@ -269,7 +336,9 @@ def load_family_fastas() -> tuple[dict[str, str], dict[str, list[tuple[str, str]
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--controls", nargs="+", default=CONTROLS, choices=CONTROLS)
     args = ap.parse_args()
 
@@ -279,8 +348,9 @@ def main() -> None:
     manifest = pd.read_csv(DATA_DIR / "manifest.csv")
 
     needs_usage = {"synonymous_recode", "missense_subset", "paired_p3_syn"}
-    fam_usage_all = (build_family_codon_usage(seqs_by_family)
-                     if needs_usage & set(args.controls) else {})
+    fam_usage_all = (
+        build_family_codon_usage(seqs_by_family) if needs_usage & set(args.controls) else {}
+    )
 
     for control in args.controls:
         rng = random.Random(SEED)  # fresh deterministic stream per control
@@ -312,7 +382,8 @@ def main() -> None:
                     c = paired_p3(s, {}, rng, "missense")
                 elif control == "missense_subset":
                     c = missense_subset(
-                        s, synonymous_recode(s, fam_usage_all[fam], partner_rng), rng)
+                        s, synonymous_recode(s, fam_usage_all[fam], partner_rng), rng
+                    )
                 else:  # gc_match
                     c = gc_match(s, rng)
                 lines.append(f">{hdr}\n{c}")

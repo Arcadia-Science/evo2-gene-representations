@@ -17,10 +17,12 @@ NUISANCE = ["aln_len_trimmed", "n_taxa_tree", "log_cds_len", "retained_frac"]
 # Use four confirmatory predictors spanning the effective rate-statistic axes.
 # Report remaining predictors as exploratory.
 CONFIRMATORY = ["dN_hp_yn", "dS_hp_yn", "focal_residual", "treeness"]
-CONFIRM_ROLE = {"dN_hp_yn": "PC1 amino-acid divergence",
-                "dS_hp_yn": "PC2 synonymous divergence (NEGATIVE CONTROL)",
-                "focal_residual": "PC3 platypus-lineage acceleration",
-                "treeness": "PC4 rate heterogeneity"}
+CONFIRM_ROLE = {
+    "dN_hp_yn": "PC1 amino-acid divergence",
+    "dS_hp_yn": "PC2 synonymous divergence (NEGATIVE CONTROL)",
+    "focal_residual": "PC3 platypus-lineage acceleration",
+    "treeness": "PC4 rate heterogeneity",
+}
 # H1a is orientation, H1b is magnitude. They are SEPARATE hypotheses: a gene can carry a large
 # difference vector that points the consensus way, or a small one that does not, and the two have
 # opposite implications for steering. Holm runs over 4 predictors x 2 outcome families.
@@ -29,9 +31,17 @@ OUTCOMES_H1B = ["delta_norm"]
 
 # H2b tests dN and omega against dS as the neutral-divergence control.
 # Keep codeml models separate and prioritize independently estimated yn00 dN/dS.
-DNDS_PRIMARY = ["dN_background_yn", "omega_background_yn", "dN_hp_yn", "omega_hp_yn",
-                "omega_m0", "omega_plat_m2", "omega_bg_m2",
-                "dN_background_fr", "omega_platypus_fr"]
+DNDS_PRIMARY = [
+    "dN_background_yn",
+    "omega_background_yn",
+    "dN_hp_yn",
+    "omega_hp_yn",
+    "omega_m0",
+    "omega_plat_m2",
+    "omega_bg_m2",
+    "dN_background_fr",
+    "omega_platypus_fr",
+]
 DNDS_NEGCTRL = ["dS_background_yn", "dS_hp_yn", "dS_background_fr", "tree_dS_m0"]
 
 
@@ -89,13 +99,15 @@ def holm(pvals: list[float]) -> list[float]:
 
 
 def shape_fit(x: np.ndarray, y: np.ndarray, strata: np.ndarray) -> dict:
-    """The three pre-registered shape statistics for H1a/H1b/H2a, from one OLS fit plus one contrast."""
+    """The three pre-registered shape statistics for H1a/H1b/H2a, from one OLS fit plus one
+    contrast.
+    """
     ok = np.isfinite(x) & np.isfinite(y)
     x, y, strata = x[ok], y[ok], strata[ok]
     if len(x) < 20 or np.std(x) == 0:
         return {}
     z = (x - x.mean()) / x.std()
-    X = np.column_stack([np.ones_like(z), z, z ** 2])
+    X = np.column_stack([np.ones_like(z), z, z**2])
     beta, *_ = np.linalg.lstsq(X, y, rcond=None)
     r = y - X @ beta
     dof = len(x) - X.shape[1]
@@ -111,35 +123,46 @@ def shape_fit(x: np.ndarray, y: np.ndarray, strata: np.ndarray) -> dict:
     else:
         mid_ext, p_me = np.nan, np.nan
 
-    return {"n": int(len(x)),
-            "b_linear": round(float(beta[1]), 4),
-            "p_linear": float(2 * stats.t.sf(abs(t_lin), dof)),
-            "b_quad": round(float(beta[2]), 4),
-            "p_quad": float(2 * stats.t.sf(abs(t_quad), dof)),
-            "mid_minus_ext": round(mid_ext, 4) if np.isfinite(mid_ext) else np.nan,
-            "p_mid_ext": p_me}
+    return {
+        "n": int(len(x)),
+        "b_linear": round(float(beta[1]), 4),
+        "p_linear": float(2 * stats.t.sf(abs(t_lin), dof)),
+        "b_quad": round(float(beta[2]), 4),
+        "p_quad": float(2 * stats.t.sf(abs(t_quad), dof)),
+        "mid_minus_ext": round(mid_ext, 4) if np.isfinite(mid_ext) else np.nan,
+        "p_mid_ext": p_me,
+    }
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--run", type=Path, required=True)
     ap.add_argument("--layers", nargs="+", type=int, default=[25, 26, 27])
-    ap.add_argument("--modes", nargs="+", default=["cds_mean"],
-                    help="pooling modes; cds_mean is the only one any pre-registered test uses")
+    ap.add_argument(
+        "--modes",
+        nargs="+",
+        default=["cds_mean"],
+        help="pooling modes; cds_mean is the only one any pre-registered test uses",
+    )
     args = ap.parse_args()
 
     pairs = pd.read_csv(args.run / "stage1" / "pairs.csv")
     tre = pd.read_csv(args.run / "stage5" / "tree_stats.csv")
     cov = pd.read_csv(args.run / "stage2" / "aligned_coverage.csv")
-    df = pairs[["gene", "stratum", "perc_id_hp", "cds_len_human"]].merge(
-        tre[tre.status == "ok"], on="gene", how="inner").merge(
-        cov[["gene", "retained_frac"]], on="gene", how="left")
+    df = (
+        pairs[["gene", "stratum", "perc_id_hp", "cds_len_human"]]
+        .merge(tre[tre.status == "ok"], on="gene", how="inner")
+        .merge(cov[["gene", "retained_frac"]], on="gene", how="left")
+    )
     df["log_cds_len"] = np.log10(df.cds_len_human)
-    df["focal_residual"] = resid(df.platypus_branch.to_numpy(float),
-                                 df.background_rate.to_numpy(float))
-    df["human_residual"] = resid(df.human_branch.to_numpy(float),
-                                 df.background_rate.to_numpy(float))
+    df["focal_residual"] = resid(
+        df.platypus_branch.to_numpy(float), df.background_rate.to_numpy(float)
+    )
+    df["human_residual"] = resid(
+        df.human_branch.to_numpy(float), df.background_rate.to_numpy(float)
+    )
     print(f"n = {len(df)} genes with both geometry and a tree\n")
 
     # Stage 5d, if it has run. Absent columns stay out of the grid rather than filling with NaN, so
@@ -149,16 +172,21 @@ def main() -> None:
     if dnds_path.exists():
         dn = pd.read_csv(dnds_path)
         dn = dn[dn.status == "ok"]
-        keep = [c for c in DNDS_PRIMARY + DNDS_NEGCTRL if c in dn.columns
-                and dn[c].notna().sum() >= 20]
+        keep = [
+            c for c in DNDS_PRIMARY + DNDS_NEGCTRL if c in dn.columns and dn[c].notna().sum() >= 20
+        ]
         df = df.merge(dn[["gene", *keep]], on="gene", how="left")
         dnds_primary = [c for c in DNDS_PRIMARY if c in keep]
         dnds_negctrl = [c for c in DNDS_NEGCTRL if c in keep]
-        print(f"stage 5d dN/dS: {len(dn)} genes ok; predictors {dnds_primary}; "
-              f"negative controls {dnds_negctrl}")
+        print(
+            f"stage 5d dN/dS: {len(dn)} genes ok; predictors {dnds_primary}; "
+            f"negative controls {dnds_negctrl}"
+        )
         if "dS_saturated" in dn.columns:
-            print(f"  platypus dS saturated in {int(dn.dS_saturated.sum())}/{len(dn)} genes"
-                  " -- read the negative control from BACKGROUND dS, not platypus dS")
+            print(
+                f"  platypus dS saturated in {int(dn.dS_saturated.sum())}/{len(dn)} genes"
+                " -- read the negative control from BACKGROUND dS, not platypus dS"
+            )
         for c in keep:
             print(f"  {c:22s} n={int(df[c].notna().sum()):3d}  median={df[c].median():.4f}")
         print()
@@ -186,22 +214,33 @@ def main() -> None:
             per["loo_cos_pc1"] = loo_pc1_cos(D)
             m = df.merge(per, on="gene", how="inner")
             Z = m[NUISANCE].to_numpy(float)
-            roles = {**{c: "primary" for c in PRIMARY},
-                     **{c: "legacy" for c in LEGACY},
-                     **{c: "dnds_primary" for c in dnds_primary},
-                     **{c: "dnds_negative_control" for c in dnds_negctrl},
-                     "perc_id_hp": "frame"}
+            roles = {
+                **{c: "primary" for c in PRIMARY},
+                **{c: "legacy" for c in LEGACY},
+                **{c: "dnds_primary" for c in dnds_primary},
+                **{c: "dnds_negative_control" for c in dnds_negctrl},
+                "perc_id_hp": "frame",
+            }
             for pred in PRIMARY + LEGACY + dnds_primary + dnds_negctrl + ["perc_id_hp"]:
                 for outc in ["loo_cos", "loo_cos_pc1", "delta_norm"]:
                     x = m[pred].to_numpy(float)
                     y = m[outc].to_numpy(float)
                     r, p = stats.spearmanr(x, y, nan_policy="omit")
                     pr, pp = partial_spearman(x, y, Z)
-                    rows.append({"mode": mode, "layer": li, "predictor": pred,
-                                 "role": roles[pred], "outcome": outc,
-                                 "n": int((np.isfinite(x) & np.isfinite(y)).sum()),
-                                 "rho": round(float(r), 3), "p": float(p),
-                                 "rho_partial": round(pr, 3), "p_partial": pp})
+                    rows.append(
+                        {
+                            "mode": mode,
+                            "layer": li,
+                            "predictor": pred,
+                            "role": roles[pred],
+                            "outcome": outc,
+                            "n": int((np.isfinite(x) & np.isfinite(y)).sum()),
+                            "rho": round(float(r), 3),
+                            "p": float(p),
+                            "rho_partial": round(pr, 3),
+                            "p_partial": pp,
+                        }
+                    )
             # --- H1a / H1b: the confirmatory shape fits, separate for orientation and magnitude ---
             strata = m["stratum"].to_numpy(int)
             for pred in CONFIRMATORY:
@@ -211,11 +250,19 @@ def main() -> None:
                     fit = shape_fit(m[pred].to_numpy(float), m[outc].to_numpy(float), strata)
                     if not fit:
                         continue
-                    shape_rows.append({
-                        "mode": mode, "layer": li, "predictor": pred,
-                        "axis": CONFIRM_ROLE[pred],
-                        "hypothesis": "H1b_magnitude" if outc in OUTCOMES_H1B else "H1a_orientation",
-                        "outcome": outc, **fit})
+                    shape_rows.append(
+                        {
+                            "mode": mode,
+                            "layer": li,
+                            "predictor": pred,
+                            "axis": CONFIRM_ROLE[pred],
+                            "hypothesis": "H1b_magnitude"
+                            if outc in OUTCOMES_H1B
+                            else "H1a_orientation",
+                            "outcome": outc,
+                            **fit,
+                        }
+                    )
 
     res = pd.DataFrame(rows)
     out = args.run / "stage5" / "rate_vs_direction.csv"
@@ -234,17 +281,30 @@ def main() -> None:
             show = piv.copy().astype(object)
             for i in piv.index:
                 for c in piv.columns:
-                    star = ("**" if pv.loc[i, c] < thr else
-                            "*" if pv.loc[i, c] < 0.05 else "")
+                    star = "**" if pv.loc[i, c] < thr else "*" if pv.loc[i, c] < 0.05 else ""
                     show.loc[i, c] = f"{piv.loc[i, c]:+.3f}{star}"
             print(show.to_string())
     strong = res[(res.p < thr) & (res.role != "frame")]
     print(f"\nsurviving Bonferroni: {len(strong)}")
     if len(strong):
-        print(strong.sort_values("p")[["mode", "layer", "predictor", "role", "outcome", "rho", "p",
-                                       "rho_partial", "p_partial"]].to_string(index=False))
+        print(
+            strong.sort_values("p")[
+                [
+                    "mode",
+                    "layer",
+                    "predictor",
+                    "role",
+                    "outcome",
+                    "rho",
+                    "p",
+                    "rho_partial",
+                    "p_partial",
+                ]
+            ].to_string(index=False)
+        )
 
-    # ---- H1a / H1b: the confirmatory, shape-free geometry tests -----------------------------------
+    # ---- H1a / H1b: the confirmatory, shape-free geometry tests
+    # -----------------------------------
     if shape_rows:
         sh = pd.DataFrame(shape_rows)
         # Holm within each (mode, layer, hypothesis) family: 4 predictors x the outcomes in that
@@ -258,8 +318,10 @@ def main() -> None:
         sh.to_csv(shp, index=False)
 
         print("\n" + "=" * 100)
-        print("H1a (orientation) / H1b (magnitude) -- CONFIRMATORY, four rate axes, three shape "
-              "statistics each")
+        print(
+            "H1a (orientation) / H1b (magnitude) -- CONFIRMATORY, four rate axes, three shape "
+            "statistics each"
+        )
         print("  linear + quadratic from y ~ 1 + z + z^2; mid-vs-extreme is strata {2,3} vs {0,4}.")
         print("  A hump shows as ns linear + negative quadratic + positive mid-vs-extreme.")
         print("=" * 100)
@@ -272,11 +334,13 @@ def main() -> None:
                     print(f"\n--- {hyp}  {mode}  L{li} " + "-" * 40)
                     for _, r in s.iterrows():
                         flag = "**" if r.p_holm < 0.05 else ("*" if r.p_min < 0.05 else "  ")
-                        print(f"  {flag} {r.predictor:16s} {r.outcome:12s} "
-                              f"lin {r.b_linear:+.4f} (p={r.p_linear:.3g})  "
-                              f"quad {r.b_quad:+.4f} (p={r.p_quad:.3g})  "
-                              f"mid-ext {r.mid_minus_ext:+.4f} (p={r.p_mid_ext:.3g})  "
-                              f"[Holm {r.p_holm:.3g}]  {r.axis}")
+                        print(
+                            f"  {flag} {r.predictor:16s} {r.outcome:12s} "
+                            f"lin {r.b_linear:+.4f} (p={r.p_linear:.3g})  "
+                            f"quad {r.b_quad:+.4f} (p={r.p_quad:.3g})  "
+                            f"mid-ext {r.mid_minus_ext:+.4f} (p={r.p_mid_ext:.3g})  "
+                            f"[Holm {r.p_holm:.3g}]  {r.axis}"
+                        )
         print("\n  ** survives Holm within its (mode, layer, hypothesis) family; * nominal only.")
 
     # H2b is a CONTRAST, not a count of significant hits: dN/omega should beat dS on the same genes,
@@ -293,13 +357,17 @@ def main() -> None:
                     if not len(s):
                         continue
                     best = s.loc[s.p.idxmin()]
-                    print(f"    {role}{pred:22s} best |rho| {best.rho:+.3f} "
-                          f"(p={best.p:.2g}, partial {best.rho_partial:+.3f}) "
-                          f"@ {best['mode']} L{int(best.layer)}   "
-                          f"max|rho| across layers {s.rho.abs().max():.3f}")
-        print("\n  Read this as: a dS row as strong as the dN/omega rows means the signal tracks "
-              "neutral\n  divergence (composition), not protein change -- which would undercut the "
-              "protein-level account.")
+                    print(
+                        f"    {role}{pred:22s} best |rho| {best.rho:+.3f} "
+                        f"(p={best.p:.2g}, partial {best.rho_partial:+.3f}) "
+                        f"@ {best['mode']} L{int(best.layer)}   "
+                        f"max|rho| across layers {s.rho.abs().max():.3f}"
+                    )
+        print(
+            "\n  Read this as: a dS row as strong as the dN/omega rows means the signal tracks "
+            "neutral\n  divergence (composition), not protein change -- which would undercut the "
+            "protein-level account."
+        )
     print(f"\n-> {out}")
 
 

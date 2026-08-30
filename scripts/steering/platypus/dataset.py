@@ -1,4 +1,6 @@
-"""Stage 1a — build the paired human/platypus ortholog dataset for the paired-prefix steering study."""
+"""
+Stage 1a — build the paired human/platypus ortholog dataset for the paired-prefix steering study.
+"""
 
 from __future__ import annotations
 import argparse
@@ -185,10 +187,14 @@ def build(families: list[str]) -> tuple[list[dict], list[dict]]:
                 excluded.append({**row_base, "reason": "no_one2one_evidence"})
                 continue
             if orth_id != plat[1]:
-                excluded.append({
-                    **row_base,
-                    "reason": f"orthology_gene_id_mismatch(resolution={orth_id},fasta={plat[1]})",
-                })
+                excluded.append(
+                    {
+                        **row_base,
+                        "reason": (
+                            f"orthology_gene_id_mismatch(resolution={orth_id},fasta={plat[1]})"
+                        ),
+                    }
+                )
                 continue
 
             lh = loci.get((family, gene, HUMAN))
@@ -205,29 +211,33 @@ def build(families: list[str]) -> tuple[list[dict], list[dict]]:
 
             diag, cons = codon_diagnostics(human[0], plat[0])
             n_after = sum(1 for d in diag if d["h_idx"] >= PREFIX_BP)
-            retained.append({
-                **row_base,
-                "human_gene_id": human[1],
-                "human_transcript_id": lh["transcript_id"],
-                "human_cds_len": len(human[0]),
-                "human_qc_flags": lh["qc_flags"],
-                "platypus_gene_id": plat[1],
-                "platypus_transcript_id": lp["transcript_id"],
-                "platypus_cds_len": len(plat[0]),
-                "platypus_qc_flags": lp["qc_flags"],
-                "orthology_type": "ortholog_one2one",
-                "prefix_human": human[0][:PREFIX_BP],
-                "prefix_platypus": plat[0][:PREFIX_BP],
-                "prefix_n_diff": sum(
-                    1 for a, b in zip(human[0][:PREFIX_BP], plat[0][:PREFIX_BP], strict=True)
-                    if a != b),
-                "n_diag_total": len(diag),
-                "n_diag_after_prefix": n_after,
-                "n_conserved": len(cons),
-                "in_gene_panel": gene in panel,
-                "has_opossum": (gene, OPOSSUM) in fa,
-                **meta,
-            })
+            retained.append(
+                {
+                    **row_base,
+                    "human_gene_id": human[1],
+                    "human_transcript_id": lh["transcript_id"],
+                    "human_cds_len": len(human[0]),
+                    "human_qc_flags": lh["qc_flags"],
+                    "platypus_gene_id": plat[1],
+                    "platypus_transcript_id": lp["transcript_id"],
+                    "platypus_cds_len": len(plat[0]),
+                    "platypus_qc_flags": lp["qc_flags"],
+                    "orthology_type": "ortholog_one2one",
+                    "prefix_human": human[0][:PREFIX_BP],
+                    "prefix_platypus": plat[0][:PREFIX_BP],
+                    "prefix_n_diff": sum(
+                        1
+                        for a, b in zip(human[0][:PREFIX_BP], plat[0][:PREFIX_BP], strict=True)
+                        if a != b
+                    ),
+                    "n_diag_total": len(diag),
+                    "n_diag_after_prefix": n_after,
+                    "n_conserved": len(cons),
+                    "in_gene_panel": gene in panel,
+                    "has_opossum": (gene, OPOSSUM) in fa,
+                    **meta,
+                }
+            )
 
     return retained, excluded
 
@@ -240,13 +250,16 @@ def write_fasta(path: Path, rows: list[dict], species: str, cds_by_key: dict) ->
             seq = cds_by_key[(r["family"], (r["gene"], species))]
             fh.write(f">{r['gene']}|{species}|{r[tag + '_gene_id']}|{r[tag + '_transcript_id']}\n")
             for i in range(0, len(seq), 60):
-                fh.write(seq[i:i + 60] + "\n")
+                fh.write(seq[i : i + 60] + "\n")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--out-dir", type=Path,
-                    default=ROOT / "results" / "2026-07-28_evo2-platypus-paired" / "stage1")
+    ap.add_argument(
+        "--out-dir",
+        type=Path,
+        default=ROOT / "results" / "2026-07-28_evo2-platypus-paired" / "stage1",
+    )
     ap.add_argument("--families", nargs="*", default=FAMILIES)
     args = ap.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -297,8 +310,10 @@ def main() -> None:
     }
     (args.out_dir / "dataset_summary.json").write_text(json.dumps(summary, indent=2))
 
-    print(f"candidate={summary['n_candidate']}  retained={summary['n_retained']}  "
-          f"excluded={summary['n_excluded']}")
+    print(
+        f"candidate={summary['n_candidate']}  retained={summary['n_retained']}  "
+        f"excluded={summary['n_excluded']}"
+    )
     for f, d in by_family.items():
         print(f"  {f:18s} candidate={d['candidate']:3d}  retained={d['retained']:3d}")
     print(f"-> {args.out_dir}")

@@ -1,7 +1,6 @@
 """Cross-species sequence diversity for the top reconstruction genes' 24-mammal orthologs."""
 
 from __future__ import annotations
-
 import subprocess
 import sys
 import tempfile
@@ -34,9 +33,14 @@ def read_fasta(fa: Path) -> dict[str, str]:
 def qc_length_filter(seqs: dict[str, str], lo: float = 0.7, hi: float = 1.4) -> tuple[dict, list]:
     """Remove orthologs with CDS lengths outside the allowed reference range."""
     import statistics as st
+
     if len(seqs) < 3:
         return seqs, []
-    ref = len(seqs["homo_sapiens"]) if "homo_sapiens" in seqs else st.median(len(v) for v in seqs.values())
+    ref = (
+        len(seqs["homo_sapiens"])
+        if "homo_sapiens" in seqs
+        else st.median(len(v) for v in seqs.values())
+    )
     keep, dropped = {}, []
     for k, v in seqs.items():
         if ref * lo <= len(v) <= ref * hi:
@@ -70,22 +74,26 @@ def mafft(seqs: dict[str, str]) -> dict[str, str]:
 
 def diff_cols(a: str, b: str) -> int:
     """Columns where the two aligned seqs differ (substitutions + indels; gap==gap is same)."""
-    return sum(1 for x, y in zip(a, b) if x != y)
+    return sum(1 for x, y in zip(a, b, strict=False) if x != y)
 
 
 def analyze(gene: str, aln: dict[str, str]) -> dict:
     species = list(aln)
     L = len(next(iter(aln.values())))
-    cols = list(zip(*aln.values()))
+    cols = list(zip(*aln.values(), strict=False))
     variable = [c for c in cols if len({x for x in c}) > 1]
     # mean pairwise
     pair_diffs = [diff_cols(aln[a], aln[b]) for a, b in combinations(species, 2)]
     mean_bp_diff = sum(pair_diffs) / len(pair_diffs) if pair_diffs else 0
     mean_pct_id = 100 * (1 - mean_bp_diff / L) if L else 0
     row = {
-        "gene": gene, "n_species": len(species), "aln_len": L,
-        "n_variable_cols": len(variable), "pct_variable": round(100 * len(variable) / L, 2) if L else 0,
-        "mean_pairwise_bp_diff": round(mean_bp_diff, 1), "mean_pairwise_pct_id": round(mean_pct_id, 2),
+        "gene": gene,
+        "n_species": len(species),
+        "aln_len": L,
+        "n_variable_cols": len(variable),
+        "pct_variable": round(100 * len(variable) / L, 2) if L else 0,
+        "mean_pairwise_bp_diff": round(mean_bp_diff, 1),
+        "mean_pairwise_pct_id": round(mean_pct_id, 2),
     }
     # private (autapomorphic) bp per species: a column base present in exactly ONE species,
     # attributed to that species. One O(L*n) pass over columns via base singletons.
@@ -97,7 +105,7 @@ def analyze(gene: str, aln: dict[str, str]) -> dict:
                 counts[ch] = counts.get(ch, 0) + 1
         singletons = {ch for ch, c in counts.items() if c == 1}
         if singletons:
-            for s, ch in zip(species, col):
+            for s, ch in zip(species, col, strict=False):
                 if ch in singletons:
                     private_by_species[s] += 1
     mp = max(private_by_species, key=private_by_species.get)
@@ -125,8 +133,8 @@ def main() -> None:
     if RECON.exists():
         tf = pd.read_csv(RECON)
         # top_families.csv is only top-10; fall back to full ranking if present
-        full = RECON.parent / "top_families.csv"
-        recon_map = dict(zip(tf["family"], tf["mean_corrected_nt"]))
+        RECON.parent / "top_families.csv"
+        recon_map = dict(zip(tf["family"], tf["mean_corrected_nt"], strict=False))
     rows = []
     for fa in fastas:
         gene = fa.stem
@@ -144,11 +152,14 @@ def main() -> None:
             r["recon_corrected_nt"] = recon_map.get(gene)
             rows.append(r)
             mp = r.get("most_private_species", "?")
-            print(f"{gene:8s} n={r['n_species']:2d} aln={r['aln_len']:4d} "
-                  f"meanID={r['mean_pairwise_pct_id']:5.1f}% | "
-                  f"most-private={mp.split('_')[0][:9]:9s} ({r.get('most_private_bp','?')}bp private) | "
-                  f"most-divergent={r.get('most_divergent_species','?').split('_')[0][:9]} "
-                  f"Δ{r.get('most_divergent_bp_diff_vs_human','?')}bp")
+            print(
+                f"{gene:8s} n={r['n_species']:2d} aln={r['aln_len']:4d} "
+                f"meanID={r['mean_pairwise_pct_id']:5.1f}% | "
+                f"most-private={mp.split('_')[0][:9]:9s} "
+                f"({r.get('most_private_bp', '?')}bp private) | "
+                f"most-divergent={r.get('most_divergent_species', '?').split('_')[0][:9]} "
+                f"Δ{r.get('most_divergent_bp_diff_vs_human', '?')}bp"
+            )
         except Exception as e:  # noqa: BLE001
             print(f"{gene}: align/analyze failed: {e}")
     if rows:

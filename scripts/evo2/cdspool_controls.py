@@ -1,10 +1,8 @@
 """Tier-2 composition controls for condition C (CDS-masked-transcript, human panel)."""
 
 from __future__ import annotations
-
 import argparse
 import json
-import random
 import sys
 from pathlib import Path
 
@@ -16,20 +14,32 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "evo2"))
 from control_tables import write_control_table  # noqa: E402
-from geodesic_utils import (  # noqa: E402
-    between_preservation_rho, compute_centroid_geodesic, compute_geodesic,
-    find_min_connected_k, within_preservation_rho,
-)
 from embed_and_geodesic_paralog import (  # noqa: E402
-    N_BLOCKS, EMBED_DIM, apply_control, CDS_ONLY_CONTROLS,
+    CDS_ONLY_CONTROLS,
+    EMBED_DIM,
+    N_BLOCKS,
+    apply_control,
 )
-from embed_cds_masked_transcript import embed_cds_masked, GENOMIC_CACHE, CDS_POS  # noqa: E402
+from embed_cds_masked_transcript import CDS_POS, GENOMIC_CACHE, embed_cds_masked  # noqa: E402
+from geodesic_utils import (  # noqa: E402
+    between_preservation_rho,
+    compute_centroid_geodesic,
+    compute_geodesic,
+    find_min_connected_k,
+    within_preservation_rho,
+)
 
 NAT_CACHE = ROOT / "data" / "cache" / "evo2_human_cdspool_transcript"
 CDS_SEQ = ROOT / "data" / "cache" / "cds_sequences.json"
 RUN_ROOT = ROOT / "results" / "2026-07-20_evo2-human-cdspool-transcript"
-CONTROLS = ["gc_match", "dinuc_shuffle", "kmer4_shuffle", "kmer6_shuffle",
-            "codon_shuffle", "synonymous_recode"]
+CONTROLS = [
+    "gc_match",
+    "dinuc_shuffle",
+    "kmer4_shuffle",
+    "kmer6_shuffle",
+    "codon_shuffle",
+    "synonymous_recode",
+]
 
 
 def coding_str(span: str, pos: list[int]) -> str:
@@ -40,11 +50,14 @@ def build_control_seqs(control, genes, fams, genomic, cds_pos, cds_full):
     """gene -> transcript span with its CODING positions replaced by the shuffled coding content."""
     # coding content the readout actually pools (== full CDS for un-clipped genes)
     coding = {g: coding_str(genomic[g], cds_pos[g]) for g in genes}
-    frame_ok = {g: (control not in CDS_ONLY_CONTROLS) or (coding[g] == cds_full.get(g, "")) for g in genes}
+    frame_ok = {
+        g: (control not in CDS_ONLY_CONTROLS) or (coding[g] == cds_full.get(g, "")) for g in genes
+    }
     shufflable = [g for g in genes if frame_ok[g]]
-    fam_of = dict(zip(genes, fams))
-    shuffled_coding = apply_control({g: coding[g] for g in shufflable}, control,
-                                    fam_of={g: fam_of[g] for g in shufflable})
+    fam_of = dict(zip(genes, fams, strict=False))
+    shuffled_coding = apply_control(
+        {g: coding[g] for g in shufflable}, control, fam_of={g: fam_of[g] for g in shufflable}
+    )
     out = {}
     for g in genes:
         sc = shuffled_coding.get(g, coding[g])  # clipped-frame genes keep natural coding (no-op)
@@ -57,6 +70,7 @@ def build_control_seqs(control, genes, fams, genomic, cds_pos, cds_full):
 
 def embed_all_controls(controls):
     from evo2_embedding import load_model  # lazy import (GPU)
+
     genomic = json.loads(GENOMIC_CACHE.read_text())
     cds_pos = json.loads(CDS_POS.read_text())
     cds_full = json.loads(CDS_SEQ.read_text())
@@ -68,16 +82,22 @@ def embed_all_controls(controls):
         cache = ROOT / "data" / "cache" / f"evo2_human_cdspool_transcript_{control}"
         cache.mkdir(parents=True, exist_ok=True)
         stack_path = cache / "layer_stack.npy"
-        if stack_path.exists() and (cache / "config.json").exists() \
-                and json.loads((cache / "config.json").read_text()).get("genes") == genes:
-            print(f"[{control}] cached, skip", flush=True); continue
+        if (
+            stack_path.exists()
+            and (cache / "config.json").exists()
+            and json.loads((cache / "config.json").read_text()).get("genes") == genes
+        ):
+            print(f"[{control}] cached, skip", flush=True)
+            continue
         print(f"[{control}] building shuffled-coding transcript inputs...", flush=True)
         seqs = build_control_seqs(control, genes, fams, genomic, cds_pos, cds_full)
         stack = np.zeros((N_BLOCKS, len(genes), EMBED_DIM), dtype=np.float32)
         for i, g in enumerate(tqdm(genes, desc=f"{control}")):
             stack[:, i, :] = embed_cds_masked(seqs[g], cds_pos[g], model, device)
             if (i + 1) % 50 == 0:
-                tmp = stack_path.with_suffix(".tmp.npy"); np.save(tmp, stack); tmp.replace(stack_path)
+                tmp = stack_path.with_suffix(".tmp.npy")
+                np.save(tmp, stack)
+                tmp.replace(stack_path)
         np.save(stack_path, stack)
         pd.DataFrame({"gene": genes, "family": fams}).to_csv(cache / "metadata.csv", index=False)
         (cache / "config.json").write_text(json.dumps({"control": control, "genes": genes}))
@@ -106,15 +126,31 @@ def score(controls, layers):
             cgeo = compute_geodesic(Wc)
             per_fam, _ = within_preservation_rho(nat_geo, cgeo, fams_arr, fam_order)
             for fam, n, rho in per_fam:
-                within_rows.append({"condition": c, "family": fam, "n_members": n,
-                                    "rho_geodesic_patristic": np.nan, "rho_geodesic_vs_natural": rho})
+                within_rows.append(
+                    {
+                        "condition": c,
+                        "family": fam,
+                        "n_members": n,
+                        "rho_geodesic_patristic": np.nan,
+                        "rho_geodesic_vs_natural": rho,
+                    }
+                )
             ccen = compute_centroid_geodesic(cs[L], fams_arr, fam_order)
-            between_rows.append({"condition": c, "rho_vs_natural_centroid": between_preservation_rho(nat_cen, ccen)})
-        cdir = RUN_ROOT / f"blocks{L}" / "controls"; cdir.mkdir(parents=True, exist_ok=True)
-        write_control_table(cdir / "control_within_scores.csv", pd.DataFrame(within_rows),
-                            generator="cdspool_controls")
-        write_control_table(cdir / "control_between_scores.csv", pd.DataFrame(between_rows),
-                            generator="cdspool_controls")
+            between_rows.append(
+                {"condition": c, "rho_vs_natural_centroid": between_preservation_rho(nat_cen, ccen)}
+            )
+        cdir = RUN_ROOT / f"blocks{L}" / "controls"
+        cdir.mkdir(parents=True, exist_ok=True)
+        write_control_table(
+            cdir / "control_within_scores.csv",
+            pd.DataFrame(within_rows),
+            generator="cdspool_controls",
+        )
+        write_control_table(
+            cdir / "control_between_scores.csv",
+            pd.DataFrame(between_rows),
+            generator="cdspool_controls",
+        )
     print(f"wrote controls/ scores to {len(layers)} layers -> {RUN_ROOT}", flush=True)
 
 

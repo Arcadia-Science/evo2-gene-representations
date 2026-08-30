@@ -1,7 +1,6 @@
 """Score the centroid-free OT metrics across an all-layer sweep, alongside the geodesic."""
 
 from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path
@@ -15,9 +14,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "baselines"))
 sys.path.insert(0, str(ROOT / "scripts" / "mammalian_orthologs"))
 
+from between_family_baselines import CONVERGENT_PAIRS  # noqa: E402
 from geodesic_utils import mantel_test, upper_triangle  # noqa: E402
 from ot_between_family import DEFAULT_ALPHAS, compute_ot_matrices  # noqa: E402
-from between_family_baselines import CONVERGENT_PAIRS  # noqa: E402
 
 # ── experiment registry
 # Each experiment maps a per-layer sweep dir to the embedding cache the centroid
@@ -42,18 +41,31 @@ HUMAN_CENTROID = "evo2_human_centroid_distances.csv"
 # (arm, run_dir, manifest) — manifest lets a capped variant reuse the SAME cache under a _400 run.
 MAMMAL_RUNS = {
     "mammal-cds": ("cds", "results/2026-07-16_mammalian-orthologs-cds", "complete_manifest.csv"),
-    "mammal-transcript": ("transcript", "results/2026-07-16_mammalian-orthologs-transcript",
-                          "complete_manifest.csv"),
-    "mammal-cdsmask": ("transcript_cdsmask",
-                       "results/2026-07-16_mammalian-orthologs-transcript_cdsmask",
-                       "complete_manifest.csv"),
-    "mammal-cds-400": ("cds", "results/2026-07-16_mammalian-orthologs-cds_400",
-                       "complete_manifest_cap400.csv"),
-    "mammal-transcript-400": ("transcript", "results/2026-07-16_mammalian-orthologs-transcript_400",
-                              "complete_manifest_cap400.csv"),
-    "mammal-cdsmask-400": ("transcript_cdsmask",
-                           "results/2026-07-16_mammalian-orthologs-transcript_cdsmask_400",
-                           "complete_manifest_cap400.csv"),
+    "mammal-transcript": (
+        "transcript",
+        "results/2026-07-16_mammalian-orthologs-transcript",
+        "complete_manifest.csv",
+    ),
+    "mammal-cdsmask": (
+        "transcript_cdsmask",
+        "results/2026-07-16_mammalian-orthologs-transcript_cdsmask",
+        "complete_manifest.csv",
+    ),
+    "mammal-cds-400": (
+        "cds",
+        "results/2026-07-16_mammalian-orthologs-cds_400",
+        "complete_manifest_cap400.csv",
+    ),
+    "mammal-transcript-400": (
+        "transcript",
+        "results/2026-07-16_mammalian-orthologs-transcript_400",
+        "complete_manifest_cap400.csv",
+    ),
+    "mammal-cdsmask-400": (
+        "transcript_cdsmask",
+        "results/2026-07-16_mammalian-orthologs-transcript_cdsmask_400",
+        "complete_manifest_cap400.csv",
+    ),
 }
 MAMMAL_CENTROID = "evo2_mammal_centroid_distances.csv"
 
@@ -78,22 +90,30 @@ def _fam_order_from_centroid(run: Path, centroid_name: str) -> list[str]:
 def load_human(exp: str):
     cache = ROOT / HUMAN_CACHES[exp]
     run = ROOT / HUMAN_RUNS[exp]
-    stack = np.load(cache / "layer_stack.npy")           # (n_layers, N, D)
-    meta = pd.read_csv(cache / "metadata.csv")           # aligned to stack columns
+    stack = np.load(cache / "layer_stack.npy")  # (n_layers, N, D)
+    meta = pd.read_csv(cache / "metadata.csv")  # aligned to stack columns
     fams = meta["family"].to_numpy()
     fam_order = _fam_order_from_centroid(run, HUMAN_CENTROID)
     # Baseline F×F matrices + axis map: already on disk per layer (layer-independent);
     # pull from the first layer that has them.
     blocks = sorted(run.glob("blocks*"))
     src = next(b for b in blocks if (b / "between_family_baseline_scores.csv").exists())
-    axis_of = dict(zip(*[pd.read_csv(src / "between_family_baseline_scores.csv")[c]
-                         for c in ("baseline", "axis")]))
+    axis_of = dict(
+        zip(
+            *[
+                pd.read_csv(src / "between_family_baseline_scores.csv")[c]
+                for c in ("baseline", "axis")
+            ],
+            strict=False,
+        )
+    )
     baseline_mats = {}
     for name in axis_of:
         f = src / f"betweenfam_{name}_distances.csv"
         if f.exists():
-            baseline_mats[name] = (pd.read_csv(f, index_col=0)
-                                   .reindex(index=fam_order, columns=fam_order).values)
+            baseline_mats[name] = (
+                pd.read_csv(f, index_col=0).reindex(index=fam_order, columns=fam_order).values
+            )
     return stack, fams, fam_order, baseline_mats, axis_of, run, HUMAN_CENTROID
 
 
@@ -102,7 +122,7 @@ def load_mammal(exp: str):
 
     arm, run_rel, manifest = MAMMAL_RUNS[exp]
     run = ROOT / run_rel
-    stack, meta = mb.load_embedded(arm, manifest)        # (n_layers, N, D), meta aligned
+    stack, meta = mb.load_embedded(arm, manifest)  # (n_layers, N, D), meta aligned
     fam_order = _fam_order_from_centroid(run, MAMMAL_CENTROID)
     fams = meta["family"].to_numpy()
     # Recompute the transferable axes exactly as mammal_between.main does (layer-independent;
@@ -124,8 +144,9 @@ def load_mammal(exp: str):
 # ── scoring
 
 
-def score_matrix(D: np.ndarray, baseline_mats: dict, axis_of: dict, approach: str,
-                 n_perms: int) -> list[dict]:
+def score_matrix(
+    D: np.ndarray, baseline_mats: dict, axis_of: dict, approach: str, n_perms: int
+) -> list[dict]:
     """Spearman ρ + Mantel p of one approach's F×F distances vs every baseline."""
     D_u = upper_triangle(D)
     rows = []
@@ -137,8 +158,15 @@ def score_matrix(D: np.ndarray, baseline_mats: dict, axis_of: dict, approach: st
         else:
             rho = spearmanr(D_u[ok], B_u[ok]).statistic
             p_mantel = mantel_test(D, B, n_perms=n_perms)[1]
-        rows.append({"approach": approach, "baseline": name,
-                     "axis": axis_of.get(name), "spearman_rho": rho, "p_mantel": p_mantel})
+        rows.append(
+            {
+                "approach": approach,
+                "baseline": name,
+                "axis": axis_of.get(name),
+                "spearman_rho": rho,
+                "p_mantel": p_mantel,
+            }
+        )
     return rows
 
 
@@ -146,8 +174,10 @@ def convergent_ranks(fam_order: list[str], approaches: dict[str, np.ndarray]) ->
     """Percentile rank (0=closest) of each curated convergent pair, per approach."""
     pos = {f: i for i, f in enumerate(fam_order)}
     iu = np.triu_indices(len(fam_order), 1)
-    pair_ix = {frozenset({fam_order[i], fam_order[j]}): p
-               for p, (i, j) in enumerate(zip(*iu))}
+    pair_ix = {
+        frozenset({fam_order[i], fam_order[j]}): p
+        for p, (i, j) in enumerate(zip(*iu, strict=False))
+    }
     pct = {}
     for name, D in approaches.items():
         u = D[iu]
@@ -166,8 +196,14 @@ def convergent_ranks(fam_order: list[str], approaches: dict[str, np.ndarray]) ->
     return pd.DataFrame(rows)
 
 
-def run_experiment(exp: str, layers: list[int] | None, alphas: tuple[float, ...],
-                   n_perms: int, solver: str, reg: float | None) -> None:
+def run_experiment(
+    exp: str,
+    layers: list[int] | None,
+    alphas: tuple[float, ...],
+    n_perms: int,
+    solver: str,
+    reg: float | None,
+) -> None:
     if exp in HUMAN_RUNS:
         stack, fams, fam_order, base, axis_of, run, cen_name = load_human(exp)
     else:
@@ -189,8 +225,7 @@ def run_experiment(exp: str, layers: list[int] | None, alphas: tuple[float, ...]
             continue
         geo = pd.read_csv(cen_f, index_col=0).reindex(index=fam_order, columns=fam_order).values
 
-        res = compute_ot_matrices(stack[L], fams, fam_order, alphas=alphas,
-                                  solver=solver, reg=reg)
+        res = compute_ot_matrices(stack[L], fams, fam_order, alphas=alphas, solver=solver, reg=reg)
         res.to_run_dir(blocks)
 
         approaches = {"geodesic": geo, **res.matrices}
@@ -199,29 +234,39 @@ def run_experiment(exp: str, layers: list[int] | None, alphas: tuple[float, ...]
             rows += score_matrix(D, base, axis_of, name, n_perms)
         pd.DataFrame(rows).to_csv(blocks / "between_family_ot_scores.csv", index=False)
         convergent_ranks(fam_order, approaches).to_csv(
-            blocks / "convergent_pair_ranks_ot.csv", index=False)
-        print(f"  blocks{L}: scored {len(approaches)} approaches × {len(base)} baselines "
-              f"(OT compute {res.meta['runtime_seconds']}s)")
+            blocks / "convergent_pair_ranks_ot.csv", index=False
+        )
+        print(
+            f"  blocks{L}: scored {len(approaches)} approaches × {len(base)} baselines "
+            f"(OT compute {res.meta['runtime_seconds']}s)"
+        )
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--experiment", choices=EXPERIMENTS, help="single experiment to score")
     ap.add_argument("--all", action="store_true", help="score every registered experiment")
-    ap.add_argument("--layers", nargs="*", type=int, default=None,
-                    help="layer indices (default: all layers present in the cache)")
+    ap.add_argument(
+        "--layers",
+        nargs="*",
+        type=int,
+        default=None,
+        help="layer indices (default: all layers present in the cache)",
+    )
     ap.add_argument("--alphas", nargs="*", type=float, default=list(DEFAULT_ALPHAS))
     ap.add_argument("--n-perms", type=int, default=9999)
     ap.add_argument("--solver", choices=["exact", "entropic"], default="exact")
-    ap.add_argument("--reg", type=float, default=None, help="entropic regularization (solver=entropic)")
+    ap.add_argument(
+        "--reg", type=float, default=None, help="entropic regularization (solver=entropic)"
+    )
     args = ap.parse_args()
     if not args.experiment and not args.all:
         ap.error("pass --experiment <name> or --all")
     exps = EXPERIMENTS if args.all else [args.experiment]
     for exp in exps:
-        run_experiment(exp, args.layers, tuple(args.alphas), args.n_perms,
-                       args.solver, args.reg)
+        run_experiment(exp, args.layers, tuple(args.alphas), args.n_perms, args.solver, args.reg)
 
 
 if __name__ == "__main__":

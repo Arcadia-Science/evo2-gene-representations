@@ -1,7 +1,6 @@
 """Stage 1 — walk the frozen block order and build the paired human/platypus dataset. CPU only."""
 
 from __future__ import annotations
-
 import argparse
 import gzip
 import json
@@ -21,8 +20,9 @@ from dataset import PREFIX_BP, check_cds, qc_pair  # noqa: E402
 from steer_lib import codon_blocks  # noqa: E402
 
 
-def qc_pair_window(human_cds: str, platypus_cds: str, max_start_codon: int
-                   ) -> tuple[str | None, dict]:
+def qc_pair_window(
+    human_cds: str, platypus_cds: str, max_start_codon: int
+) -> tuple[str | None, dict]:
     """The design's SHIFTED-WINDOW sensitivity gate (§3 Stage 1)."""
     if max_start_codon <= 0:
         reason, meta = qc_pair(human_cds, platypus_cds)
@@ -62,7 +62,7 @@ def qc_pair_window(human_cds: str, platypus_cds: str, max_start_codon: int
             break  # blocks are in ascending order, so no later block can start earlier
         if he - hs < n_codons or te - ts < n_codons:
             continue
-        if "*" in ph[hs:hs + n_codons] or "*" in pt[ts:ts + n_codons]:
+        if "*" in ph[hs : hs + n_codons] or "*" in pt[ts : ts + n_codons]:
             continue  # an in-frame stop in the prompt leaves the continuation's frame ambiguous
         meta.update(prefix_codon_human=hs, prefix_codon_platypus=ts)
         return None, meta
@@ -72,11 +72,16 @@ def qc_pair_window(human_cds: str, platypus_cds: str, max_start_codon: int
         return f"no_indel_free_window({n_codons}codons_anywhere)", meta
     return f"window_starts_too_late(h{first_ok}>{max_start_codon})", meta
 
+
 SEQS = Path("/opt/dlami/nvme/strat_seqs")
-CDS = {"human": SEQS / "Homo_sapiens.GRCh38.cds.all.fa.gz",
-       "platypus": SEQS / "Ornithorhynchus_anatinus.mOrnAna1.p.v1.cds.all.fa.gz"}
-GTF = {"human": SEQS / "Homo_sapiens.GRCh38.116.gtf.gz",
-       "platypus": SEQS / "Ornithorhynchus_anatinus.mOrnAna1.p.v1.116.gtf.gz"}
+CDS = {
+    "human": SEQS / "Homo_sapiens.GRCh38.cds.all.fa.gz",
+    "platypus": SEQS / "Ornithorhynchus_anatinus.mOrnAna1.p.v1.cds.all.fa.gz",
+}
+GTF = {
+    "human": SEQS / "Homo_sapiens.GRCh38.116.gtf.gz",
+    "platypus": SEQS / "Ornithorhynchus_anatinus.mOrnAna1.p.v1.116.gtf.gz",
+}
 
 
 def log(msg: str) -> None:
@@ -130,9 +135,12 @@ def read_cds(path: Path, wanted_tx: set[str]) -> dict[str, str]:
     return out
 
 
-def pick_transcript(gene: str, canon: dict[str, str], by_gene: dict[str, list[tuple[str, str]]]
-                    ) -> tuple[str | None, str | None, str]:
-    """Canonical transcript if present and non-empty, else the longest CDS. Same rule both species."""
+def pick_transcript(
+    gene: str, canon: dict[str, str], by_gene: dict[str, list[tuple[str, str]]]
+) -> tuple[str | None, str | None, str]:
+    """
+    Canonical transcript if present and non-empty, else the longest CDS. Same rule both species.
+    """
     cands = by_gene.get(gene, [])
     if not cands:
         return None, None, "no_cds_in_release"
@@ -145,20 +153,28 @@ def pick_transcript(gene: str, canon: dict[str, str], by_gene: dict[str, list[tu
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--stage0", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--per-stratum", type=int, default=20)
-    ap.add_argument("--max-start-codon", type=int, default=0,
-                    help="0 = the production codon-0 rule (bit-identical to qc_pair). >0 accepts the "
-                         "first indel-free 30-codon homologous window starting at or before this "
-                         "codon -- the design's shifted-window sensitivity arm (30 => within 60).")
-    ap.add_argument("--recovered-only", action="store_true",
-                    help="keep ONLY genes that FAIL the codon-0 rule but pass the shifted rule. "
-                         "Gives a set disjoint from the production panel, so 'do the headline "
-                         "correlations survive on the recovered genes' is a real replication rather "
-                         "than a re-measurement of mostly the same genes.")
+    ap.add_argument(
+        "--max-start-codon",
+        type=int,
+        default=0,
+        help="0 = the production codon-0 rule (bit-identical to qc_pair). >0 accepts the "
+        "first indel-free 30-codon homologous window starting at or before this "
+        "codon -- the design's shifted-window sensitivity arm (30 => within 60).",
+    )
+    ap.add_argument(
+        "--recovered-only",
+        action="store_true",
+        help="keep ONLY genes that FAIL the codon-0 rule but pass the shifted rule. "
+        "Gives a set disjoint from the production panel, so 'do the headline "
+        "correlations survive on the recovered genes' is a real replication rather "
+        "than a re-measurement of mostly the same genes.",
+    )
     args = ap.parse_args()
     if args.recovered_only and args.max_start_codon <= 0:
         raise SystemExit("--recovered-only is meaningless without --max-start-codon > 0")
@@ -179,8 +195,10 @@ def main() -> None:
             by_gene[t2g[t]].append((t, s))
         seqs[sp] = {g: pick_transcript(g, canon, by_gene) for g in ids}
         n = sum(1 for v in seqs[sp].values() if v[1])
-        log(f"{sp}: {n}/{len(ids)} genes with a CDS "
-            f"({sum(1 for v in seqs[sp].values() if v[2] == 'canonical')} canonical)")
+        log(
+            f"{sp}: {n}/{len(ids)} genes with a CDS "
+            f"({sum(1 for v in seqs[sp].values() if v[2] == 'canonical')} canonical)"
+        )
 
     # ---- walk the frozen order ----------------------------------------------------------------
     kept: list[dict] = []
@@ -193,10 +211,18 @@ def main() -> None:
             continue
         h_tid, h_cds, h_how = seqs["human"][row.gene_id]
         p_tid, p_cds, p_how = seqs["platypus"][row.plat_gene_id]
-        base = {"stratum": s, "priority": int(row.priority), "block": int(row.block),
-                "gene_id": row.gene_id, "plat_gene_id": row.plat_gene_id,
-                "perc_id_hp": row.perc_id_hp, "human_tx": h_tid, "platypus_tx": p_tid,
-                "human_tx_rule": h_how, "platypus_tx_rule": p_how}
+        base = {
+            "stratum": s,
+            "priority": int(row.priority),
+            "block": int(row.block),
+            "gene_id": row.gene_id,
+            "plat_gene_id": row.plat_gene_id,
+            "perc_id_hp": row.perc_id_hp,
+            "human_tx": h_tid,
+            "platypus_tx": p_tid,
+            "human_tx_rule": h_how,
+            "platypus_tx_rule": p_how,
+        }
         if not h_cds or not p_cds:
             attrition.append({**base, "reason": f"no_cds({h_how if not h_cds else p_how})"})
             continue
@@ -204,7 +230,8 @@ def main() -> None:
         if reason:
             attrition.append({**base, "reason": reason, **meta})
             continue
-        # The recovered set is defined by what the PRODUCTION gate rejects, so ask it directly rather
+        # The recovered set is defined by what the PRODUCTION gate rejects, so ask it directly
+        # rather
         # than inferring from the offset: a gene can pass codon-0 and still be reported at offset 0.
         if args.recovered_only:
             base_reason, _ = qc_pair(h_cds, p_cds)
@@ -215,12 +242,21 @@ def main() -> None:
         off_h = 3 * int(meta.get("prefix_codon_human", 0))
         off_p = 3 * int(meta.get("prefix_codon_platypus", 0))
         per_stratum[s] += 1
-        kept.append({**base, **meta, "reason": "pass",
-                     "cds_len_human": len(h_cds), "cds_len_platypus": len(p_cds),
-                     "prefix_offset_h_bp": off_h, "prefix_offset_p_bp": off_p,
-                     "prefix_human": h_cds[off_h:off_h + PREFIX_BP],
-                     "prefix_platypus": p_cds[off_p:off_p + PREFIX_BP],
-                     "cds_human": h_cds, "cds_platypus": p_cds})
+        kept.append(
+            {
+                **base,
+                **meta,
+                "reason": "pass",
+                "cds_len_human": len(h_cds),
+                "cds_len_platypus": len(p_cds),
+                "prefix_offset_h_bp": off_h,
+                "prefix_offset_p_bp": off_p,
+                "prefix_human": h_cds[off_h : off_h + PREFIX_BP],
+                "prefix_platypus": p_cds[off_p : off_p + PREFIX_BP],
+                "cds_human": h_cds,
+                "cds_platypus": p_cds,
+            }
+        )
         attrition.append({**base, "reason": "pass", **meta})
 
     df = pd.DataFrame(kept)
@@ -245,27 +281,37 @@ def main() -> None:
     att["passed"] = att.reason == "pass"
     rate = att.groupby("stratum").passed.agg(["sum", "count", "mean"])
     log("\nQC attrition by stratum (pass / examined / rate):\n" + rate.round(3).to_string())
-    top = (att[~att.passed].reason.str.replace(r"\(.*", "", regex=True)
-           .value_counts().head(8))
+    top = att[~att.passed].reason.str.replace(r"\(.*", "", regex=True).value_counts().head(8)
     log("\ntop rejection reasons:\n" + top.to_string())
-    summary = {"max_start_codon": int(args.max_start_codon),
-               "recovered_only": bool(args.recovered_only),
-               "prefix_offset_h_bp": [int(df.prefix_offset_h_bp.min()),
-                                      int(df.prefix_offset_h_bp.median()),
-                                      int(df.prefix_offset_h_bp.max())],
-               "n_offset_nonzero": int((df.prefix_offset_h_bp > 0).sum()),
-               "n_kept": int(len(df)),
-               "per_stratum": {int(k): int(v) for k, v in sorted(per_stratum.items())},
-               "n_examined": int(len(att)),
-               "pass_rate_by_stratum": {int(k): float(v) for k, v in rate["mean"].items()},
-               "examined_by_stratum": {int(k): int(v) for k, v in rate["count"].items()},
-               "rejection_reasons": {str(k): int(v) for k, v in top.items()},
-               "perc_id_by_stratum": {int(s): [float(g.perc_id_hp.min()),
-                                               float(g.perc_id_hp.median()),
-                                               float(g.perc_id_hp.max())]
-                                      for s, g in df.groupby("stratum")},
-               "cds_len_human": [int(df.cds_len_human.min()), int(df.cds_len_human.median()),
-                                 int(df.cds_len_human.max())]}
+    summary = {
+        "max_start_codon": int(args.max_start_codon),
+        "recovered_only": bool(args.recovered_only),
+        "prefix_offset_h_bp": [
+            int(df.prefix_offset_h_bp.min()),
+            int(df.prefix_offset_h_bp.median()),
+            int(df.prefix_offset_h_bp.max()),
+        ],
+        "n_offset_nonzero": int((df.prefix_offset_h_bp > 0).sum()),
+        "n_kept": int(len(df)),
+        "per_stratum": {int(k): int(v) for k, v in sorted(per_stratum.items())},
+        "n_examined": int(len(att)),
+        "pass_rate_by_stratum": {int(k): float(v) for k, v in rate["mean"].items()},
+        "examined_by_stratum": {int(k): int(v) for k, v in rate["count"].items()},
+        "rejection_reasons": {str(k): int(v) for k, v in top.items()},
+        "perc_id_by_stratum": {
+            int(s): [
+                float(g.perc_id_hp.min()),
+                float(g.perc_id_hp.median()),
+                float(g.perc_id_hp.max()),
+            ]
+            for s, g in df.groupby("stratum")
+        },
+        "cds_len_human": [
+            int(df.cds_len_human.min()),
+            int(df.cds_len_human.median()),
+            int(df.cds_len_human.max()),
+        ],
+    }
     (args.out / "stage1_summary.json").write_text(json.dumps(summary, indent=2))
     log(f"\nkept {len(df)} genes -> {args.out / 'pairs.csv'}")
     log(json.dumps(summary["perc_id_by_stratum"], indent=2))

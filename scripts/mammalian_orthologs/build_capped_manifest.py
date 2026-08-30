@@ -1,7 +1,6 @@
 """Stratified per-paralog cap of the mammalian ortholog manifest to <=CAP loci per family."""
 
 from __future__ import annotations
-
 import argparse
 from pathlib import Path
 
@@ -13,7 +12,10 @@ OUT = ROOT / "data" / "mammalian_orthologs"
 
 
 def even_alloc(sizes: dict[str, int], budget: int, rng: np.random.Generator) -> dict[str, int]:
-    """Water-fill `budget` units across groups (key -> size) as evenly as possible, each capped by its size."""
+    """
+    Water-fill `budget` units across groups (key -> size) as evenly as possible, each capped by its
+    size.
+    """
     alloc = {g: 0 for g in sizes}
     order = [g for g in sizes if sizes[g] > 0]
     rng.shuffle(order)
@@ -21,7 +23,7 @@ def even_alloc(sizes: dict[str, int], budget: int, rng: np.random.Generator) -> 
     remaining = budget
     while remaining > 0 and open_groups:
         share = remaining // len(open_groups)
-        if share == 0:                       # fewer slots left than open groups: 1 each until dry
+        if share == 0:  # fewer slots left than open groups: 1 each until dry
             for g in open_groups[:remaining]:
                 alloc[g] += 1
             break
@@ -48,7 +50,7 @@ def main() -> None:
 
     keep: list[int] = []
     report = []
-    for fi, (fam, fdf) in enumerate(man.groupby("family")):   # groupby sorts keys -> deterministic
+    for fi, (fam, fdf) in enumerate(man.groupby("family")):  # groupby sorts keys -> deterministic
         n = len(fdf)
         if n <= args.cap:
             keep.extend(fdf.index.tolist())

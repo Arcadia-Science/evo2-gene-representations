@@ -1,10 +1,9 @@
 """Stage 2 figures — eight statistic panels plus a structure supplement.
 
-    uv run python scripts/steering/platypus/figures.py
+uv run python scripts/steering/platypus/figures.py
 """
 
 from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path
@@ -34,7 +33,9 @@ PUB_PANEL_H = 360.0
 def save(fig, out: Path, stem: str) -> None:
     if pub.is_on():
         if stem in PUB_STEMS:
-            pub.drop_titles(fig, keep_axes=False)  # 6a/6b are single charts: the caption titles them
+            pub.drop_titles(
+                fig, keep_axes=False
+            )  # 6a/6b are single charts: the caption titles them
             pub.tight(fig)
             pub.finish(fig, stem, directory=out)
         plt.close(fig)
@@ -48,24 +49,39 @@ def save(fig, out: Path, stem: str) -> None:
 
 def _floor(ax, y, label):
     ax.axhline(y, color=acs.GRID, ls=":", lw=1.0, zorder=0)
-    ax.text(0.99, y, label, transform=ax.get_yaxis_transform(), ha="right", va="bottom",
-            fontsize=6, color=acs.ANNOTATION)
+    ax.text(
+        0.99,
+        y,
+        label,
+        transform=ax.get_yaxis_transform(),
+        ha="right",
+        va="bottom",
+        fontsize=6,
+        color=acs.ANNOTATION,
+    )
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     base = ROOT / "results" / "2026-07-28_evo2-platypus-paired"
     ap.add_argument("--stage2-dir", type=Path, default=base / "stage2")
-    ap.add_argument("--structure-suffix", default="",
-                    help="suffix on delta_spectrum/delta_by_group/family_direction_agreement, e.g. "
-                         "_cds_mean when delta_structure.py was run with --pooled")
-    ap.add_argument("--label", default="last prompt position",
-                    help="representation name for the figure titles")
-    ap.add_argument("--pub", action="store_true",
-                    help="render at PUBLICATION geometry: exact 500 pt half panels (draft figures "
-                         "6a and 6b sit side by side), the style guide's 15 pt type with "
-                         f"monospaced numerals, and no in-artwork title. Only {sorted(PUB_STEMS)} "
-                         "are written, into <stage2-dir>/figures/pub/.")
+    ap.add_argument(
+        "--structure-suffix",
+        default="",
+        help="suffix on delta_spectrum/delta_by_group/family_direction_agreement, e.g. "
+        "_cds_mean when delta_structure.py was run with --pooled",
+    )
+    ap.add_argument(
+        "--label", default="last prompt position", help="representation name for the figure titles"
+    )
+    ap.add_argument(
+        "--pub",
+        action="store_true",
+        help="render at PUBLICATION geometry: exact 500 pt half panels (draft figures "
+        "6a and 6b sit side by side), the style guide's 15 pt type with "
+        f"monospaced numerals, and no in-artwork title. Only {sorted(PUB_STEMS)} "
+        "are written, into <stage2-dir>/figures/pub/.",
+    )
     args = ap.parse_args()
 
     if args.pub:
@@ -100,8 +116,9 @@ def main() -> None:
         ("split_median", "Split-half stability  cos(v_A, v_B)", "4_splithalf_stability", 0.0),
     ]
     for col, ylab, stem, ref in specs:
-        fig, ax = plt.subplots(figsize=(pub.size(pub.HALF, PUB_PANEL_H) if pub.is_on()
-                                        else (6.4, 3.0)))
+        fig, ax = plt.subplots(
+            figsize=(pub.size(pub.HALF, PUB_PANEL_H) if pub.is_on() else (6.4, 3.0))
+        )
         if col == "split_median":
             ax.fill_between(x, st["split_p2.5"], st["split_p97.5"], color=REAL, alpha=0.18, lw=0)
         ax.plot(x, st[col], color=REAL, lw=1.8, marker="o", ms=2.6)
@@ -112,24 +129,44 @@ def main() -> None:
             # At 15 pt the label is wider than the four blocks it marks, so it cannot sit inside
             # the shaded band. Above the axes, right-aligned to the same edge the band ends on,
             # it reads as a caption for the shading without landing on the curve.
-            ax.text(1.0, 1.01, "blocks 28–31 saturated", transform=ax.transAxes,
-                    ha="right", va="bottom", color=acs.ANNOTATION)
+            ax.text(
+                1.0,
+                1.01,
+                "blocks 28–31 saturated",
+                transform=ax.transAxes,
+                ha="right",
+                va="bottom",
+                color=acs.ANNOTATION,
+            )
         else:
-            ax.text(29.5, ax.get_ylim()[1], "saturated\n(28-31)", ha="center", va="top",
-                    fontsize=6, color=acs.ANNOTATION)
+            ax.text(
+                29.5,
+                ax.get_ylim()[1],
+                "saturated\n(28-31)",
+                ha="center",
+                va="top",
+                fontsize=6,
+                color=acs.ANNOTATION,
+            )
         ax.set_xlabel("Evo2 block")
         ax.set_ylabel(ylab)
         ax.set_title(f"{ylab} — {len(pg.gene.unique())} human/platypus pairs, {args.label}")
         save(fig, out, stem)
 
     # 5-6 : real vs nulls ------------------------------------------------------
-    for nullkey, nullname, stem in (("sf", "sign-flip null", "5_real_vs_signflip_null"),
-                                    ("mm", "mismatched-pair null (within family)",
-                                     "6_real_vs_mismatch_null")):
+    for nullkey, nullname, stem in (
+        ("sf", "sign-flip null", "5_real_vs_signflip_null"),
+        ("mm", "mismatched-pair null (within family)", "6_real_vs_mismatch_null"),
+    ):
         fig, axes = plt.subplots(1, 2, figsize=(9.0, 3.1))
-        for ax, (col, key, ylab) in zip(axes, [
+        for ax, (col, key, ylab) in zip(
+            axes,
+            [
                 ("loo_mean", f"{nullkey}_loo", "mean leave-one-out cosine"),
-                ("coherence", f"{nullkey}_coh", "directional coherence C")]):
+                ("coherence", f"{nullkey}_coh", "directional coherence C"),
+            ],
+            strict=False,
+        ):
             band(ax, key, SF if nullkey == "sf" else MM, nullname)
             ax.plot(x, st[col], color=REAL, lw=1.8, marker="o", ms=2.6, label="observed")
             if col == "coherence":
@@ -179,14 +216,12 @@ def main() -> None:
     # Same data as the right panel above. The two-panel version stays the diagnostic view;
     # this one is what the publication uses, where the per-gene trajectories on the left are
     # detail the figure is not making a claim about.
-    fig, ax = plt.subplots(figsize=(pub.size(pub.HALF, PUB_PANEL_H) if pub.is_on()
-                                    else (4.7, 3.2)))
+    fig, ax = plt.subplots(figsize=(pub.size(pub.HALF, PUB_PANEL_H) if pub.is_on() else (4.7, 3.2)))
     ax.plot(x, cv, color=REAL, lw=1.8, marker="o", ms=2.6)
     ax.set_xlabel("Evo2 block")
     # Atkinson has Δ (checked against the font's cmap), so the publication label can use the
     # symbol the text uses instead of spelling the variable out.
-    ax.set_ylabel("CV of ||Δ|| across genes" if pub.is_on()
-                  else "CV of ||delta_i|| across genes")
+    ax.set_ylabel("CV of ||Δ|| across genes" if pub.is_on() else "CV of ||delta_i|| across genes")
     ax.set_title("Magnitude spread across genes")
     acs.style_axes(ax, monospaced_axes="both")
     save(fig, out, "8b_magnitude_spread")
@@ -204,8 +239,12 @@ def main() -> None:
         axes[0].set_title("Effective dimensionality of the deltas\n(1 = a single shared direction)")
         g = gp[gp.grouping == "family"]
         for name, sub in g.groupby("group"):
-            axes[1].plot(sub.layer, sub.coherence - sub.isotropic_floor, lw=1.3,
-                         label=f"{name} (n={int(sub.n.iloc[0])})")
+            axes[1].plot(
+                sub.layer,
+                sub.coherence - sub.isotropic_floor,
+                lw=1.3,
+                label=f"{name} (n={int(sub.n.iloc[0])})",
+            )
         axes[1].axhline(0, color=acs.ZERO_LINE, ls=":", lw=1.0)
         axes[1].set_ylabel("within-family C  -  its isotropic floor")
         axes[1].set_title("Per-family coherence, floor-corrected")

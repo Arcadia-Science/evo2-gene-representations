@@ -1,7 +1,6 @@
 """Make the Atkinson Hyperlegible family usable from matplotlib."""
 
 from __future__ import annotations
-
 import os
 import warnings
 from pathlib import Path
@@ -59,14 +58,26 @@ INSTALL_HINT = (
 # do, so grab them when upstream has them.
 _GF = "https://github.com/google/fonts/raw/main/ofl"
 _DOWNLOADS = {
-    "next": (f"{_GF}/atkinsonhyperlegiblenext/AtkinsonHyperlegibleNext%5Bwght%5D.ttf",
-             "AtkinsonHyperlegibleNext-VariableFont_wght.ttf", True),
-    "next_italic": (f"{_GF}/atkinsonhyperlegiblenext/AtkinsonHyperlegibleNext-Italic%5Bwght%5D.ttf",
-                    "AtkinsonHyperlegibleNext-Italic-VariableFont_wght.ttf", False),
-    "mono": (f"{_GF}/atkinsonhyperlegiblemono/AtkinsonHyperlegibleMono%5Bwght%5D.ttf",
-             "AtkinsonHyperlegibleMono-VariableFont_wght.ttf", True),
-    "mono_italic": (f"{_GF}/atkinsonhyperlegiblemono/AtkinsonHyperlegibleMono-Italic%5Bwght%5D.ttf",
-                    "AtkinsonHyperlegibleMono-Italic-VariableFont_wght.ttf", False),
+    "next": (
+        f"{_GF}/atkinsonhyperlegiblenext/AtkinsonHyperlegibleNext%5Bwght%5D.ttf",
+        "AtkinsonHyperlegibleNext-VariableFont_wght.ttf",
+        True,
+    ),
+    "next_italic": (
+        f"{_GF}/atkinsonhyperlegiblenext/AtkinsonHyperlegibleNext-Italic%5Bwght%5D.ttf",
+        "AtkinsonHyperlegibleNext-Italic-VariableFont_wght.ttf",
+        False,
+    ),
+    "mono": (
+        f"{_GF}/atkinsonhyperlegiblemono/AtkinsonHyperlegibleMono%5Bwght%5D.ttf",
+        "AtkinsonHyperlegibleMono-VariableFont_wght.ttf",
+        True,
+    ),
+    "mono_italic": (
+        f"{_GF}/atkinsonhyperlegiblemono/AtkinsonHyperlegibleMono-Italic%5Bwght%5D.ttf",
+        "AtkinsonHyperlegibleMono-Italic-VariableFont_wght.ttf",
+        False,
+    ),
 }
 _LICENSE_URL = f"{_GF}/atkinsonhyperlegiblenext/OFL.txt"
 
@@ -77,7 +88,7 @@ def fetch(force: bool = False, quiet: bool = False) -> Path:
 
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     got = 0
-    for key, (url, filename, required) in _DOWNLOADS.items():
+    for _key, (url, filename, required) in _DOWNLOADS.items():
         target = DOWNLOAD_DIR / filename
         if target.exists() and not force:
             got += 1
@@ -147,7 +158,7 @@ def _instantiate(src: Path, weight: int, subfamily: str, family: str, out: Path)
     name = font["name"]
     for nid, value in ((1, family), (2, subfamily), (4, full), (6, postscript)):
         name.setName(value, nid, 3, 1, 0x409)  # Windows/Unicode
-        name.setName(value, nid, 1, 0, 0)      # Mac/Roman
+        name.setName(value, nid, 1, 0, 0)  # Mac/Roman
     # Drop the typographic family/subfamily records: matplotlib reads ids 1/2,
     # and leftover id 16/17 records confuse other font tools about the weight.
     for nid in (16, 17, 21, 22):

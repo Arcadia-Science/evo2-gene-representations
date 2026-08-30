@@ -1,7 +1,8 @@
-"""Stage 5a — resolve 1:1 orthologs for the panel genes across the 24-mammal topology, and pull CDS."""
+"""
+Stage 5a — resolve 1:1 orthologs for the panel genes across the 24-mammal topology, and pull CDS.
+"""
 
 from __future__ import annotations
-
 import argparse
 import gzip
 import json
@@ -38,8 +39,10 @@ def homologs(gene: str) -> dict:
         return json.loads(cf.read_text())
     # The species is REQUIRED in the path: /homology/id/<species>/<id>. Without it REST returns 404
     # for every gene, which silently looks like "this gene has no orthologs".
-    url = (f"{REST}/homology/id/{HUMAN}/{gene}?type=orthologues;format=condensed;"
-           "content-type=application/json")
+    url = (
+        f"{REST}/homology/id/{HUMAN}/{gene}?type=orthologues;format=condensed;"
+        "content-type=application/json"
+    )
     for attempt in range(4):
         try:
             with urllib.request.urlopen(url, timeout=120) as fh:
@@ -47,7 +50,7 @@ def homologs(gene: str) -> dict:
             cf.write_text(json.dumps(d))
             return d
         except urllib.error.HTTPError as exc:
-            if exc.code == 404:      # genuinely absent from Compara: terminal, do not retry
+            if exc.code == 404:  # genuinely absent from Compara: terminal, do not retry
                 log(f"  {gene}: 404 (not in Compara homology)")
                 cf.write_text(json.dumps({"data": []}))
                 return {"data": []}
@@ -103,8 +106,9 @@ def read_panel_fasta(path: Path) -> dict[str, str]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--run", type=Path, required=True)
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
@@ -128,15 +132,30 @@ def main() -> None:
             if sp not in species or h.get("type") != "ortholog_one2one" or sp in seen:
                 continue
             seen.add(sp)
-            rows.append({"gene": g, "species": sp, "ortholog_gene_id": h.get("id"),
-                         "type": h.get("type")})
+            rows.append(
+                {"gene": g, "species": sp, "ortholog_gene_id": h.get("id"), "type": h.get("type")}
+            )
         if (i + 1) % 25 == 0:
             log(f"  homology {i + 1}/{len(genes)}")
     orth = pd.DataFrame(rows)
     # human is the query, so it is never in its own homology list
-    orth = pd.concat([orth, pd.DataFrame(
-        [{"gene": r.gene, "species": HUMAN, "ortholog_gene_id": r.gene_id,
-          "type": "self"} for r in pairs.itertuples()])], ignore_index=True)
+    orth = pd.concat(
+        [
+            orth,
+            pd.DataFrame(
+                [
+                    {
+                        "gene": r.gene,
+                        "species": HUMAN,
+                        "ortholog_gene_id": r.gene_id,
+                        "type": "self",
+                    }
+                    for r in pairs.itertuples()
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
     orth.to_csv(out / "ortholog_resolution.csv", index=False)
     log(f"orthologs: {len(orth)} (gene, species) 1:1 records")
 
@@ -155,15 +174,25 @@ def main() -> None:
     for k in range(2, len(species) + 1):
         core = [HUMAN, PLATYPUS] + ranked[: k - 2]
         n_complete = int(pres[core].all(axis=1).sum())
-        cores.append({"n_taxa": len(core), "n_genes_complete": n_complete,
-                      "genes_x_taxa": n_complete * len(core), "core": ";".join(sorted(core))})
+        cores.append(
+            {
+                "n_taxa": len(core),
+                "n_genes_complete": n_complete,
+                "genes_x_taxa": n_complete * len(core),
+                "core": ";".join(sorted(core)),
+            }
+        )
     cdf = pd.DataFrame(cores)
     cdf.to_csv(out / "core_candidates.csv", index=False)
-    log("\ncandidate common cores (human+platypus mandatory, then by coverage):\n"
-        + cdf[["n_taxa", "n_genes_complete", "genes_x_taxa"]].to_string(index=False))
+    log(
+        "\ncandidate common cores (human+platypus mandatory, then by coverage):\n"
+        + cdf[["n_taxa", "n_genes_complete", "genes_x_taxa"]].to_string(index=False)
+    )
     best = cdf.loc[cdf.genes_x_taxa.idxmax()]
-    log(f"\nmax genes x taxa: {int(best.n_taxa)} taxa x {int(best.n_genes_complete)} genes "
-        f"= {int(best.genes_x_taxa)}")
+    log(
+        f"\nmax genes x taxa: {int(best.n_taxa)} taxa x {int(best.n_genes_complete)} genes "
+        f"= {int(best.genes_x_taxa)}"
+    )
 
     # ---- 3. CDS per gene ----------------------------------------------------------------------
     panel = {sp: read_panel_fasta(args.run / "stage1" / f) for sp, f in PANEL_CDS.items()}
@@ -201,20 +230,35 @@ def main() -> None:
                 for sp, s in recs:
                     fh.write(f">{sp}\n{s}\n")
             n_written += 1
-        per_gene.append({"gene": g, "n_taxa_cds": len(recs),
-                         "has_human": any(sp == HUMAN for sp, _ in recs),
-                         "has_platypus": any(sp == PLATYPUS for sp, _ in recs)})
+        per_gene.append(
+            {
+                "gene": g,
+                "n_taxa_cds": len(recs),
+                "has_human": any(sp == HUMAN for sp, _ in recs),
+                "has_platypus": any(sp == PLATYPUS for sp, _ in recs),
+            }
+        )
     pg = pd.DataFrame(per_gene)
     pg.to_csv(out / "cds_per_gene.csv", index=False)
-    log(f"\nwrote {n_written} per-gene CDS fasta; n_taxa min {pg.n_taxa_cds.min()} "
-        f"med {pg.n_taxa_cds.median()} max {pg.n_taxa_cds.max()}")
-    (out / "stage5a_config.json").write_text(json.dumps(
-        {"ensembl_release": 116, "n_species_topology": len(species),
-         "transcript_rule": {"human/platypus": "panel canonical CDS (stage 1)",
-                             "other": "longest CDS of the 1:1 ortholog gene"},
-         "n_genes_with_fasta": n_written,
-         "best_core": {"n_taxa": int(best.n_taxa), "n_genes": int(best.n_genes_complete)}},
-        indent=2))
+    log(
+        f"\nwrote {n_written} per-gene CDS fasta; n_taxa min {pg.n_taxa_cds.min()} "
+        f"med {pg.n_taxa_cds.median()} max {pg.n_taxa_cds.max()}"
+    )
+    (out / "stage5a_config.json").write_text(
+        json.dumps(
+            {
+                "ensembl_release": 116,
+                "n_species_topology": len(species),
+                "transcript_rule": {
+                    "human/platypus": "panel canonical CDS (stage 1)",
+                    "other": "longest CDS of the 1:1 ortholog gene",
+                },
+                "n_genes_with_fasta": n_written,
+                "best_core": {"n_taxa": int(best.n_taxa), "n_genes": int(best.n_genes_complete)},
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
