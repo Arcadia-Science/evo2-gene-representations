@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "baselines"))
 sys.path.insert(0, str(ROOT / "scripts" / "mammalian_orthologs"))
 
-from between_family_baselines import CONVERGENT_PAIRS  # noqa: E402
+from between_family_baselines import AXIS_OF, CONVERGENT_PAIRS  # noqa: E402
 from geodesic_utils import mantel_test, upper_triangle  # noqa: E402
 from ot_between_family import DEFAULT_ALPHAS, compute_ot_matrices  # noqa: E402
 
@@ -107,6 +107,7 @@ def load_human(exp: str):
             strict=False,
         )
     )
+    axis_of = {name: axis for name, axis in axis_of.items() if name in AXIS_OF}
     baseline_mats = {}
     for name in axis_of:
         f = src / f"betweenfam_{name}_distances.csv"
@@ -132,9 +133,6 @@ def load_mammal(exp: str):
     axis_of = mb.AXIS
     baseline_mats = {
         "pfam_jsd": mb.compute_pfam_jsd(fam_order, mb.PFAM_ACCESSIONS),
-        "cofactor": mb.cofactor_matrix(fam_order),
-        "ec_number": mb.ec_matrix(fam_order),
-        "go_mf": mb.go_matrices(fam_order, mb.PFAM_ACCESSIONS)["go_mf"],
         "kmer": mb.kmer_between(sub, cds, fam_order),
         "gc_content": mb.gc_between(sub, cds, fam_order),
     }

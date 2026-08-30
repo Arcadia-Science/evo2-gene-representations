@@ -18,7 +18,6 @@ DATA = ROOT / "data" / "mammalian_orthologs"
 BASELINE_FILES = {
     "speciestree": ("within_family_speciestree.csv", "spearman_geodesic_speciestree"),
     "patristic": ("within_family_patristic.csv", "spearman_geodesic_patristic"),
-    "seqid": ("within_family_seqid.csv", "spearman_geodesic_seqid"),
     "kmer": ("kmer_within_family_correlations.csv", "spearman_geodesic_kmer"),
     "gc": ("within_family_gc.csv", "spearman_geodesic_gc"),
 }

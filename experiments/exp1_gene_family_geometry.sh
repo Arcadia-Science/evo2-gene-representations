@@ -89,7 +89,7 @@ fi
 
 say "Figures 1-3"
 
-# Publication panels use angular within-family scoring and the configured baseline exclusions.
+# Publication panels use angular within-family scoring.
 if need "figs 1-2: between/within rho by layer" \
         "$RUN/blocks*/between_family_baseline_scores.csv" \
         "$RUN/blocks*/within_family_patristic_angular.csv"; then
@@ -98,7 +98,6 @@ if need "figs 1-2: between/within rho by layer" \
     --out-dir "$GF" \
     --title 'Evo2 mammalian orthologs (transcript, CDS-masked) — 48 families, graph-free metrics' \
     --stem-suffix _graphfree --within-file-suffix _angular --kmer-k 6 \
-    --exclude-between cofactor ec_number go_mf --exclude-within 'sequence identity' \
     --lead-per-baseline --no-baselines --pub
   collect "$GF/pub/between_axis_vs_layer_graphfree"  fig01_between_family_rho_by_layer
   collect "$GF/pub/within_family_vs_layer_graphfree" fig02_within_family_rho_by_layer

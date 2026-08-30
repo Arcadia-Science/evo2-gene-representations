@@ -12,26 +12,15 @@ from scipy.stats import spearmanr
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "baselines"))
-from between_family_baselines import (  # noqa: E402
-    PFAM_ACCESSIONS,
-    cofactor_matrix,
-    ec_matrix,
-    go_matrices,
-)
+from gene_families import PFAM_ACCESSIONS  # noqa: E402
 from geodesic_utils import compute_centroid_geodesic, mantel_test  # noqa: E402
 from kmer_sequence_divergence import kmer_distance_matrix  # noqa: E402
 from pfam_hmm_jsd import compute_pfam_jsd  # noqa: E402
 
 OUT = ROOT / "data" / "mammalian_orthologs"
 CACHE_ROOT = ROOT / "data" / "cache" / "mammal_embed"
-# baseline -> axis label (matches layer_sweep_summary BETWEEN_ORDER). cofactor/ec reuse the
-# hand-curated FAMILY_ANNOTATIONS from between_family_baselines — every mammalian family
-# (incl. carbonic_anhydrase = alpha class, and the hox negative control) is already annotated.
 AXIS = {
     "pfam_jsd": "1_homology",
-    "cofactor": "2_mechanism",
-    "ec_number": "2_mechanism",
-    "go_mf": "2_mechanism",
     "gc_content": "control",
     "kmer": "control",
 }
@@ -122,14 +111,11 @@ def main() -> None:
 
     # layer-independent axes (computed once)
     print(
-        "computing transferable axes (Pfam-JSD, GO — cached fetch; k-mer, GC on panel CDS)...",
+        "computing transferable axes (Pfam-JSD, k-mer, and GC)...",
         flush=True,
     )
     axes = {
         "pfam_jsd": compute_pfam_jsd(fams, PFAM_ACCESSIONS),
-        "cofactor": cofactor_matrix(fams),  # ChEBI-derived; reuses FAMILY_ANNOTATIONS
-        "ec_number": ec_matrix(fams),  # EC-prefix depth; reuses FAMILY_ANNOTATIONS
-        "go_mf": go_matrices(fams, PFAM_ACCESSIONS)["go_mf"],
         "kmer": kmer_between(meta, cds, fams),
         "gc_content": gc_between(meta, cds, fams),
     }

@@ -16,7 +16,6 @@ __all__ = [
     "DIVERGING",
     "HEATMAP_GEODESIC",
     "HEATMAP_JSD",
-    "HEATMAP_SEQID",
     "HEATMAP_KMER",
     "MISSING",
     "PLACEHOLDER_FILL",
@@ -132,7 +131,6 @@ DIVERGING_WARM_COOL = "apc:orange_sage_r"  # low = sage/green, high = orange (Rd
 # Per-baseline heatmap gradients keep each baseline's hue consistent across figures.
 HEATMAP_GEODESIC = "apc:oranges_r"  # model geodesic  (was YlOrRd)
 HEATMAP_JSD = "apc:blues_r"  # Pfam-domain JSD  (was Blues)
-HEATMAP_SEQID = "apc:greens_r"  # sequence identity (was Greens)
 HEATMAP_KMER = "apc:purples_r"  # k-mer divergence  (was Purples)
 HEATMAP_TAXONOMY = "apc:sages_r"  # taxonomic-rank distance
 
@@ -156,7 +154,6 @@ HIGHLIGHT = apc.dragon  # the one element a panel is about
 # remains consistent across the figure set.
 WITHIN_PALETTE = {
     "kmer": apc.aster,  # HEATMAP_KMER (purples)
-    "seqid": apc.seaweed,  # HEATMAP_SEQID (greens)
     "patristic": apc.amber,
     "taxonomy": apc.asparagus,  # HEATMAP_TAXONOMY (sages)
     "geodesic": apc.terracotta,  # HEATMAP_GEODESIC (oranges)
