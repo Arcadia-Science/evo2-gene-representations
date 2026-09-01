@@ -80,7 +80,12 @@ def main() -> None:
     # whichever readout is selected. Exits with the rescore command if the column is not there —
     # never silently substitutes the other site set, which differs by about a factor of two.
     d, spec = load_scores(
-        args.run, args.dir, scores=args.scores, metric=args.metric, min_voters=args.min_voters
+        args.run,
+        args.dir,
+        scores=args.scores,
+        metric=args.metric,
+        min_voters=args.min_voters,
+        from_figure_data=args.from_figure_data,
     )
     out = args.run / "figures"
     out.mkdir(exist_ok=True)

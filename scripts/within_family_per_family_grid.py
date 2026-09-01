@@ -50,6 +50,12 @@ def main() -> None:
         "full grid and its metric-pairs CSV are the reference artefacts and a "
         "3-family file must not land on their names.",
     )
+    ap.add_argument(
+        "--stem",
+        default="",
+        help="output stem; defaults to the --csv basename. Set it when the input table's name "
+        "and the published panel's name differ.",
+    )
     ap.add_argument("--panel-w", type=float, default=2.05, help="panel width, inches")
     ap.add_argument("--panel-h", type=float, default=1.75, help="panel height, inches")
     ap.add_argument(
@@ -67,7 +73,7 @@ def main() -> None:
     df = pd.read_csv(args.csv)
     df = df[~df["metric"].isin(args.exclude_metric)]
     out_dir = Path(args.out_dir) if args.out_dir else Path(args.csv).parent
-    stem = Path(args.csv).stem
+    stem = args.stem or Path(args.csv).stem
 
     metrics = list(dict.fromkeys(df["metric"]))
     if args.families:

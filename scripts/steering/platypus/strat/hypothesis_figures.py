@@ -28,6 +28,8 @@ from plot_utils import set_pub_style  # noqa: E402
 from stage5_merge import CONFIRM_ROLE, CONFIRMATORY, loo_pc1_cos, resid  # noqa: E402
 from strat_metric import add_metric_args, coverage_note, load_scores  # noqa: E402
 
+import figure_data  # noqa: E402
+
 # Identity is never carried by colour alone: every categorical series also has a marker, a
 # position, or a direct label.
 INK = acs.SERIES_PRIMARY  # observed values
@@ -116,13 +118,22 @@ def pstr(p: float) -> str:
     return f"p={p:.2g}" if p >= 1e-4 else f"p={p:.0e}"
 
 
+# Set from --from-figure-data in main(); the loaders below are called from several figures.
+FROM_FIGURE_DATA = False
+
+
+def _read(run_path: Path, table: str) -> pd.DataFrame:
+    """One table, from figure_data/ when running the publication path, else the run directory."""
+    return figure_data.table(table) if FROM_FIGURE_DATA else pd.read_csv(run_path)
+
+
 # shared per-gene table: the same joins stage5_merge makes, so the figures cannot drift from it
 def per_gene_table(run: Path, layer: int, mode: str, with_pc1: bool = True) -> pd.DataFrame:
     """`with_pc1=False` skips the 754 MB npz load and the 400 leave-one-out PCAs behind
     `loo_cos_pc1` -- worth ~12 min when the requested figures do not need that column."""
-    pairs = pd.read_csv(run / "stage1" / "pairs.csv")
-    tre = pd.read_csv(run / "stage5" / "tree_stats.csv")
-    cov = pd.read_csv(run / "stage2" / "aligned_coverage.csv")
+    pairs = _read(run / "stage1" / "pairs.csv", "exp3_panel")
+    tre = _read(run / "stage5" / "tree_stats.csv", "exp3_rates_tree_stats")
+    cov = _read(run / "stage2" / "aligned_coverage.csv", "exp3_panel_coverage")
     df = (
         pairs[["gene", "stratum", "perc_id_hp", "cds_len_human"]]
         .merge(tre[tre.status == "ok"], on="gene", how="inner")
@@ -134,12 +145,15 @@ def per_gene_table(run: Path, layer: int, mode: str, with_pc1: bool = True) -> p
     df["human_residual"] = resid(
         df.human_branch.to_numpy(float), df.background_rate.to_numpy(float)
     )
-    dn = pd.read_csv(run / "stage5" / "dnds.csv")
+    dn = _read(run / "stage5" / "dnds.csv", "exp3_rates_dnds")
     dn = dn[dn.status == "ok"]
     keep = [c for c in dn.columns if c.startswith(("dN_", "dS_", "omega_", "tree_dS", "tree_dN"))]
     df = df.merge(dn[["gene", *keep]], on="gene", how="left")
 
-    pg = pd.read_csv(run / f"geom_{mode}" / "per_gene_by_layer.csv")
+    if FROM_FIGURE_DATA:
+        pg = figure_data.table("exp3_direction_per_gene_by_layer").query("panel == 'strat400'")
+    else:
+        pg = pd.read_csv(run / f"geom_{mode}" / "per_gene_by_layer.csv")
     pg = pg[pg.layer == layer][["gene", "loo_cos", "delta_norm"]]
     df = df.merge(pg, on="gene", how="left")
 
@@ -513,8 +527,8 @@ def fig4_h1c(run: Path, out: Path) -> None:
 
 
 def fig5_matrix(run: Path, out: Path) -> None:
-    d = pd.read_csv(run / "stage5" / "rate_vs_direction.csv")
-    g = pd.read_csv(run / "stage5" / "rate_vs_gain.csv")
+    d = _read(run / "stage5" / "rate_vs_direction.csv", "exp3_rates_vs_direction")
+    g = _read(run / "stage5" / "rate_vs_gain.csv", "exp3_rates_vs_gain")
     geo = d.pivot_table(index="predictor", columns="outcome", values="rho")
     geo = geo[["delta_norm", "loo_cos", "loo_cos_pc1"]]
     gai = g.pivot_table(index="predictor", columns="condition", values="spearman_rho")
@@ -916,7 +930,7 @@ def fig8_strata(run: Path, out: Path, df: pd.DataFrame, scores: pd.DataFrame, sp
     """What is actually in each stratum: the defining axis, the covariates, the rate statistics, and
     the autapomorphy statistics of the readout.
     """
-    pairs = pd.read_csv(run / "stage1" / "pairs.csv")
+    pairs = _read(run / "stage1" / "pairs.csv", "exp3_panel")
     m = pairs.merge(
         df.drop(columns=[c for c in df.columns if c in pairs.columns and c != "gene"]),
         on="gene",
@@ -1133,6 +1147,8 @@ def main() -> None:
     add_metric_args(ap)
     args = ap.parse_args()
 
+    global FROM_FIGURE_DATA
+    FROM_FIGURE_DATA = args.from_figure_data
     if args.pub:
         pub.enable()
 
@@ -1151,6 +1167,7 @@ def main() -> None:
             scores=args.scores,
             metric=args.metric,
             min_voters=args.min_voters,
+            from_figure_data=args.from_figure_data,
         )
         gains = gain_table(scores, spec)
         print(

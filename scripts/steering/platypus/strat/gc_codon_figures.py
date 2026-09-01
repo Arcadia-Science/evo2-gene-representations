@@ -24,6 +24,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arcadia_pub as pub  # noqa: E402
 import arcadia_style as acs  # noqa: E402
 from alignment_metrics import read_fasta  # noqa: E402
+
+import figure_data  # noqa: E402
+
+# Set from --from-figure-data in main(); the cached-table helpers are called from several figures.
+FROM_FIGURE_DATA = False
 from plot_utils import set_pub_style  # noqa: E402
 
 INK, WARM, PLUM, GREY = (acs.SERIES_PRIMARY, acs.SERIES_NULL, acs.SERIES_THIRD, acs.SERIES_MUTED)
@@ -250,6 +255,11 @@ def composition_table(
     run: Path, arm: str, out: Path, refresh: bool = False
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """(per-gene-per-condition generation composition, per-gene reference windows)."""
+    if FROM_FIGURE_DATA:
+        return (
+            figure_data.table("exp3_generation_composition"),
+            figure_data.table("exp3_generation_reference_windows").set_index("gene"),
+        )
     gc_cache, ref_cache = out / "12b_composition_gene_means.csv", out / "12c_reference_windows.csv"
     if gc_cache.exists() and ref_cache.exists() and not refresh:
         print(f"  (reusing {gc_cache.name}; pass --refresh-composition to recompute)")
@@ -616,6 +626,8 @@ def codon_stats(
     run: Path, arm: str, out: Path, workers: int = 8, refresh: bool = False
 ) -> pd.DataFrame:
     """Per-(gene, condition) codon-level stats, cached — the alignments cost a few minutes."""
+    if FROM_FIGURE_DATA:
+        return figure_data.table("exp3_codon_substitutions")
     cache = out / "13b_codon_substitution_stats.csv"
     if cache.exists() and not refresh:
         print(f"  (reusing {cache.name}; pass --refresh-codons to recompute)")
@@ -1054,6 +1066,12 @@ def main() -> None:
     ap.add_argument("--rep-dir", default="stage3_cds_mean")
     ap.add_argument("--layer", type=int, default=27)
     ap.add_argument(
+        "--from-figure-data",
+        action="store_true",
+        help="read the tracked composition and codon tables in figure_data/ instead of "
+        "recomputing them from the saved generations",
+    )
+    ap.add_argument(
         "--only",
         nargs="+",
         type=int,
@@ -1080,6 +1098,8 @@ def main() -> None:
     )
     args = ap.parse_args()
 
+    global FROM_FIGURE_DATA
+    FROM_FIGURE_DATA = args.from_figure_data
     if args.pub:
         pub.enable()
     # `--layer` is the ONLY layer switch: it picks the stage-4 condition suffix (blocks.27 has

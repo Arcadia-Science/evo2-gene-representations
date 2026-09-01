@@ -68,22 +68,20 @@ stage "~2 h, CPU"   "D1. W2/angular control preservation and Figure 12 source ta
   $PY scripts/mammalian_orthologs/mammal_controls_score.py --arm transcript_cdsmask
 stage "~2 h, CPU"   "D2. control preservation, graph-free — the input to figure 4" \
   $PY scripts/mammalian_orthologs/controls_score_graphfree.py --axis both
+
+stage "~1 min, CPU"  "D3. refresh the tracked figure_data/ tables" \
+  $PY scripts/build_figure_data.py
 fi
 
 say "Figures 4 and 12"
 
-if need "fig 4: controls vs natural by layer" \
-        results/_ot_control_preservation_transcript_cdsmask.csv \
-        results/_angular_control_preservation_transcript_cdsmask.csv; then
+if need "fig 4: controls vs natural by layer" figure_data/exp2_control_preservation.csv; then
   fig "fig 4: controls vs natural by layer" $PY scripts/controls/plot_control_wasserstein.py --pub
   collect "results/layer_sweep_summaries/pub/controls_layer_summary_mammalian-orthologs-cdsmask-48fam-wasserstein" \
           fig04_controls_vs_natural_by_layer
 fi
 
-if need "fig 12: paired p3, protein vs nucleotide" \
-        "$RUN/blocks*/controls/control_between_scores.csv" \
-        "$RUN/blocks*/controls/control_within_scores.csv" \
-        "$RUN/control_rho_by_layer.csv"; then
+if need "fig 12: paired p3, protein vs nucleotide" figure_data/exp2_control_preservation.csv; then
   fig "fig 12: paired p3, protein vs nucleotide" \
     $PY scripts/mammalian_orthologs/paired_p3_figure.py --pub
   collect "$RUN/pub/paired_p3_protein_vs_nucleotide" fig12_paired_p3_protein_vs_nucleotide

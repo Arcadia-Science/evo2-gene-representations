@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "scripts"))
+import figure_data  # noqa: E402
+
 # Legacy protein-alignment scores remain available only for reproducibility.
 LEGACY_COL = "pct_private_correct"
 
@@ -83,6 +86,12 @@ def add_metric_args(ap) -> None:
         f"exists, else {SCORES_LEGACY})",
     )
     ap.add_argument(
+        "--from-figure-data",
+        action="store_true",
+        help="read figure_data/exp3_steering_outcomes.csv (one row per gene and condition) "
+        "instead of the per-sample score table in a run directory",
+    )
+    ap.add_argument(
         "--min-voters",
         type=int,
         default=1,
@@ -92,8 +101,12 @@ def add_metric_args(ap) -> None:
     )
 
 
-def resolve_scores_path(run: Path, arm_dir: str, scores: str | None = None) -> Path:
+def resolve_scores_path(
+    run: Path, arm_dir: str, scores: str | None = None, from_figure_data: bool = False
+) -> Path:
     """Prefer the rescored table, so a figure picks up the nt-alignment fix without a flag."""
+    if from_figure_data:
+        return figure_data.path("exp3_steering_outcomes")
     d = Path(run) / arm_dir
     if scores:
         return d / scores
@@ -109,12 +122,13 @@ def load_scores(
     metric: str = DEFAULT_METRIC,
     min_voters: int = 1,
     quiet: bool = False,
+    from_figure_data: bool = False,
 ) -> tuple[pd.DataFrame, dict]:
     """
     Load a stage-4 score table and guarantee the requested metric is present and named `metric`.
     """
     spec = dict(METRICS[ALIASES.get(metric, metric)])
-    path = resolve_scores_path(run, arm_dir, scores)
+    path = resolve_scores_path(run, arm_dir, scores, from_figure_data)
     if not path.exists():
         sys.exit(f"no score table at {path}\n  run the steering arm first, or pass --scores")
     df = pd.read_csv(path)

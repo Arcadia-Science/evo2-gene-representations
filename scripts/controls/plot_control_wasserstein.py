@@ -6,13 +6,14 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import arcadia_pub as pub  # noqa: E402
 import arcadia_style as acs  # noqa: E402
 from controls.make_control_sequences import ORDINARY_CONTROLS  # noqa: E402
 from plot_utils import set_pub_style  # noqa: E402
+
+import figure_data  # noqa: E402
 
 # Rung names as a reader sees them. The keys are the condition slugs used throughout the
 # control pipeline; the ladder reads as "progressively more sequence composition destroyed",
@@ -64,18 +65,16 @@ def main() -> None:
     if args.pub:
         pub.enable()
 
-    src = Path(f"results/_ot_control_preservation_{args.arm}.csv")
-    if not src.exists():
-        sys.exit(f"missing {src} — run controls_score_graphfree.py --axis between first")
-    d = pd.read_csv(src).dropna(subset=["rho_wasserstein"])
-    # Use graph-free angular preservation for within-family pairs.
-    wsrc = Path(f"results/_angular_control_preservation_{args.arm}.csv")
-    if not wsrc.exists():
-        sys.exit(f"missing {wsrc} — run controls_score_graphfree.py --axis within")
-    wdf = pd.read_csv(wsrc).rename(
-        columns={"condition": "rung", "rho_within_angular": "rho_within"}
+    # One tidy table carries both axes; the within-family panel plots the mean over families.
+    prep = figure_data.table("exp2_control_preservation").rename(columns={"condition": "rung"})
+    d = prep[prep.axis == "between_family"].dropna(subset=["rho"])
+    d = d.rename(columns={"rho": "rho_wasserstein"})
+    wdf = (
+        prep[prep.axis == "within_family"]
+        .groupby(["rung", "layer"], as_index=False)["rho"]
+        .mean()
+        .rename(columns={"rho": "rho_within"})
     )
-    d["rung"] = d["condition"].str.replace(f"{args.arm}_", "", regex=False)
     rungs = [r for r in ORDINARY_CONTROLS if r in set(d.rung)]
     missing = [r for r in ORDINARY_CONTROLS if r not in rungs]
     print(f"rungs present: {rungs}")

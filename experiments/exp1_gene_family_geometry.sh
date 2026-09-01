@@ -78,28 +78,33 @@ stage "~20 min, CPU" "B3. Wasserstein sweep, all layers (Mantel optional, skippe
 # Bootstrap and Wilcoxon inference use the existing angular per-group results at every layer.
 stage "~20 min, CPU" "B4. angular within-family bootstrap/Wilcoxon inference, all layers" \
   $PY scripts/mammalian_orthologs/within_family_uncertainty.py --arm transcript_cdsmask
+
+# Everything above writes into the dated run dirs, which stay local. This collapses them into the
+# tracked tidy tables the figures actually read.
+stage "~1 min, CPU" "B5. build the tracked figure_data/ tables" \
+  $PY scripts/build_figure_data.py
 fi
 
 say "Figures 1-3"
 
 # Publication panels use angular within-family scoring.
 if need "figs 1-2: between/within rho by layer" \
-        "$RUN/blocks*/between_family_ot_scores.csv" \
-        "$RUN/blocks*/within_family_patristic_angular.csv"; then
+        figure_data/exp1_between_family_by_layer.csv \
+        figure_data/exp1_within_family_by_layer.csv; then
   fig "figs 1-2: between/within rho by layer" $PY scripts/layer_sweep_summary.py \
-    --glob "$RUN/blocks*" \
+    --from-figure-data \
     --out-dir "$GF" \
     --title 'Evo2 mammalian orthologs (transcript, CDS-masked) — 48 families, W2 / angular' \
-    --between-scores between_family_ot_scores.csv --between-approach wasserstein \
-    --stem-suffix _wasserstein_angular --within-file-suffix _angular --kmer-k 6 \
+    --stem-suffix _wasserstein_angular --kmer-k 6 \
     --lead-per-baseline --no-baselines --pub
   collect "$GF/pub/between_axis_vs_layer_wasserstein_angular"  fig01_between_family_rho_by_layer
   collect "$GF/pub/within_family_vs_layer_wasserstein_angular" fig02_within_family_rho_by_layer
 fi
 
-if need "fig 3: three-family zoom" "$GF/within_family_vs_layer_wasserstein_angular.csv"; then
+if need "fig 3: three-family zoom" figure_data/exp1_within_family_by_layer.csv; then
   fig "fig 3: three-family zoom" $PY scripts/within_family_per_family_grid.py \
-    --csv "$GF/within_family_vs_layer_wasserstein_angular.csv" \
+    --csv figure_data/exp1_within_family_by_layer.csv --out-dir "$GF" \
+    --stem within_family_vs_layer_wasserstein_angular \
     --families adrenoceptor glutathione_peroxidase peroxidase --out-suffix zoom3 --pub
   collect "$GF/pub/within_family_vs_layer_wasserstein_angular_zoom3" \
           fig03_within_family_three_families

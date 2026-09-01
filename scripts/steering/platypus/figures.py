@@ -21,6 +21,8 @@ import arcadia_pub as pub  # noqa: E402
 import arcadia_style as acs  # noqa: E402
 from plot_utils import set_pub_style  # noqa: E402
 
+import figure_data  # noqa: E402
+
 REAL, SF, MM = acs.apc.dusk, acs.apc.amber, acs.apc.aster
 
 # Publication mode renders only the two page-sized panels; other outputs remain diagnostics.
@@ -66,6 +68,12 @@ def main() -> None:
     base = ROOT / "results" / "2026-07-28_evo2-platypus-paired"
     ap.add_argument("--stage2-dir", type=Path, default=base / "stage2")
     ap.add_argument(
+        "--from-figure-data",
+        action="store_true",
+        help="read the tracked tables in figure_data/ instead of a stage-2 run directory",
+    )
+    ap.add_argument("--out-dir", type=Path, default=None, help="default: <stage2-dir>/figures")
+    ap.add_argument(
         "--structure-suffix",
         default="",
         help="suffix on delta_spectrum/delta_by_group/family_direction_agreement, e.g. "
@@ -87,13 +95,18 @@ def main() -> None:
     if args.pub:
         pub.enable()
     d2 = args.stage2_dir
-    out = d2 / "figures"
+    out = args.out_dir or (d2 / "figures")
     out.mkdir(parents=True, exist_ok=True)
     set_pub_style(title_size=9, tick_size=7)
 
-    st = pd.read_csv(d2 / "layer_stats.csv")
-    pg = pd.read_csv(d2 / "per_gene_by_layer.csv")
-    nd = np.load(d2 / "null_distributions.npz")
+    if args.from_figure_data:
+        st = figure_data.table("exp3_direction_layer_stats").query("panel == 'paired103'")
+        pg = figure_data.table("exp3_direction_per_gene_by_layer").query("panel == 'paired103'")
+        nd = np.load(figure_data.path("exp3_direction_nulls.npz"))
+    else:
+        st = pd.read_csv(d2 / "layer_stats.csv")
+        pg = pd.read_csv(d2 / "per_gene_by_layer.csv")
+        nd = np.load(d2 / "null_distributions.npz")
     x = st.layer.values
     fl = st.coherence_isotropic_floor.iloc[0]
 
@@ -228,7 +241,7 @@ def main() -> None:
 
     # 9 : structure supplement ------------------------------------------------
     sfx = args.structure_suffix
-    if (d2 / f"delta_spectrum{sfx}.csv").exists():
+    if not args.from_figure_data and (d2 / f"delta_spectrum{sfx}.csv").exists():
         sp = pd.read_csv(d2 / f"delta_spectrum{sfx}.csv")
         gp = pd.read_csv(d2 / f"delta_by_group{sfx}.csv")
         cr = pd.read_csv(d2 / f"family_direction_agreement{sfx}.csv")
