@@ -1,49 +1,23 @@
-# scripts/controls/ — composition controls
+# Composition controls
 
-All composition-control code lives here: sequence construction, scoring, tables and
-figures. Scoring for a specific panel lives with that panel
-(`mammalian_orthologs/controls_score_graphfree.py`, `evo2/cdspool_controls.py`).
+Experiment 2 asks which sequence constraints are sufficient to preserve the natural mammalian
+ortholog geometry. The canonical runner is
+[`experiments/exp2_composition_controls.sh`](../../experiments/exp2_composition_controls.sh).
 
+| File | Purpose |
+|---|---|
+| [`make_control_sequences.py`](make_control_sequences.py) | GC, k-mer, synonymous, missense, and paired-p3 sequence operators |
+| [`plot_control_wasserstein.py`](plot_control_wasserstein.py) | Figure 4: graph-free control preservation by block |
 
-These scripts run against existing natural runs and produce the control figures and tables.
+Embedding and scoring remain with the mammalian dataset:
 
-All scripts run from the repo root (`uv run python scripts/controls/<script>.py ...`) and import
-shared helpers from `scripts/` via `sys.path`.
+- [`embed_cds_masked_mammal.py`](../mammalian_orthologs/embed_cds_masked_mammal.py) replaces coding
+  positions in place and embeds every control.
+- [`mammal_controls_score.py`](../mammalian_orthologs/mammal_controls_score.py) computes graph-based
+  preservation and writes `control_rho_by_layer.csv`.
+- [`controls_score_graphfree.py`](../mammalian_orthologs/controls_score_graphfree.py) computes the
+  angular and Wasserstein preservation tables used by Figure 4.
+- [`paired_p3_figure.py`](../mammalian_orthologs/paired_p3_figure.py) renders Figure 12.
 
-## Compositional controls (Section 3)
-
-Do the within-family signals survive composition-preserving scrambles, or are they an
-artifact of nucleotide composition?
-
-- `make_control_sequences.py` — the composition-control **operators** (dinuc/codon/
-  synonymous/GC/k-mer shuffles), imported by each panel's control builder. Also `missense_subset`,
-  the **nonsynonymous** counterpart of `synonymous_recode`, editing only bases the recode itself
-  edited — a strict subset, never a base it left alone. It therefore moves *fewer* nucleotides than
-  the recode (identity 0.877 vs 0.769) while damaging the protein the recode kept (aa identity
-  0.717), so a ρ below the recode's cannot be blamed on nucleotide loss.
-- `embed_and_score_controls.py` — embed each Evo2 control through the same tap as the
-  natural run and score (a) within-family geodesic-vs-taxonomy ρ (RECOVERY) and (b)
-  control-geodesic-vs-natural-geodesic ρ (RECONSTRUCTION / PRESERVATION), within and
-  between. Reads the matched-human control run dirs (preservation only). Writes
-  `<natural-run>/controls/control_within_scores.csv` + `control_between_scores.csv`.
-- `control_ladder.py` — the shared display order, labels and colours for the control ladder.
-- `control_sequence_identity.py` — the ladder's own confound check, sequence-level and GPU-free:
-  how much of the SOURCE sequence does each rung actually retain, and is its ρ just tracking that?
-  Reports per-rung positional / edit-distance / amino-acid / per-codon-position identity to source,
-  each against the **self-pair null** (the same identity between two independent draws of the same
-  control = the identity its constraint forces with no source information), then plots ρ against
-  identity at every layer and tests monotonicity with and without the matched pair. Writes at the
-  run's top level (identity is layer-independent, so it is **not** written per-`blocks<L>`):
-  `control_sequence_identity.{csv,md}`, `control_identity_table.{png,pdf}` (the headline figure —
-  the per-rung numbers as a table beside the ρ-vs-identity scatter), `control_rho_vs_identity.{png,
-  pdf}` (the six-panel version), `control_rho_vs_identity_stats.csv`,
-  `control_identity_within_rung.{png,pdf}`. Panels: `human_cds`, `mammal_cdsmask`.
-
-The shared preservation metric lives in `scripts/geodesic_utils.py`
-(`within_preservation_rho`, `between_preservation_rho`) and is used by the active control
-pipelines, so every run writes its
-control-reconstruction CSVs into its own `results/<run>/controls/` folder.
-
-See **`control_metrics_guide.md`** for how to read these CSVs — what each column means
-(reconstruction/preservation vs recovery), the within/between axes, and which file/column
-holds which number per model.
+The former sequence-identity and human-panel control pipelines are not publication prerequisites.
+They remain recoverable from Git history.
