@@ -66,46 +66,43 @@ fi
 stage "~34 h, GPU"  "B1. embed 11,288 loci x 32 blocks, CDS-masked" \
   $PY scripts/mammalian_orthologs/embed_cds_masked_mammal.py --families $FAMS
 
-# B2 computes the MAFFT/FastTree patristic and k-mer baselines; B3 computes Pfam-HMM JSD.
-stage "~3 h, CPU"   "B2. within-family distances vs patristic / species tree / k-mer / GC" \
-  $PY scripts/mammalian_orthologs/mammal_score.py --arm transcript_cdsmask --distance both
-stage "~1 h, CPU"   "B3. between-family distances vs Pfam JSD / k-mer / GC" \
-  $PY scripts/mammalian_orthologs/mammal_between.py --arm transcript_cdsmask
-stage "~1 h, CPU"   "B4. between-family on the 400-cap panel (family-size robustness)" \
-  $PY scripts/mammalian_orthologs/mammal_between.py --arm transcript_cdsmask \
-     --manifest complete_manifest_cap400.csv --tag _400
+# Score direct angular distance within families. The existing geodesic implementation remains
+# available for optional legacy analyses, but is not part of the publication pipeline.
+stage "~3 h, CPU"   "B2. angular within-family distances vs patristic / species tree / k-mer / GC" \
+  $PY scripts/mammalian_orthologs/mammal_score.py --arm transcript_cdsmask --distance angular
 
 # Experiment 2 uses these natural W2 matrices as the reference for control preservation.
-stage "~1.1 h, CPU" "B5. Wasserstein sweep, all layers, with 9,999 Mantel permutations" \
-  $PY scripts/baselines/ot_between_family_sweep.py --n-perms 9999
+stage "~20 min, CPU" "B3. Wasserstein sweep, all layers (Mantel optional, skipped)" \
+  $PY scripts/baselines/ot_between_family_sweep.py --n-perms 0
 
-# Block 15 is the pre-specified inference layer for the published within-family claims.
-stage "~2 h, CPU"   "B6. within-family CIs and per-group Mantel inference at block 15" \
-  $PY scripts/mammalian_orthologs/within_family_uncertainty.py \
-    --layers 15 --report-layer 15 --mantel-layer 15 --n-perms 999
+# Bootstrap and Wilcoxon inference use the existing angular per-group results at every layer.
+stage "~20 min, CPU" "B4. angular within-family bootstrap/Wilcoxon inference, all layers" \
+  $PY scripts/mammalian_orthologs/within_family_uncertainty.py --arm transcript_cdsmask
 fi
 
 say "Figures 1-3"
 
 # Publication panels use angular within-family scoring.
 if need "figs 1-2: between/within rho by layer" \
-        "$RUN/blocks*/between_family_baseline_scores.csv" \
+        "$RUN/blocks*/between_family_ot_scores.csv" \
         "$RUN/blocks*/within_family_patristic_angular.csv"; then
   fig "figs 1-2: between/within rho by layer" $PY scripts/layer_sweep_summary.py \
     --glob "$RUN/blocks*" \
     --out-dir "$GF" \
-    --title 'Evo2 mammalian orthologs (transcript, CDS-masked) — 48 families, graph-free metrics' \
-    --stem-suffix _graphfree --within-file-suffix _angular --kmer-k 6 \
+    --title 'Evo2 mammalian orthologs (transcript, CDS-masked) — 48 families, W2 / angular' \
+    --between-scores between_family_ot_scores.csv --between-approach wasserstein \
+    --stem-suffix _wasserstein_angular --within-file-suffix _angular --kmer-k 6 \
     --lead-per-baseline --no-baselines --pub
-  collect "$GF/pub/between_axis_vs_layer_graphfree"  fig01_between_family_rho_by_layer
-  collect "$GF/pub/within_family_vs_layer_graphfree" fig02_within_family_rho_by_layer
+  collect "$GF/pub/between_axis_vs_layer_wasserstein_angular"  fig01_between_family_rho_by_layer
+  collect "$GF/pub/within_family_vs_layer_wasserstein_angular" fig02_within_family_rho_by_layer
 fi
 
-if need "fig 3: three-family zoom" "$GF/within_family_vs_layer_graphfree.csv"; then
+if need "fig 3: three-family zoom" "$GF/within_family_vs_layer_wasserstein_angular.csv"; then
   fig "fig 3: three-family zoom" $PY scripts/within_family_per_family_grid.py \
-    --csv "$GF/within_family_vs_layer_graphfree.csv" \
+    --csv "$GF/within_family_vs_layer_wasserstein_angular.csv" \
     --families adrenoceptor glutathione_peroxidase peroxidase --out-suffix zoom3 --pub
-  collect "$GF/pub/within_family_vs_layer_graphfree_zoom3" fig03_within_family_three_families
+  collect "$GF/pub/within_family_vs_layer_wasserstein_angular_zoom3" \
+          fig03_within_family_three_families
 fi
 
 if [ "$MODE" = plan ]; then
