@@ -752,6 +752,8 @@ def write_provenance(
     exclude_between: list[str] | None = None,
     stem_suffix: str = "",
     lead_per_baseline: bool = False,
+    between_filename: str = "between_family_baseline_scores.csv",
+    between_approach: str | None = None,
 ) -> None:
     """Record where every number in this folder came from, as SOURCE.md."""
     root = {p.parent for _, p in layers}
@@ -762,7 +764,7 @@ def write_provenance(
     )
     fam_per_layer, mtimes = {}, {}
     for layer, run_dir in layers:
-        f = run_dir / "between_family_baseline_scores.csv"
+        f = run_dir / between_filename
         if f.exists():
             mtimes[layer] = f.stat().st_mtime
         cen = next(iter(run_dir.glob("*_centroid_distances.csv")), None)
@@ -782,6 +784,8 @@ def write_provenance(
         f"- per-layer results: {', '.join(f'`{r}/`' for r in sorted(map(str, root)))}",
         f"- layers: {len(layers)} ({layers[0][0]}..{layers[-1][0]}), dirs "
         f"`{layers[0][1].name}` .. `{layers[-1][1].name}`",
+        f"- between-family scores: `{between_filename}`"
+        + (f", approach `{between_approach}`" if between_approach else ""),
     ]
     if fam_per_layer:
         counts = sorted(set(fam_per_layer.values()))
@@ -827,7 +831,9 @@ def write_provenance(
     lines += ["", "## Per-layer files read", "", "| file | supplies |", "|---|---|"]
     if not between.empty:
         lines.append(
-            "| `between_family_baseline_scores.csv` | between_axis_vs_layer.{csv,png,pdf} |"
+            f"| `{between_filename}`"
+            + (f" (`{between_approach}` rows)" if between_approach else "")
+            + f" | between_axis_vs_layer{stem_suffix}.{{csv,png,pdf}} |"
         )
     present = set(within["metric"].unique()) if not within.empty else set()
     for label, filenames, _ in WITHIN_SPECS:  # only the specs that actually resolved on disk
@@ -1039,6 +1045,8 @@ def main() -> None:
         args.exclude_between,
         sfx,
         args.lead_per_baseline,
+        args.between_scores,
+        args.between_approach,
     )
     if not args.no_baselines:
         cache = _resolve_patristic_cache(args.glob, args.patristic_cache)

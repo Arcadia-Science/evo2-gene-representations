@@ -11,8 +11,11 @@ from scipy import stats
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from controls.make_control_sequences import PAIRED_P3_CONTROLS  # noqa: E402
+
 RUN = ROOT / "results" / "2026-07-16_mammalian-orthologs-transcript_cdsmask"
-SYN, MIS, FLOOR = "paired_p3_syn", "paired_p3_missense", "kmer6_shuffle"
+SYN, MIS = PAIRED_P3_CONTROLS
+FLOOR = "kmer6_shuffle"
 # Evo2 taps the last block twice and blocks 28+ blow up in norm on this arm; see the module
 # docstring.
 DEGENERATE_BLOCKS = (28, 29, 30, 31)
@@ -58,7 +61,7 @@ def load_per_family(layer: int) -> pd.DataFrame:
     d = pd.read_csv(RUN / f"blocks{layer}/controls/control_within_scores.csv")
     d = d[d.condition.isin([SYN, MIS])]
     return d.pivot_table(
-        index="family", columns="condition", values="rho_geodesic_vs_natural"
+        index="family", columns="condition", values="rho_angular_vs_natural"
     ).dropna()
 
 

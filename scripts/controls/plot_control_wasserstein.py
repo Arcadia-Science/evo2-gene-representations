@@ -11,6 +11,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import arcadia_pub as pub  # noqa: E402
 import arcadia_style as acs  # noqa: E402
+from controls.make_control_sequences import ORDINARY_CONTROLS  # noqa: E402
 from plot_utils import set_pub_style  # noqa: E402
 
 # Rung names as a reader sees them. The keys are the condition slugs used throughout the
@@ -37,7 +38,6 @@ COLORS = {
     "kmer6_shuffle": acs.CONTROL_COLORS["kmer6_shuffle"],
     "natural": acs.CONTROL_COLORS["natural"],
 }
-ORDER = ["gc_match", "dinuc_shuffle", "kmer4_shuffle", "kmer6_shuffle", "synonymous_recode"]
 
 
 def main() -> None:
@@ -76,8 +76,8 @@ def main() -> None:
         columns={"condition": "rung", "rho_within_angular": "rho_within"}
     )
     d["rung"] = d["condition"].str.replace(f"{args.arm}_", "", regex=False)
-    rungs = [r for r in ORDER if r in set(d.rung)]
-    missing = [r for r in ORDER if r not in rungs]
+    rungs = [r for r in ORDINARY_CONTROLS if r in set(d.rung)]
+    missing = [r for r in ORDINARY_CONTROLS if r not in rungs]
     print(f"rungs present: {rungs}")
     if missing:
         print(f"NOT YET SCORED (figure will say so): {missing}")

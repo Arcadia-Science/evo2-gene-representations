@@ -64,7 +64,7 @@ say "Scoring"
 
 # Preservation rho is measured against the natural geometry, so a rung is scored only once its
 # embedding cache is complete; partial rungs are skipped rather than scored on a subset.
-stage "~4 h, CPU"   "D1. control preservation and Figure 12 source tables" \
+stage "~2 h, CPU"   "D1. W2/angular control preservation and Figure 12 source tables" \
   $PY scripts/mammalian_orthologs/mammal_controls_score.py --arm transcript_cdsmask
 stage "~2 h, CPU"   "D2. control preservation, graph-free — the input to figure 4" \
   $PY scripts/mammalian_orthologs/controls_score_graphfree.py --axis both
