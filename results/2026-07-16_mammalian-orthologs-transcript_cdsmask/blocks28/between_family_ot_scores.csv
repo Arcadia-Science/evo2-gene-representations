@@ -1,0 +1,4 @@
+approach,baseline,axis,spearman_rho,p_mantel
+wasserstein,pfam_jsd,1_homology,0.16501994210904572,
+wasserstein,kmer,control,0.30975212685608966,
+wasserstein,gc_content,control,0.417630440158683,

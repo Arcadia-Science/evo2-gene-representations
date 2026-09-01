@@ -1,0 +1,10 @@
+condition,rho_vs_natural_between,between_metric,degenerate_block,written_at,generator
+natural,1.0,wasserstein,False,2026-08-31,mammal_controls_score:transcript_cdsmask
+gc_match,0.6830976608959959,wasserstein,False,2026-08-31,mammal_controls_score:transcript_cdsmask
+dinuc_shuffle,0.7178126364032537,wasserstein,False,2026-08-31,mammal_controls_score:transcript_cdsmask
+kmer4_shuffle,0.7249827978164143,wasserstein,False,2026-08-31,mammal_controls_score:transcript_cdsmask
+kmer6_shuffle,0.7064776645182828,wasserstein,False,2026-08-31,mammal_controls_score:transcript_cdsmask
+synonymous_recode,0.9885063544947269,wasserstein,False,2026-08-31,mammal_controls_score:transcript_cdsmask
+missense_subset,0.9687612710484389,wasserstein,False,2026-08-31,mammal_controls_score:transcript_cdsmask
+paired_p3_syn,0.9828077324703569,wasserstein,False,2026-08-31,mammal_controls_score:transcript_cdsmask
+paired_p3_missense,0.8919553711923455,wasserstein,False,2026-08-31,mammal_controls_score:transcript_cdsmask
