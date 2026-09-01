@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FAMILIES_DATA_JSON = ROOT / "scripts" / "families_data.json"  # human membership artifact
 
 # ── HGNC build constants ────────────────────────────────────────────────────────
-HGNC_FETCH = "https://rest.genenames.org/fetch/gene_group_id/{gid}"
+_FETCH = "https://rest.genenames.org/fetch/gene_group_id/{gid}"
 SUBSAMPLE_SEED = 0  # seeds the max_members subsample in build_human_paralogs
 
 
@@ -19,7 +19,7 @@ SUBSAMPLE_SEED = 0  # seeds the max_members subsample in build_human_paralogs
 # group_ids are HGNC gene-group IDs (resolved against the live HGNC REST API). extra_symbols are
 # appended verbatim (for genes HGNC leaves ungrouped). symbol_prefix restricts a broad group to one
 # cluster. max_members triggers a seeded subsample (none set today; machinery kept generic).
-HGNC_FAMILY_SPEC: dict[str, dict] = {
+_FAMILY_SPEC: dict[str, dict] = {
     "globins": {
         "group_ids": [940],  # Hemoglobin subunits
         "extra_symbols": ["MB", "CYGB", "NGB"],  # ungrouped in HGNC
@@ -345,7 +345,7 @@ def family_members(panel: str = "human") -> dict[str, list[str]]:
             # Fail loudly if the generated membership drifts from the curated metadata keys.
             assert set(members) == set(HUMAN_FAMILY_ORDER), (
                 "families_data.json is out of sync with HUMAN_FAMILY_ORDER — re-run "
-                "build-human-paralog after editing HGNC_FAMILY_SPEC."
+                "build-human-paralog after editing _FAMILY_SPEC."
             )
             _HUMAN_MEMBERS = members
         return _HUMAN_MEMBERS
@@ -361,15 +361,13 @@ def family_members(panel: str = "human") -> dict[str, list[str]]:
 
 def build_human_paralogs() -> None:
     """
-    Resolve the HGNC gene groups in HGNC_FAMILY_SPEC -> families_data.json (gene symbol lists).
+    Resolve the HGNC gene groups in _FAMILY_SPEC -> families_data.json (gene symbol lists).
     """
     import random
     import urllib.request
 
     def fetch_group_members(gid: int) -> list[dict]:
-        req = urllib.request.Request(
-            HGNC_FETCH.format(gid=gid), headers={"Accept": "application/json"}
-        )
+        req = urllib.request.Request(_FETCH.format(gid=gid), headers={"Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=60) as r:
             return json.load(r)["response"]["docs"]
 
@@ -399,15 +397,13 @@ def build_human_paralogs() -> None:
         return members
 
     print("Building human gene families from HGNC gene groups...")
-    gene_families = {
-        name: build_family(name, HGNC_FAMILY_SPEC[name]) for name in HUMAN_FAMILY_ORDER
-    }
+    gene_families = {name: build_family(name, _FAMILY_SPEC[name]) for name in HUMAN_FAMILY_ORDER}
     total = sum(len(v) for v in gene_families.values())
     data = {
         "source": "HGNC gene groups (rest.genenames.org)",
         "subsample_seed": SUBSAMPLE_SEED,
         "family_order": HUMAN_FAMILY_ORDER,
-        "family_spec": HGNC_FAMILY_SPEC,
+        "family_spec": _FAMILY_SPEC,
         "gene_families": gene_families,
     }
     FAMILIES_DATA_JSON.write_text(json.dumps(data, indent=2) + "\n")

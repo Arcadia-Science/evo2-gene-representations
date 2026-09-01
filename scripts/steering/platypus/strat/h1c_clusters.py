@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,11 @@ import pandas as pd
 from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import squareform
 from scipy.stats import kruskal
+
+ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "scripts" / "steering"))
+
+from alignment_metrics import read_fasta  # noqa: E402
 
 K_RANGE = range(2, 9)
 N_NULL = 500
@@ -103,20 +109,6 @@ def ari(a: np.ndarray, b: np.ndarray) -> float:
 def gc3(s: str) -> float:
     third = s[2::3]
     return sum(c in "GC" for c in third) / max(len(third), 1)
-
-
-def read_fasta(p: Path) -> dict[str, str]:
-    out, hid, buf = {}, None, []
-    for line in p.read_text().splitlines():
-        if line.startswith(">"):
-            if hid:
-                out[hid.split("|")[0]] = "".join(buf).upper()
-            hid, buf = line[1:], []
-        elif line.strip():
-            buf.append(line.strip())
-    if hid:
-        out[hid.split("|")[0]] = "".join(buf).upper()
-    return out
 
 
 def main() -> None:

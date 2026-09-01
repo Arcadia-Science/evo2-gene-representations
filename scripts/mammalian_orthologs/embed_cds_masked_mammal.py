@@ -25,7 +25,13 @@ from evo2_embedding import (  # noqa: E402
     forward_positions,
     load_model,
 )
-from make_control_sequences import dinuc_shuffle, gc_match, klet_shuffle  # noqa: E402
+from make_control_sequences import (  # noqa: E402
+    CDSMASK_CONTROLS,
+    FAMILY_USAGE_CONTROLS,
+    dinuc_shuffle,
+    gc_match,
+    klet_shuffle,
+)
 
 LOCI_DIR = ROOT / "data" / "mammalian_orthologs" / "loci"
 CDS_POS = ROOT / "data" / "cache" / "mammal_cds_positions.json"
@@ -38,23 +44,6 @@ CONTROL_FNS = {
     "kmer4_shuffle": lambda seq, rng: klet_shuffle(seq, 4, rng),
     "kmer6_shuffle": lambda seq, rng: klet_shuffle(seq, 6, rng),
 }
-# The CDS mask adds frame-aware controls to the shared genomic control ladder.
-# `missense_subset` changes a strict subset of the bases changed by `synonymous_recode`.
-CDSMASK_CONTROLS = [
-    "gc_match",
-    "dinuc_shuffle",
-    "kmer4_shuffle",
-    "kmer6_shuffle",
-    "synonymous_recode",
-    "missense_subset",
-    # The MATCHED PAIR: same eligible sites, same 14.8% rate, same codon-position
-    # profile (100% p3), differing ONLY in protein outcome. Read against EACH
-    # OTHER, never against synonymous_recode (different rate).
-    "paired_p3_syn",
-    "paired_p3_missense",
-]
-# Rungs that need per-family codon usage rather than a plain (seq, rng) shuffle.
-FAMILY_USAGE_CONTROLS = {"synonymous_recode", "missense_subset", "paired_p3_syn"}
 # The between-family panel (families with >=8 embedded loci; the set mammal_between scores).
 DEFAULT_FAMILIES = [
     "olfactory_receptors",
@@ -162,7 +151,7 @@ def shuffle_coding_in_place(
             )
         )
     else:
-        rng = random.Random(f"{control}:{key}".__hash__() & 0xFFFFFFFF)
+        rng = random.Random(zlib.crc32(f"{control}:{key}".encode()))
         shuffled = CONTROL_FNS[control](coding, rng)
     if len(shuffled) != len(coding):  # length-preserving by construction; assert the contract
         raise ValueError(

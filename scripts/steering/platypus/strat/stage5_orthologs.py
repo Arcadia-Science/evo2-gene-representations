@@ -16,6 +16,10 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "scripts" / "steering"))
+
+from alignment_metrics import read_fasta  # noqa: E402
+
 REST = "https://rest.ensembl.org"
 CACHE = ROOT / "data" / "cache" / "strat_homology"
 MAMMAL_CDS = Path("/opt/dlami/nvme/strat_seqs/mammals")
@@ -89,20 +93,6 @@ def read_fasta_by_gene(path: Path, wanted: set[str]) -> dict[str, str]:
                 buf.append(line.strip())
     flush()
     return best
-
-
-def read_panel_fasta(path: Path) -> dict[str, str]:
-    out, hid, buf = {}, None, []
-    for line in path.read_text().splitlines():
-        if line.startswith(">"):
-            if hid:
-                out[hid.split("|")[0]] = "".join(buf).upper()
-            hid, buf = line[1:], []
-        elif line.strip():
-            buf.append(line.strip())
-    if hid:
-        out[hid.split("|")[0]] = "".join(buf).upper()
-    return out
 
 
 def main() -> None:
@@ -195,7 +185,7 @@ def main() -> None:
     )
 
     # ---- 3. CDS per gene ----------------------------------------------------------------------
-    panel = {sp: read_panel_fasta(args.run / "stage1" / f) for sp, f in PANEL_CDS.items()}
+    panel = {sp: read_fasta(args.run / "stage1" / f) for sp, f in PANEL_CDS.items()}
     wanted_by_sp: dict[str, set[str]] = {}
     for r in orth.itertuples():
         if r.species in PANEL_CDS:

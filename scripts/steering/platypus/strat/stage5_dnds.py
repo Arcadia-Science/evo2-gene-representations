@@ -14,6 +14,10 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "scripts" / "steering"))
+
+from alignment_metrics import read_fasta  # noqa: E402
+
 CODEML = ROOT / "data" / "tools" / "codeml"
 YN00 = ROOT / "data" / "tools" / "yn00"
 TRIMAL = ROOT / "data" / "tools" / "trimal"
@@ -69,21 +73,6 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def read_fasta(path: Path) -> dict[str, str]:
-    out: dict[str, str] = {}
-    hid, buf = None, []
-    for line in path.read_text().splitlines():
-        if line.startswith(">"):
-            if hid:
-                out[hid] = "".join(buf)
-            hid, buf = line[1:].strip(), []
-        elif line.strip():
-            buf.append(line.strip())
-    if hid:
-        out[hid] = "".join(buf)
-    return out
-
-
 # --------------------------------------------------------------------------- codon alignment
 def build_codon_alignment(gene: str, run: Path, wd: Path) -> tuple[list[str], int]:
     """
@@ -111,8 +100,10 @@ def build_codon_alignment(gene: str, run: Path, wd: Path) -> tuple[list[str], in
     if r.returncode != 0 or not codon_fa.exists():
         raise RuntimeError(f"trimal -backtrans failed: {r.stderr.strip()[:300]}")
 
-    codon = read_fasta(codon_fa)
-    prot = read_fasta(tdir / "aln.fasta")  # trimAl-trimmed protein alignment (stage 5b)
+    codon = read_fasta(codon_fa, header_field=None, uppercase=False)
+    prot = read_fasta(
+        tdir / "aln.fasta", header_field=None, uppercase=False
+    )  # trimAl-trimmed protein alignment (stage 5b)
     lens = {len(v) for v in codon.values()}
     if len(lens) != 1:
         raise RuntimeError(f"ragged codon alignment: {sorted(lens)}")

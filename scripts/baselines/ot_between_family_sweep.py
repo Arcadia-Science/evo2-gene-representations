@@ -59,7 +59,7 @@ def score_wasserstein(
             rho = p_mantel = np.nan
         else:
             rho = spearmanr(w2[valid], reference[valid]).statistic
-            p_mantel = mantel_test(matrix, baseline, n_perms=n_perms)[1]
+            p_mantel = mantel_test(matrix, baseline, n_perms=n_perms)[1] if n_perms > 0 else np.nan
         rows.append(
             {
                 "approach": "wasserstein",
@@ -75,7 +75,12 @@ def score_wasserstein(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--layers", nargs="*", type=int, default=list(range(32)))
-    parser.add_argument("--n-perms", type=int, default=9999)
+    parser.add_argument(
+        "--n-perms",
+        type=int,
+        default=9999,
+        help="Mantel permutations; pass 0 to skip the optional test",
+    )
     args = parser.parse_args()
 
     stack, metadata = mammal.load_embedded(ARM, MANIFEST)
@@ -93,8 +98,9 @@ def main() -> None:
         result.to_run_dir(block_dir)
         scores = score_wasserstein(result.matrices["wasserstein"], baselines, args.n_perms)
         scores.to_csv(block_dir / "between_family_ot_scores.csv", index=False)
+        inference = f"{len(scores)} Mantel tests" if args.n_perms > 0 else "Mantel skipped"
         print(
-            f"  blocks{layer}: Wasserstein matrix and {len(scores)} Mantel tests "
+            f"  blocks{layer}: Wasserstein matrix and scores; {inference} "
             f"({result.meta['runtime_seconds']}s OT)"
         )
 

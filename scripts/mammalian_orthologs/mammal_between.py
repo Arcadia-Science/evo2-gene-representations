@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "baselines"))
 from gene_families import PFAM_ACCESSIONS  # noqa: E402
 from geodesic_utils import compute_centroid_geodesic, mantel_test  # noqa: E402
 from kmer_sequence_divergence import kmer_distance_matrix  # noqa: E402
+from mammal_score import load_cds  # noqa: E402
 from pfam_hmm_jsd import compute_pfam_jsd  # noqa: E402
 
 OUT = ROOT / "data" / "mammalian_orthologs"
@@ -38,24 +39,6 @@ def load_embedded(arm: str, manifest: str = "complete_manifest.csv"):
             vecs.append(np.load(p))
             rows.append(r)
     return np.stack(vecs, axis=1), pd.DataFrame(rows).reset_index(drop=True)
-
-
-def load_cds() -> dict[str, str]:
-    seqs = {}
-    for fa in (OUT / "seqs" / "complete" / "cds").glob("*.fasta"):
-        hid, chunk = None, []
-        for line in fa.read_text().splitlines():
-            if line.startswith(">"):
-                if hid:
-                    seqs[hid] = "".join(chunk)
-                p = line[1:].split("|")
-                hid = f"{p[0]}__{p[1]}"
-                chunk = []
-            elif line.strip():
-                chunk.append(line.strip())
-        if hid:
-            seqs[hid] = "".join(chunk)
-    return seqs
 
 
 def kmer_between(meta, cds, fams):

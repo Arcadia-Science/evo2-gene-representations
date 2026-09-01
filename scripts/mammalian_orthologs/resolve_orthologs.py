@@ -5,12 +5,16 @@ Compara, one ortholog group per human gene (paralogs kept separate).
 from __future__ import annotations
 import json
 import os
+import sys
 import time
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-FAMILIES_JSON = ROOT / "scripts" / "families_data.json"
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from gene_families import family_members, family_order  # noqa: E402
+
 OUT_DIR = ROOT / "data" / "mammalian_orthologs"
 CACHE_DIR = ROOT / "data" / "cache" / "mammal_homology"
 ENSEMBL = "https://rest.ensembl.org"
@@ -112,9 +116,8 @@ def fetch_homologies(symbol: str, gene_id: str | None = None) -> list[dict]:
 
 
 def resolve() -> None:
-    fams = json.loads(FAMILIES_JSON.read_text())
-    gene_families: dict[str, list[str]] = fams["gene_families"]
-    order: list[str] = fams["family_order"]
+    gene_families = family_members("human")
+    order = family_order("human")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # Parallel prefetch (fetch is 100% network/server-latency-bound; parsing is trivial). Cached, so

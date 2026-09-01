@@ -197,10 +197,3 @@ def coverage_note(spec: dict) -> str:
     if r["unscorable"]:
         note += f"; {len(r['unscorable'])} with no ortholog evidence excluded"
     return note + "."
-
-
-def stratum_counts(df: pd.DataFrame, genes=None) -> pd.Series:
-    """Per-stratum count of genes that actually carry a non-NaN metric value."""
-    d = df if genes is None else df[df.gene.isin(set(genes))]
-    ok = d[d["metric"].notna()].drop_duplicates("gene")
-    return ok.groupby("stratum").size()

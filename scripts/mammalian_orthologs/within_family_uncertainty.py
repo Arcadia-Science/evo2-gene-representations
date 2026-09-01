@@ -1,4 +1,4 @@
-"""Confidence intervals and permutation inference for the mammalian-ortholog within-family rho."""
+"""All-layer uncertainty for angular mammalian-ortholog within-family rho."""
 
 from __future__ import annotations
 import argparse
@@ -7,19 +7,17 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.stats import rankdata, spearmanr, wilcoxon
+from scipy.stats import wilcoxon
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
-sys.path.insert(0, str(ROOT / "scripts" / "mammalian_orthologs"))
 
-DATA = ROOT / "data" / "mammalian_orthologs"
-# Published file + column for each baseline, so the check below reads the real table.
+# Published angular file + legacy-named column for each baseline. The column names predate the
+# metric correction, so the filename is the authoritative provenance marker.
 BASELINE_FILES = {
-    "speciestree": ("within_family_speciestree.csv", "spearman_geodesic_speciestree"),
-    "patristic": ("within_family_patristic.csv", "spearman_geodesic_patristic"),
-    "kmer": ("kmer_within_family_correlations.csv", "spearman_geodesic_kmer"),
-    "gc": ("within_family_gc.csv", "spearman_geodesic_gc"),
+    "speciestree": ("within_family_speciestree_angular.csv", "spearman_geodesic_speciestree"),
+    "patristic": ("within_family_patristic_angular.csv", "spearman_geodesic_patristic"),
+    "kmer": ("kmer_within_family_correlations_angular.csv", "spearman_geodesic_kmer"),
+    "gc": ("within_family_gc_angular.csv", "spearman_geodesic_gc"),
 }
 MIN_GROUPS_CI = 3  # below this a percentile bootstrap over groups is not interpretable
 MIN_GROUPS_TEST = 6  # Wilcoxon signed-rank cannot reach p < 0.05 below ~6 pairs
@@ -53,83 +51,6 @@ def family_uncertainty(rhos: np.ndarray, n_boot: int, seed: int) -> dict:
     return out
 
 
-# ── level 1: inside a group (Mantel over species labels)
-
-
-def _rho_from_ranks(rx: np.ndarray, ry: np.ndarray) -> float:
-    rx, ry = rx - rx.mean(), ry - ry.mean()
-    d = np.sqrt((rx * rx).sum() * (ry * ry).sum())
-    return float((rx * ry).sum() / d) if d > 0 else np.nan
-
-
-def mantel_group(G: np.ndarray, B: np.ndarray, n_perms: int, seed: int) -> dict | None:
-    """Two-sided Mantel p for one ortholog group: permute the species labels of the geodesic."""
-    n = len(G)
-    iu = np.triu_indices(n, 1)
-    g, b = G[iu], B[iu]
-    ok = np.isfinite(g) & np.isfinite(b)
-    if ok.sum() < 6 or np.ptp(g[ok]) == 0 or np.ptp(b[ok]) == 0:
-        return None
-    obs = spearmanr(g[ok], b[ok]).statistic
-    if not np.isfinite(obs):
-        return None
-    b_rank = rankdata(b[ok])
-    rng = np.random.default_rng(seed)
-    count = 0
-    for _ in range(n_perms):
-        p = rng.permutation(n)
-        pg = G[np.ix_(p, p)][iu][ok]
-        if abs(_rho_from_ranks(rankdata(pg), b_rank)) >= abs(obs):
-            count += 1
-    import math
-
-    return {
-        "rho": float(obs),
-        "p_mantel": (count + 1) / (n_perms + 1),
-        "p_floor": max(1.0 / (n_perms + 1), 1.0 / math.factorial(n) if n <= 12 else 0.0),
-        "n_species": n,
-        "n_pairs": int(ok.sum()),
-    }
-
-
-def run_mantel_layer(arm: str, layer: int, baselines: list[str], n_perms: int, seed: int):
-    """Per-group Mantel at one layer."""
-    from geodesic_utils import compute_geodesic, find_min_connected_k
-    from mammal_controls_score import load_stack, present_keys
-
-    cheap = [b for b in baselines if b == "speciestree"]
-    if not cheap:
-        print("[mantel] nothing to do: only `speciestree` is supported without realignment")
-        return pd.DataFrame()
-    man = pd.read_csv(DATA / "complete_manifest.csv")
-    man["key"] = man.group + "__" + man.species
-    keys = present_keys(arm, man["key"].tolist())
-    kmeta = man[man.key.isin(set(keys))].set_index("key").loc[keys]
-    pat = pd.read_csv(DATA / "tree" / "species_patristic.csv", index_col=0)
-
-    print(
-        f"[mantel] loading {len(keys):,} loci at blocks.{layer} and rebuilding the geodesic "
-        f"(this is the slow part) ...",
-        flush=True,
-    )
-    stack, order = load_stack(arm, keys, [layer])
-    _, W = find_min_connected_k(stack[0], k_min=3)
-    geo = pd.DataFrame(compute_geodesic(W), index=order, columns=order)
-
-    rows = []
-    groups = kmeta.reset_index().groupby(["family", "group"])
-    for (fam, grp), sub in groups:
-        if len(sub) < 10:  # MIN_SP in mammal_controls_score
-            continue
-        mem, sp = sub["key"].tolist(), sub["species"].tolist()
-        r = mantel_group(geo.loc[mem, mem].values, pat.loc[sp, sp].values, n_perms, seed)
-        if r:
-            rows.append(
-                {"family": fam, "group": grp, "baseline": "speciestree", "layer": layer, **r}
-            )
-    return pd.DataFrame(rows)
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -142,19 +63,11 @@ def main() -> None:
         "--layers", nargs="*", type=int, default=None, help="default: every layer present"
     )
     ap.add_argument("--n-boot", type=int, default=10000)
-    ap.add_argument(
-        "--mantel-layer",
-        type=int,
-        default=None,
-        help="also run the per-group Mantel test at this layer (rebuilds the geodesic)",
-    )
-    ap.add_argument("--n-perms", type=int, default=999)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--report-layer", type=int, default=15, help="layer printed to stdout")
     args = ap.parse_args()
 
     run_root = ROOT / "results" / f"2026-07-16_mammalian-orthologs-{args.arm}"
-    per_group_p = run_root / f"per_group_scores_{args.arm}.csv"
+    per_group_p = run_root / f"per_group_scores_{args.arm}_angular.csv"
     if not per_group_p.exists():
         sys.exit(f"missing {per_group_p} — run mammal_score.py for this arm first")
     pg = pd.read_csv(per_group_p)
@@ -210,38 +123,9 @@ def main() -> None:
         f"scores (max deviation < 1e-9)\n"
     )
 
-    out = run_root / f"within_family_uncertainty_{args.arm}.csv"
+    out = run_root / f"within_family_uncertainty_{args.arm}_angular.csv"
     t.to_csv(out, index=False)
 
-    rl = t[t.layer == args.report_layer]
-    if len(rl):
-        print(f"── blocks.{args.report_layer} ──")
-        for base, g in rl.groupby("baseline"):
-            ok = g[g.n_groups >= MIN_GROUPS_CI]
-            tst = g[g.n_groups >= MIN_GROUPS_TEST]
-            print(
-                f"{base:<12} {len(g):>2} families | mean ρ {g.rho_mean.mean():+.3f} | "
-                f"CI excludes 0: {int(g.ci_excludes_zero.sum())}/{len(ok)} testable | "
-                f"Wilcoxon p<0.05: {int((tst.p_wilcoxon < 0.05).sum())}/{len(tst)}"
-            )
-        small = rl[rl.n_groups < MIN_GROUPS_CI].family.nunique()
-        print(
-            f"\n{small} famil(ies) have < {MIN_GROUPS_CI} ortholog groups — no interval is "
-            f"reported for them (their ρ is a mean over 1-2 genes)."
-        )
-
-    if args.mantel_layer is not None:
-        m = run_mantel_layer(args.arm, args.mantel_layer, baselines, args.n_perms, args.seed)
-        if len(m):
-            mp = run_root / f"within_group_mantel_{args.arm}_blocks{args.mantel_layer}.csv"
-            m.to_csv(mp, index=False)
-            testable = m[m.p_floor < 0.05]
-            print(f"\n── per-group Mantel at blocks.{args.mantel_layer} (speciestree) ──")
-            print(
-                f"{len(m)} groups | mean ρ {m.rho.mean():+.3f} | "
-                f"p_mantel < 0.05: {int((testable.p_mantel < 0.05).sum())}/{len(testable)}"
-            )
-            print(f"Saved {mp}")
     print(f"\nSaved {out}")
 
 

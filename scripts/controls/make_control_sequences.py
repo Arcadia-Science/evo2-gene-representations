@@ -4,19 +4,17 @@ from __future__ import annotations
 import random
 from collections import defaultdict
 
-# kmer4/kmer6 preserve exact k-mer spectra. `missense_subset` is nested within each recode.
-# The paired-p3 arms share edited sites and rates and should be compared only with each other.
-CONTROLS = [
-    "dinuc_shuffle",
-    "codon_shuffle",
-    "synonymous_recode",
+# Shared control membership. Paired-p3 is a matched one-off comparison, not an ordinary rung.
+ORDINARY_CONTROLS = [
     "gc_match",
+    "dinuc_shuffle",
     "kmer4_shuffle",
     "kmer6_shuffle",
-    "missense_subset",
-    "paired_p3_syn",
-    "paired_p3_missense",
+    "synonymous_recode",
 ]
+PAIRED_P3_CONTROLS = ["paired_p3_syn", "paired_p3_missense"]
+CDSMASK_CONTROLS = ORDINARY_CONTROLS + ["missense_subset"] + PAIRED_P3_CONTROLS
+FAMILY_USAGE_CONTROLS = {"synonymous_recode", "missense_subset", "paired_p3_syn"}
 SEED = 1234
 
 # Standard genetic code (frame-0 translation for amino-acid grouping).
@@ -91,7 +89,7 @@ _CODON = {
 # ── control generators
 
 
-def _random_arborescence(edges: dict, verts: set, last, rng: random.Random) -> dict:
+def _random_arborescence(edges: dict, verts: list, last, rng: random.Random) -> dict:
     """A UNIFORMLY-random arborescence (spanning in-tree) oriented toward `last`, as
     {vertex -> its chosen "last edge" successor} for every vertex except `last`.
     """
@@ -118,7 +116,7 @@ def _euler_shuffle(symbols: list, rng: random.Random) -> list:
     if n < 4 or len(set(symbols)) < 2:
         return list(symbols)
     last = symbols[-1]
-    verts = set(symbols)
+    verts = sorted(set(symbols))
     edges: dict = defaultdict(list)
     for a, b in zip(symbols[:-1], symbols[1:], strict=False):
         edges[a].append(b)

@@ -13,25 +13,15 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "scripts" / "steering"))
+
+from alignment_metrics import read_fasta  # noqa: E402
+
 IQTREE = ROOT / "data" / "tools" / "iqtree2"
 TRIMAL = ROOT / "data" / "tools" / "trimal"
 SPECIES_TREE = ROOT / "data" / "mammalian_orthologs" / "tree" / "species_tree.nwk"
 HUMAN, PLATYPUS = "homo_sapiens", "ornithorhynchus_anatinus"
 MODEL = "LG+G4"  # fixed across genes on purpose: comparability between genes beats per-gene fit
-
-
-def read_fasta(path: Path) -> dict[str, str]:
-    out, hid, buf = {}, None, []
-    for line in path.read_text().splitlines():
-        if line.startswith(">"):
-            if hid:
-                out[hid] = "".join(buf).upper()
-            hid, buf = line[1:].strip(), []
-        elif line.strip():
-            buf.append(line.strip())
-    if hid:
-        out[hid] = "".join(buf).upper()
-    return out
 
 
 def protein(cds: str) -> str:
@@ -106,7 +96,7 @@ def one_gene(fa: Path, outdir: Path) -> dict:
     gd.mkdir(parents=True, exist_ok=True)
     rec = {"gene": gene}
     try:
-        cds = read_fasta(fa)
+        cds = read_fasta(fa, header_field=None)
         prot = {sp: protein(s) for sp, s in cds.items()}
         prot = {sp: p for sp, p in prot.items() if len(p) >= 30 and "*" not in p[:-1]}
         if len(prot) < 4:
@@ -125,7 +115,7 @@ def one_gene(fa: Path, outdir: Path) -> dict:
             )
         if r.returncode != 0:
             return {**rec, "status": "fail", "reason": f"mafft: {r.stderr.decode()[:200]}"}
-        a0 = read_fasta(aln_raw)
+        a0 = read_fasta(aln_raw, header_field=None)
         rec["aln_len_raw"] = len(next(iter(a0.values())))
 
         trimmed = gd / "aln.fasta"
@@ -137,7 +127,7 @@ def one_gene(fa: Path, outdir: Path) -> dict:
         if r.returncode != 0 or not trimmed.exists():
             shutil.copy(aln_raw, trimmed)
             rec["trimal"] = "failed_used_raw"
-        a1 = read_fasta(trimmed)
+        a1 = read_fasta(trimmed, header_field=None)
         rec["aln_len_trimmed"] = len(next(iter(a1.values())))
         if rec["aln_len_trimmed"] < 60:
             return {**rec, "status": "skip", "reason": "trimmed alignment < 60 columns"}

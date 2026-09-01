@@ -110,6 +110,20 @@ def read_pep(path: Path) -> dict[str, tuple[str, str]]:
     return best
 
 
+def mmseqs_version() -> str:
+    """Exact mmseqs build, recorded in provenance so the block definition is reproducible."""
+    try:
+        out = subprocess.run(
+            ["mmseqs", "version"], check=True, capture_output=True, text=True
+        ).stdout
+    except FileNotFoundError:
+        raise SystemExit(
+            "mmseqs not on PATH -- clustering is required here; install mmseqs2 "
+            "(apt install mmseqs2, or conda install -c bioconda mmseqs2)"
+        ) from None
+    return out.strip().splitlines()[-1].strip()
+
+
 def mmseqs_blocks(
     pep: dict[str, tuple[str, str]], work: Path, min_id: float, cov: float, threads: int
 ) -> dict[str, int]:
@@ -166,6 +180,9 @@ def main() -> None:
 
     rel = ensembl_release()
     log(f"Ensembl release {rel}")
+    # Checked up front: mmseqs is mandatory below, and BioMart takes minutes.
+    mmseqs_ver = mmseqs_version()
+    log(f"mmseqs version {mmseqs_ver}")
 
     # ---- 1. pool ------------------------------------------------------------------------------
     df = biomart(args.out / "biomart_platypus_homologs.tsv")
@@ -238,6 +255,7 @@ def main() -> None:
         "ensembl_release": rel,
         "seed": args.seed,
         "n_strata": args.n_strata,
+        "mmseqs_version": mmseqs_ver,
         "mmseqs_min_seq_id": args.min_seq_id,
         "mmseqs_cov": args.cov,
         "n_biomart_genes": int(n_all),
