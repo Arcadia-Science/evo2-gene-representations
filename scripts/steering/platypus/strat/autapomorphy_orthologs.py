@@ -14,7 +14,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts" / "mammalian_orthologs"))
+sys.path.insert(0, str(ROOT / "scripts" / "steering"))
 
+from alignment_metrics import read_fasta  # noqa: E402
 from resolve_orthologs import SPECIES, _get, fetch_homologies  # noqa: E402
 
 OUT_DIR = ROOT / "data" / "platypus_strat_orthologs"
@@ -30,18 +32,6 @@ _print_lock = threading.Lock()
 def log(msg: str) -> None:
     with _print_lock:
         print(msg, flush=True)
-
-
-def read_fasta(p: Path) -> dict[str, str]:
-    d: dict[str, str] = {}
-    k = None
-    for ln in p.read_text().splitlines():
-        if ln.startswith(">"):
-            k = ln[1:].split("|")[0]
-            d[k] = ""
-        elif k:
-            d[k] += ln.strip()
-    return d
 
 
 def qc(cds: str) -> tuple[bool, str]:
@@ -106,7 +96,7 @@ def main() -> None:
         panel = {g: s for g, s in panel.items() if g in set(args.genes)}
     log(f"panel: {len(panel)} genes with symbols (from {sym_path})")
 
-    stage1_plat = read_fasta(args.run / "stage1" / "cds_platypus.fasta")
+    stage1_plat = read_fasta(args.run / "stage1" / "cds_platypus.fasta", uppercase=False)
     (OUT_DIR / "cds").mkdir(parents=True, exist_ok=True)
 
     # ---- 1. Cached Compara homologies

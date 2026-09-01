@@ -1,12 +1,41 @@
 """Alignment-based metrics used to score steered continuations."""
 
 from __future__ import annotations
+from pathlib import Path
 
 import numpy as np
 from Bio.Align import PairwiseAligner
 from Bio.Seq import Seq
 
 BASES = frozenset("ACGT")
+
+
+def read_fasta(
+    path: Path, *, header_field: int | None = 0, uppercase: bool = True
+) -> dict[str, str]:
+    """Read FASTA records using a full or pipe-delimited header as the key."""
+    out: dict[str, str] = {}
+    header: str | None = None
+    sequence: list[str] = []
+
+    def flush() -> None:
+        if not header:
+            return
+        fields = header.split("|")
+        field = header_field if header_field is not None and len(fields) > header_field else 0
+        key = header if header_field is None else fields[field]
+        value = "".join(sequence)
+        out[key] = value.upper() if uppercase else value
+
+    for line in path.read_text().splitlines():
+        if line.startswith(">"):
+            flush()
+            header = line[1:].strip() if header_field is None else line[1:]
+            sequence = []
+        elif line.strip():
+            sequence.append(line.strip())
+    flush()
+    return out
 
 
 def nt_aligner() -> PairwiseAligner:

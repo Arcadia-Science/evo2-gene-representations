@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 import argparse
+import datetime as _dt
 import hashlib
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -21,13 +23,12 @@ from scipy.stats import spearmanr  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "baselines"))
-from control_tables import write_control_table  # noqa: E402
-from geodesic_utils import (  # noqa: E402
-    compute_centroid_geodesic,
-    compute_geodesic,
-    find_min_connected_k,
+from controls.make_control_sequences import CDSMASK_CONTROLS  # noqa: E402
+from ot_between_family import (  # noqa: E402
+    angular_distance,
+    compute_ot_matrices,
+    l2_normalize,
 )
-from ot_between_family import compute_ot_matrices  # noqa: E402
 
 # Blocks whose cached activations are numerically degenerate: mean L2 norm runs 1.13e1 at block 27
 # to 2.41e12 at 30-31, and blocks 30/31 are byte-identical (the tap writes the last block twice), so
@@ -37,34 +38,35 @@ DEGENERATE_BLOCKS = (28, 29, 30, 31)
 
 OUT = ROOT / "data" / "mammalian_orthologs"
 CACHE_ROOT = ROOT / "data" / "cache" / "mammal_embed"
-CONTROLS = [
-    "gc_match",
-    "dinuc_shuffle",
-    "kmer4_shuffle",
-    "kmer6_shuffle",
-    # transcript_cdsmask only — both need a reading frame. missense_subset is nested inside
-    # synonymous_recode (it edits only bases the recode edited), so it is the weaker
-    # perturbation on BOTH axes at once, not protein alone. Read one-sidedly: rho falling
-    # below the recode means protein, since nucleotide loss cannot explain a drop; rho
-    # holding is weak evidence, because 72% of the protein survives.
-    "synonymous_recode",
-    "missense_subset",
-    # The matched pair. Both arms edit the same eligible position-3 codons — eligibility
-    # depends only on the source codon — so they share edited positions and base-change rate
-    # by construction and differ only in whether the protein survives. Two-sided: missense
-    # falling below syn means protein, holding means nucleotide. Read them against each
-    # other, never against synonymous_recode, whose rate is different.
-    "paired_p3_syn",
-    "paired_p3_missense",
-]
 MIN_SP = 10
 
 
-# Layers are processed in chunks so only CHUNK layers per condition are resident. A full stack is
-# 6.4 GB and this needs the natural plus one per control, which with the geodesic matrices exceeded
-# the machine and was OOM-killed silently at 48 families.
-LAYER_CHUNK = 4  # 6 conditions x 4 layers x 12,294 x 4096 x 4B ~ 4.8 GB resident (6th = the
-# cdsmask-only synonymous_recode rung; 5 on arms that do not have it)
+# Layers are processed in chunks because loading every complete condition at once exceeds memory.
+LAYER_CHUNK = 4  # Natural + eight complete controls x four layers is about 6.7 GB resident.
+
+
+def write_control_table(path: Path, new: pd.DataFrame, *, generator: str) -> pd.DataFrame:
+    """Upsert the scorer's conditions while preserving other existing rows and a backup."""
+    new = new.copy()
+    if "condition" not in new.columns:
+        raise ValueError(f"{path.name}: new frame has no 'condition' column; refusing to write")
+    new["written_at"] = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%d")
+    new["generator"] = generator
+
+    if path.exists():
+        shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
+        old = pd.read_csv(path)
+        if "condition" in old.columns:
+            kept = old[~old["condition"].isin(set(new["condition"].unique()))]
+            if not kept.empty:
+                for column in ("written_at", "generator"):
+                    if column not in kept.columns:
+                        kept = kept.assign(**{column: "unknown"})
+                new = pd.concat([kept, new], ignore_index=True, sort=False)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    new.to_csv(path, index=False)
+    return new
 
 
 def load_stack(arm_dir: str, keys: list[str], layers: list[int] | None = None):
@@ -84,10 +86,6 @@ def present_keys(arm_dir: str, keys: list[str]) -> list[str]:
     """Keys whose .npy exists, without reading any array data (existence check only)."""
     cache = CACHE_ROOT / arm_dir
     return [k for k in keys if (cache / f"{k}.npy").exists()]
-
-
-def upper(A, idx):
-    return A[np.ix_(idx, idx)][np.triu_indices(len(idx), 1)]
 
 
 def between_ut_w2(emb: np.ndarray, fam_arr: np.ndarray, fams: list[str], iu_fam):
@@ -123,7 +121,7 @@ def write_control_summary(sweep_root: Path) -> Path:
         if not table.exists():
             continue
         scores = pd.read_csv(table)
-        recovery_col = "rho_geodesic_speciestree"
+        recovery_col = "rho_angular_speciestree"
         for condition, group in scores.groupby("condition"):
             rows.append(
                 {
@@ -131,12 +129,12 @@ def write_control_summary(sweep_root: Path) -> Path:
                     "layer": layer,
                     "condition": condition,
                     "n_families": int(group["family"].nunique()),
-                    "rho_preservation": group["rho_geodesic_vs_natural"].mean(),
+                    "rho_preservation": group["rho_angular_vs_natural"].mean(),
                     "rho_recovery": group[recovery_col].mean(),
                 }
             )
 
-        natural_path = block_dir / "within_family_speciestree.csv"
+        natural_path = block_dir / "within_family_speciestree_angular.csv"
         natural_recovery = np.nan
         if natural_path.exists():
             natural = pd.read_csv(natural_path)
@@ -176,18 +174,6 @@ def main() -> None:
     )
     ap.add_argument("--layers", nargs="*", type=int, default=list(range(32)))
     ap.add_argument(
-        "--between-metric",
-        choices=["wasserstein", "centroid_geodesic"],
-        default="wasserstein",
-        help="between-family family-distance metric (default wasserstein since "
-        "2026-08-26; see the module docstring for the measured reason). Switching "
-        "this re-derives cached between-family triangles but reuses the expensive "
-        "within-family locus geodesics. NOTE _run_cdsmask_missense_subset.sh calls "
-        "this script unattended when its embed finishes, so that run will score "
-        "under W2 and every between-family number on this arm will change; the "
-        "old values are reproducible with --between-metric centroid_geodesic.",
-    )
-    ap.add_argument(
         "--workers",
         type=int,
         default=max(1, min(10, (os.cpu_count() or 4) - 6)),
@@ -216,7 +202,7 @@ def main() -> None:
 
     # which controls are fully embedded (file-existence check; stacks are loaded per chunk below)
     ready = []
-    for c in CONTROLS:
+    for c in CDSMASK_CONTROLS:
         pk = present_keys(f"{args.arm}_{c}", keys)
         if len(pk) == len(keys):
             ready.append(c)
@@ -227,85 +213,68 @@ def main() -> None:
 
     sweep_root = ROOT / "results" / f"2026-07-16_mammalian-orthologs-{args.arm}"
 
-    # Cache the reduced group and centroid triangles, keyed by panel contents.
+    # Cache reduced angular group triangles and W2 family triangles separately from untouched
+    # legacy geodesic artifacts.
     grp_order = list(groups)
-    # Include the centroid graph rule in cache validation.
+    group_indices = {g: [kpos[k] for k in groups[g][1]] for g in grp_order}
     panel_id = hashlib.sha1(
         (
-            "\n".join(keys)
+            "angular\n"
+            + "\n".join(keys)
             + "||"
             + "\n".join(f"{g}:{','.join(groups[g][1])}" for g in grp_order)
             + "||"
             + ",".join(fams)
         ).encode()
     ).hexdigest()[:16]
-    # Track the between-family metric separately so within-family geodesics remain reusable.
-    # Keep the persisted `min_connected` marker for cache compatibility.
-    cen_k = "min_connected" if args.between_metric == "centroid_geodesic" else "wasserstein_allgene"
-    geo_cache = ROOT / "data" / "cache" / "mammal_controls_geo" / args.arm
-    geo_cache.mkdir(parents=True, exist_ok=True)
+    score_cache = ROOT / "data" / "cache" / "mammal_controls_angular" / args.arm
+    score_cache.mkdir(parents=True, exist_ok=True)
     iu_fam = np.triu_indices(len(fams), 1)
 
     def reduce_condition(cond: str, emb: np.ndarray | None, layer: int):
-        """
-        (per-group upper-triangle geodesics, centroid upper triangle) for one (condition, layer).
-        """
-        # Validate group geodesics and centroid triangles independently.
-        p = geo_cache / f"{cond}_L{layer}.npz"
-        vecs = cen = None
+        """Return per-group angular triangles and the between-family W2 triangle."""
+        p = score_cache / f"{cond}_L{layer}.npz"
+        vecs = between = None
         if p.exists():
             z = np.load(p, allow_pickle=False)
             if str(z["panel_id"]) == panel_id:
                 off = z["offsets"]
                 vecs = [z["groups_flat"][off[i] : off[i + 1]] for i in range(len(grp_order))]
-                # Treat entries without a centroid rule marker as stale.
-                if "centroid_k" in z.files and str(z["centroid_k"]) == cen_k:
-                    cen = z["centroid_ut"]
+                if "between_metric" in z.files and str(z["between_metric"]) == "wasserstein":
+                    between = z["between_ut"]
             else:
                 print(
                     f"    cache stale for {cond} L{layer} (panel changed) — recomputing", flush=True
                 )
-        if vecs is not None and cen is not None:
-            return {g: v for g, v in zip(grp_order, vecs, strict=False)}, cen
+        if vecs is not None and between is not None:
+            return {g: v for g, v in zip(grp_order, vecs, strict=False)}, between
         if emb is None:
             return None
-        if vecs is None:  # expensive half missing
-            _, W = find_min_connected_k(emb, k_min=3)
-            geo = compute_geodesic(W)
-            vecs = [upper(geo, [kpos[k] for k in groups[g][1]]) for g in grp_order]
-            del geo
-        else:
-            print(
-                f"    {cond} L{layer}: reusing cached locus geodesic, rebuilding between-family "
-                f"triangle (metric={cen_k})",
-                flush=True,
-            )
-        # Served from the batched W2 pass when there is one; otherwise computed here. The batch is
-        # only a speed path — the value is identical either way.
-        cen = w2_batch.pop((cond, layer), None)
-        if cen is None:
-            cen = (
-                compute_centroid_geodesic(emb, fam_arr, fams)[iu_fam]
-                if args.between_metric == "centroid_geodesic"
-                else between_ut_w2(emb, fam_arr, fams, iu_fam)
-            )
+        if vecs is None:
+            vecs = []
+            for g in grp_order:
+                U = l2_normalize(emb[group_indices[g]])
+                A = angular_distance(U, U)
+                vecs.append(A[np.triu_indices(len(U), 1)])
+        between = w2_batch.pop((cond, layer), None)
+        if between is None:
+            between = between_ut_w2(emb, fam_arr, fams, iu_fam)
         offsets = np.cumsum([0] + [len(v) for v in vecs])
         tmp = p.with_suffix(".tmp.npz")
         np.savez_compressed(
             tmp,
             panel_id=panel_id,
-            centroid_k=cen_k,
+            between_metric="wasserstein",
             offsets=offsets,
             groups_flat=np.concatenate(vecs),
-            centroid_ut=cen,
+            between_ut=between,
         )
         tmp.replace(p)
-        return {g: v for g, v in zip(grp_order, vecs, strict=False)}, cen
+        return {g: v for g, v in zip(grp_order, vecs, strict=False)}, between
 
     def chunk_needs(cond: str, chunk: list[int]) -> bool:
-        """Does any layer in this chunk still need a geodesic for `cond`? If not, its stack is
-        never loaded — which is what makes the incremental re-run cheap in I/O and RAM too."""
-        return any(reduce_condition(cond, None, L) is None for L in chunk)
+        """Return whether any layer lacks an angular/W2 cache entry for this condition."""
+        return any(reduce_condition(cond, None, layer) is None for layer in chunk)
 
     # Defined before the loop because reduce_condition closes over it and chunk_needs calls that
     # closure before the batch for a chunk has been built.
@@ -320,16 +289,15 @@ def main() -> None:
         n_hit = (1 + len(ready)) - (int(need_nat) + len(need_ctl))
         print(
             f"  layers {chunk}: loaded {int(need_nat) + len(need_ctl)} conditions "
-            f"({n_hit} served from the reduced-geodesic cache)",
+            f"({n_hit} served from the angular/W2 cache)",
             flush=True,
         )
 
         # Batched W2: exact EMD over ~950 family pairs costs ~30 s per (condition, layer) at this
         # panel size, and the pairs are independent, so the chunk's outstanding (condition, layer)
-        # solves are farmed to a fork pool before the sequential loop below consumes them. The
-        # centroid path is cheap enough that it stays inline.
+        # solves are farmed to a fork pool before the sequential loop below consumes them.
         w2_batch.clear()
-        if args.between_metric == "wasserstein" and args.workers > 1:
+        if args.workers > 1:
             stacks = {
                 c: s
                 for c, s in [(args.arm, nat_chunk)]
@@ -357,25 +325,23 @@ def main() -> None:
                     w2_batch.update(dict(pool.map(_w2_task, tasks)))
             del stacks
         for j, L in enumerate(chunk):
-            nat_grp, nat_cen_ut = reduce_condition(
+            nat_grp, nat_between_ut = reduce_condition(
                 args.arm, nat_chunk[j] if nat_chunk is not None else None, L
             )
             within_rows = [
-                {"condition": "natural", "family": f, "rho_geodesic_vs_natural": 1.0} for f in fams
+                {"condition": "natural", "family": f, "rho_angular_vs_natural": 1.0} for f in fams
             ]
-            # Mirror the former centroid column for reader compatibility; record metric provenance.
             between_rows = [
                 {
                     "condition": "natural",
                     "rho_vs_natural_between": 1.0,
-                    "rho_vs_natural_centroid": 1.0,
-                    "between_metric": args.between_metric,
+                    "between_metric": "wasserstein",
                     "degenerate_block": L in DEGENERATE_BLOCKS,
                 }
             ]
             for c in ready:
                 cs = ctrl_chunk.get(c)
-                ctrl_grp, ctrl_cen_ut = reduce_condition(
+                ctrl_grp, ctrl_between_ut = reduce_condition(
                     f"{args.arm}_{c}", cs[j] if cs is not None else None, L
                 )
                 # per-group preservation + recovery, aggregated per family
@@ -394,17 +360,17 @@ def main() -> None:
                         {
                             "condition": c,
                             "family": f,
-                            "rho_geodesic_vs_natural": np.mean(per_fam_pres[f])
+                            "rho_angular_vs_natural": np.mean(per_fam_pres[f])
                             if per_fam_pres[f]
                             else np.nan,
-                            "rho_geodesic_speciestree": np.mean(per_fam_rec[f])
+                            "rho_angular_speciestree": np.mean(per_fam_rec[f])
                             if per_fam_rec[f]
                             else np.nan,
                         }
                     )
-                nz = np.isfinite(nat_cen_ut) & np.isfinite(ctrl_cen_ut)
+                nz = np.isfinite(nat_between_ut) & np.isfinite(ctrl_between_ut)
                 brho = (
-                    spearmanr(nat_cen_ut[nz], ctrl_cen_ut[nz]).statistic
+                    spearmanr(nat_between_ut[nz], ctrl_between_ut[nz]).statistic
                     if nz.sum() >= 3
                     else np.nan
                 )
@@ -412,8 +378,7 @@ def main() -> None:
                     {
                         "condition": c,
                         "rho_vs_natural_between": brho,
-                        "rho_vs_natural_centroid": brho,
-                        "between_metric": args.between_metric,
+                        "between_metric": "wasserstein",
                         "degenerate_block": L in DEGENERATE_BLOCKS,
                     }
                 )

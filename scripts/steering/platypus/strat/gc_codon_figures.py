@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "steering"))  # alignment_metrics
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arcadia_pub as pub  # noqa: E402
 import arcadia_style as acs  # noqa: E402
+from alignment_metrics import read_fasta  # noqa: E402
 from plot_utils import set_pub_style  # noqa: E402
 
 INK, WARM, PLUM, GREY = (acs.SERIES_PRIMARY, acs.SERIES_NULL, acs.SERIES_THIRD, acs.SERIES_MUTED)
@@ -106,17 +107,6 @@ KEEP = list(
         DOSE + EXTRA + dose_ladder("_L24") + extra_arms("_L24") + ["add_own", "add_own_L24"]
     )
 )
-
-
-def read_fasta(p: Path) -> dict[str, str]:
-    out, k = {}, None
-    for ln in p.read_text().splitlines():
-        if ln.startswith(">"):
-            k = ln[1:].split("|")[0]
-            out[k] = ""
-        elif k:
-            out[k] += ln.strip()
-    return out
 
 
 def gc_stats(seq: str) -> tuple[float, float]:
@@ -265,8 +255,8 @@ def composition_table(
         print(f"  (reusing {gc_cache.name}; pass --refresh-composition to recompute)")
         return pd.read_csv(gc_cache), pd.read_csv(ref_cache).set_index("gene")
 
-    ch = read_fasta(run / "stage1" / "cds_human.fasta")
-    cp = read_fasta(run / "stage1" / "cds_platypus.fasta")
+    ch = read_fasta(run / "stage1" / "cds_human.fasta", uppercase=False)
+    cp = read_fasta(run / "stage1" / "cds_platypus.fasta", uppercase=False)
     plan = pd.read_csv(run / arm / "scoring_plan.csv")
     plan = plan[plan.usable].set_index("gene")
 
@@ -631,7 +621,7 @@ def codon_stats(
         print(f"  (reusing {cache.name}; pass --refresh-codons to recompute)")
         return pd.read_csv(cache)
 
-    cp = read_fasta(run / "stage1" / "cds_platypus.fasta")
+    cp = read_fasta(run / "stage1" / "cds_platypus.fasta", uppercase=False)
     plan = pd.read_csv(run / arm / "scoring_plan.csv")
     plan = plan[plan.usable].set_index("gene")
     target = {}

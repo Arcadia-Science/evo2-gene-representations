@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "steering"))
 sys.path.insert(0, str(ROOT / "scripts" / "steering" / "platypus"))
 
 import steer_lib as S  # noqa: E402
-from alignment_metrics import score_generation  # noqa: E402
+from alignment_metrics import read_fasta, score_generation  # noqa: E402
 from diagnostic_sites import diagnostic_sites_in_continuation  # noqa: E402
 
 PREFIX_BP = 90
@@ -26,20 +26,6 @@ PREFIX_BP = 90
 
 def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
-
-
-def read_fasta(path: Path) -> dict[str, str]:
-    out, hid, buf = {}, None, []
-    for line in path.read_text().splitlines():
-        if line.startswith(">"):
-            if hid:
-                out[hid.split("|")[0]] = "".join(buf).upper()
-            hid, buf = line[1:], []
-        elif line.strip():
-            buf.append(line.strip())
-    if hid:
-        out[hid.split("|")[0]] = "".join(buf).upper()
-    return out
 
 
 def stratum_interleaved(pairs: pd.DataFrame) -> list[str]:

@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "steering"))
 sys.path.insert(0, str(ROOT / "scripts" / "steering" / "platypus"))
 
 import steer_lib as S  # noqa: E402
+from alignment_metrics import read_fasta  # noqa: E402
 from steer_lib import codon_blocks  # noqa: E402
 
 SPECIES = ["human", "platypus"]  # column order of the saved tensor
@@ -25,20 +26,6 @@ NB = 32
 
 def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
-
-
-def read_fasta(path: Path) -> dict[str, str]:
-    out, hid, buf = {}, None, []
-    for line in path.read_text().splitlines():
-        if line.startswith(">"):
-            if hid:
-                out[hid.split("|")[0]] = "".join(buf).upper()
-            hid, buf = line[1:], []
-        elif line.strip():
-            buf.append(line.strip())
-    if hid:
-        out[hid.split("|")[0]] = "".join(buf).upper()
-    return out
 
 
 def aligned_positions(h_cds: str, p_cds: str, context_bp: int) -> tuple[np.ndarray, np.ndarray]:

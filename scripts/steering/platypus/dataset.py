@@ -36,10 +36,10 @@ FAMILIES = [
 
 # Apply the same inclusion rule to both species.
 TRANSCRIPT_RULE = (
-    "Ensembl canonical transcript (REST `is_canonical`, or GTF tag `Ensembl_canonical`); "
+    "Ensembl canonical transcript (GTF tag `Ensembl_canonical`); "
     "if no canonical flag is present, the transcript with the longest CDS. "
-    "Applied identically to human and platypus (mammalian_orthologs/extract_loci.py:89-104, "
-    "extract_loci_bulk.py:103-114)."
+    "Applied identically to human and platypus "
+    "(mammalian_orthologs/extract_loci_bulk.py:102-111)."
 )
 ORTHOLOGY_SOURCE = (
     "Ensembl Compara one-to-one orthologs of the human gene, resolved by "

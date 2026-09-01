@@ -18,7 +18,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts" / "steering"))
 
-from alignment_metrics import nt_aligner  # noqa: E402
+from alignment_metrics import nt_aligner, read_fasta  # noqa: E402
 
 
 def _load(name: str):
@@ -31,7 +31,7 @@ def _load(name: str):
 _sn = _load("sites_nt")
 diagnostic_sites_nt, site_pairs_nt = _sn.diagnostic_sites_nt, _sn.site_pairs_nt
 _rs = _load("stage4_rescore_nt")
-autapomorphic_subset, read_fasta_multi = _rs.autapomorphic_subset, _rs.read_fasta_multi
+autapomorphic_subset = _rs.autapomorphic_subset
 ORTHO_DIR, PLATYPUS = _rs.ORTHO_DIR, _rs.PLATYPUS
 
 BASELINE = "unsteered"
@@ -266,7 +266,7 @@ def build_sites(gene: str, human: str, target: str, cp: str, cont_offset: int) -
         raise AssertionError(f"{gene}: site_pairs_nt disagrees with diagnostic_sites_nt")
 
     f = ORTHO_DIR / f"{gene}.fasta"
-    orthologs = read_fasta_multi(f) if f.exists() else {}
+    orthologs = read_fasta(f, header_field=1, uppercase=False) if f.exists() else {}
     auta, voters = autapomorphic_subset(cp, cont_offset, diag, orthologs)
     votes, voters_v = ortholog_votes(cp, cont_offset, pairs, orthologs)
 
@@ -548,19 +548,8 @@ def main() -> None:
         print(f"rebuilt tables from {len(df)} saved records -> {out}")
         return
 
-    def rf(p: Path) -> dict[str, str]:
-        o: dict[str, str] = {}
-        k = None
-        for ln in p.read_text().splitlines():
-            if ln.startswith(">"):
-                k = ln[1:].split("|")[0]
-                o[k] = ""
-            elif k:
-                o[k] += ln.strip()
-        return o
-
-    ch = rf(args.run / "stage1" / "cds_human.fasta")
-    cp = rf(args.run / "stage1" / "cds_platypus.fasta")
+    ch = read_fasta(args.run / "stage1" / "cds_human.fasta", uppercase=False)
+    cp = read_fasta(args.run / "stage1" / "cds_platypus.fasta", uppercase=False)
     plan_df = pd.read_csv(d / "scoring_plan.csv")
     plan_df = plan_df[plan_df.usable]
     # codon position = idx % 3 is only meaningful if the continuation starts in frame

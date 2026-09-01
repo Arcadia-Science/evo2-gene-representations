@@ -6,28 +6,18 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "scripts" / "steering"))
+
+from alignment_metrics import read_fasta  # noqa: E402
+
 GTPASE = {"rab_gtpase", "ras_gtpases", "arf_gtpase", "rho_gtpase"}
-
-
-def read_fasta(path: Path) -> dict[str, str]:
-    out: dict[str, str] = {}
-    hid, seq = None, []
-    for line in path.read_text().splitlines():
-        if line.startswith(">"):
-            if hid:
-                out[hid.split("|")[0]] = "".join(seq).upper()
-            hid, seq = line[1:], []
-        elif line.strip():
-            seq.append(line.strip())
-    if hid:
-        out[hid.split("|")[0]] = "".join(seq).upper()
-    return out
 
 
 def gc3(s: str) -> float:

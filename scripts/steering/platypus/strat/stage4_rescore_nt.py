@@ -16,7 +16,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts" / "steering"))
 
-from alignment_metrics import nt_aligner  # noqa: E402
+from alignment_metrics import nt_aligner, read_fasta  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("sites_nt", Path(__file__).with_name("sites_nt.py"))
 _sn = importlib.util.module_from_spec(_spec)
@@ -27,20 +27,6 @@ ORTHO_DIR = ROOT / "data" / "platypus_strat_orthologs" / "cds"
 PLATYPUS = "ornithorhynchus_anatinus"
 BASES = frozenset("ACGT")
 _G: dict = {}
-
-
-def read_fasta_multi(p: Path) -> dict[str, str]:
-    """header -> seq, keyed on the SECOND field (species) of `gene|species|id` headers."""
-    d: dict[str, str] = {}
-    k = None
-    for ln in p.read_text().splitlines():
-        if ln.startswith(">"):
-            parts = ln[1:].split("|")
-            k = parts[1] if len(parts) > 1 else parts[0]
-            d[k] = ""
-        elif k:
-            d[k] += ln.strip()
-    return d
 
 
 def autapomorphic_subset(
@@ -114,7 +100,7 @@ def _one_gene(gene: str) -> list[dict]:
     human = ch[off_h + 90 :][:nt]
     diag = diagnostic_sites_nt(human, target)
     f = ORTHO_DIR / f"{gene}.fasta"
-    orthologs = read_fasta_multi(f) if f.exists() else {}
+    orthologs = read_fasta(f, header_field=1, uppercase=False) if f.exists() else {}
     auta, voters = autapomorphic_subset(cp, cont_offset, diag, orthologs)
     out = []
     for rec in _G["gens"].get(gene, []):
@@ -143,20 +129,9 @@ def main() -> None:
     args = ap.parse_args()
     d = args.run / args.dir
 
-    def rf(p: Path) -> dict[str, str]:
-        out: dict[str, str] = {}
-        k = None
-        for ln in p.read_text().splitlines():
-            if ln.startswith(">"):
-                k = ln[1:].split("|")[0]
-                out[k] = ""
-            elif k:
-                out[k] += ln.strip()
-        return out
-
     ch, cp = (
-        rf(args.run / "stage1" / "cds_human.fasta"),
-        rf(args.run / "stage1" / "cds_platypus.fasta"),
+        read_fasta(args.run / "stage1" / "cds_human.fasta", uppercase=False),
+        read_fasta(args.run / "stage1" / "cds_platypus.fasta", uppercase=False),
     )
     plan_df = pd.read_csv(d / "scoring_plan.csv")
     plan_df = plan_df[plan_df.usable]

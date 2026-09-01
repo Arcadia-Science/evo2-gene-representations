@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 import argparse
-import contextlib
-import io
 import json
 import sys
 from pathlib import Path
@@ -16,17 +14,15 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "baselines"))
 
-from geodesic_utils import family_centroids, find_min_connected_k  # noqa: E402
-from ot_between_family import compute_ot_matrices  # noqa: E402
+from controls.make_control_sequences import ORDINARY_CONTROLS  # noqa: E402
+from ot_between_family import angular_distance, compute_ot_matrices, l2_normalize  # noqa: E402
 
 ARM = "transcript_cdsmask"
 RUN = ROOT / "results" / f"2026-07-16_mammalian-orthologs-{ARM}"
 CA = ROOT / "data" / "cache" / "mammal_embed"
-GEO = ROOT / "data" / "cache" / "mammal_controls_geo" / ARM
 OT_CACHE = ROOT / "data" / "cache" / "mammal_controls_ot" / ARM
 MANIFEST = ROOT / "data" / "mammalian_orthologs" / "complete_manifest.csv"
 
-CONTROLS = ["gc_match", "dinuc_shuffle", "kmer4_shuffle", "kmer6_shuffle", "synonymous_recode"]
 LAYERS = list(range(32))
 MIN_SP = 10  # ortholog groups with fewer represented species are excluded from within-family
 
@@ -42,7 +38,9 @@ def load_panel() -> tuple[list[str], pd.DataFrame]:
 def ready_conditions(keys: list[str]) -> list[str]:
     """Natural plus every control rung whose embedding cache is COMPLETE."""
     return [ARM] + [
-        f"{ARM}_{c}" for c in CONTROLS if len(list((CA / f"{ARM}_{c}").glob("*.npy"))) == len(keys)
+        f"{ARM}_{c}"
+        for c in ORDINARY_CONTROLS
+        if len(list((CA / f"{ARM}_{c}").glob("*.npy"))) == len(keys)
     ]
 
 
@@ -82,22 +80,14 @@ def score_between(keys: list[str], meta: pd.DataFrame) -> Path:
             else:
                 Wm = compute_ot_matrices(XL, fam_arr, fam_order, alphas=()).matrices["wasserstein"]
                 np.save(f, Wm)
-            cen = family_centroids(XL, fam_arr, fam_order)
-            with contextlib.redirect_stdout(io.StringIO()):
-                k_cen, _ = find_min_connected_k(cen, k_min=3)
-            rec = {"condition": cond, "layer": L, "k_centroid_graph": int(k_cen)}
+            rec = {"condition": cond, "layer": L}
             if cond != ARM and L in nat_was:
                 rec["rho_wasserstein"] = spearmanr(nat_was[L], Wm[iu]).statistic
-                g_n = np.load(GEO / f"{ARM}_L{L}.npz")["centroid_ut"]
-                g_c = np.load(GEO / f"{cond}_L{L}.npz")["centroid_ut"]
-                rec["rho_geodesic"] = spearmanr(g_n, g_c).statistic
             rows.append(rec)
             print(
-                f"    L{L:<2} k_centroid={k_cen:<3}"
+                f"    L{L:<2}"
                 + (
-                    f" wasserstein={rec['rho_wasserstein']:.4f} geodesic={rec['rho_geodesic']:.4f}"
-                    if "rho_wasserstein" in rec
-                    else ""
+                    f" wasserstein={rec['rho_wasserstein']:.4f}" if "rho_wasserstein" in rec else ""
                 ),
                 flush=True,
             )
@@ -107,19 +97,14 @@ def score_between(keys: list[str], meta: pd.DataFrame) -> Path:
     out = ROOT / "results" / f"_ot_control_preservation_{ARM}.csv"
     df.to_csv(out, index=False)
     print(f"\nwrote {out}", flush=True)
-    print("\nk used for the 48-centroid graph, by condition:", flush=True)
-    print(
-        df.groupby("condition")["k_centroid_graph"].describe()[["min", "50%", "max"]].to_string(),
-        flush=True,
-    )
     return out
 
 
 # ── within-family: direct angular
 def angular_upper(V: np.ndarray) -> np.ndarray:
     """Strict upper triangle of the pairwise angular distance among a group's members."""
-    U = V / np.clip(np.linalg.norm(V, axis=1, keepdims=True), 1e-12, None)
-    A = np.arccos(np.clip(U @ U.T, -1.0, 1.0)) / np.pi
+    U = l2_normalize(V)
+    A = angular_distance(U, U)
     return A[np.triu_indices(len(V), 1)]
 
 

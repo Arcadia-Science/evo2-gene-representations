@@ -12,7 +12,7 @@ from Bio.Seq import Seq
 from pyfaidx import Fasta
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from extract_loci import LOCI_CACHE, OUT_DIR, build_manifest  # noqa: E402  reuse cache/manifest
+from assemble_datasets import LOCI_CACHE, OUT_DIR, build_manifest  # noqa: E402
 
 GENOMES = Path("/opt/dlami/nvme/mammal_genomes")
 
