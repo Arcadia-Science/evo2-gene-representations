@@ -111,3 +111,6 @@ notes/
 evo2.pdf
 tree_of_life_reproduction_goodfire/
 .venv/
+
+# Frozen pre-refactor output snapshots (validation baselines)
+.frozen/

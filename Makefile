@@ -1,12 +1,16 @@
 .PHONY: lint
 lint:
-	ruff check --exit-zero .
+	uv run --frozen ruff check .
+
+.PHONY: test
+test:
+	uv run --frozen pytest -q
 
 .PHONY: format
 format:
-	ruff check --fix .
-	ruff format .
+	uv run --frozen ruff check --fix .
+	uv run --frozen ruff format .
 
 .PHONY: pre-commit
 pre-commit:
-	pre-commit run --all-files
+	uv run --frozen pre-commit run --all-files

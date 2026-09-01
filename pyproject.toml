@@ -27,11 +27,12 @@ dependencies = [
     "arcadia-pycolor>=0.8.0",
 ]
 # Optional external (non-PyPI) tools — install separately if you use the feature:
-#   mmseqs2 — near-duplicate sequence clustering in
-#             scripts/evo2/build_gene_families_evo2.py. Not pip-installable
-#             (compiled C++ binary); install via `conda install -c bioconda mmseqs2`
-#             or a static release. The script runs without it, with clustering
-#             skipped.
+#   mmseqs2 — homology-block clustering in
+#             scripts/steering/platypus/strat/stage0_pool.py. REQUIRED for that
+#             stage (it hard-fails without it), not optional. Not pip-installable
+#             (compiled C++ binary); install via `apt install mmseqs2`,
+#             `conda install -c bioconda mmseqs2`, or a static release. The exact
+#             build is recorded in each run's stage0_config.json.
 
 [dependency-groups]
 dev = [
@@ -40,6 +41,9 @@ dev = [
     "pytest>=9.0.3",
     "ruff>=0.4.8",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 
 [[tool.uv.index]]
@@ -66,6 +70,7 @@ extend-include = ["*.ipynb"]
 [tool.ruff.lint.per-file-ignores]
 # ignore star and unused imports
 "__init__.py" = ["F403", "F405"]
+"tests/*.py" = ["B905", "E501", "E731"]
 
 [tool.ruff.lint]
 select = [
