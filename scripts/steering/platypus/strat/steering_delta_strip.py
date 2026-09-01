@@ -123,11 +123,19 @@ def load_deltas(
     scores: str | None = None,
     metric: str = DEFAULT_METRIC,
     min_voters: int = 1,
+    from_figure_data: bool = False,
 ) -> tuple[pd.DataFrame, dict]:
     """
     Long table: one row per gene x readout x condition, with conservation and stratum attached.
     """
-    s, mspec = load_scores(run, arm_dir, scores=scores, metric=metric, min_voters=min_voters)
+    s, mspec = load_scores(
+        run,
+        arm_dir,
+        scores=scores,
+        metric=metric,
+        min_voters=min_voters,
+        from_figure_data=from_figure_data,
+    )
     for key, _, _, _, derive in readouts(mspec):
         if derive is not None:
             s[key] = derive(s)
@@ -347,6 +355,7 @@ def main() -> None:
         scores=args.scores,
         metric=args.metric,
         min_voters=args.min_voters,
+        from_figure_data=args.from_figure_data,
     )
     spec = {k: (blk, lab, arrow) for k, blk, lab, arrow, _ in readouts(mspec)}
     keys = args.readouts or [k for k, _, _, _, _ in readouts(mspec)]

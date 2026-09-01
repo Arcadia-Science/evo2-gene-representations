@@ -24,16 +24,19 @@ GPU-hours.
 Experiments 1–2 embed all 32 residual-stream blocks. Transcript spans are split into windows;
 hidden states are selected at CDS positions and mean-pooled over the second half of those positions.
 
-## Required result directories
+## Required inputs
 
-`--figures` reads only these, and they are tracked, so it runs on a fresh clone:
+`--figures` reads only [figure_data/](figure_data/), which is tracked, so it runs on a fresh clone:
 
-| Path | Contents |
+| Table prefix | Figures |
 |---|---|
-| `results/2026-07-16_mammalian-orthologs-transcript_cdsmask/` | Experiment 1 layer scores and Experiment 2 control scores |
-| `results/layer_sweep_summaries/mammalian-orthologs-cdsmask-48fam/` | Figures 1–3 summary tables |
-| `results/2026-07-28_evo2-platypus-paired/` | Paired-panel direction geometry for Figures 6a–6b |
-| `results/2026-08-08_platypus-strat-400/` | Experiment 3 panel, generations, scores, rates, and figures |
+| `figure_data/exp1_*` | 1–3 |
+| `figure_data/exp2_*` | 4, 12 |
+| `figure_data/exp3_*` | 5–11 |
+
+`figure_data/README.md` lists every table with its grain and size. `--run` additionally needs
+`data/` and writes the dated run directories under `results/`; the last stage of each runner calls
+`scripts/build_figure_data.py`, which collapses those into `figure_data/`.
 
 Each runner copies its completed panels into `pub/figures/`.
 

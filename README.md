@@ -16,7 +16,7 @@ structure can be explained by sequence composition. The publication analysis has
 |---|---|
 | [REPRODUCING.md](REPRODUCING.md) | Commands, inputs, outputs, and inference settings for all three experiments |
 | [experiments/](experiments/) | Canonical end-to-end runners; plan mode is the default |
-| [results/](results/) | Tracked figure-input tables; `--figures` reads these and needs nothing else |
+| [figure_data/](figure_data/) | The tidy tables every figure reads; `--figures` needs nothing else |
 
 ## Requirements
 
@@ -74,21 +74,14 @@ The canonical family definitions are in
 
 ## Local data and results
 
-The tables each `--figures` run reads are tracked, so figure rendering works on a fresh clone with
-no downloads:
+[figure_data/](figure_data/) holds 21 tidy tables — one or two per figure, about 16 MB — and is the
+only input `--figures` needs, so figure rendering works on a fresh clone with no downloads and no
+GPU. `scripts/build_figure_data.py` writes it from a completed `--run`.
 
-```text
-results/
-├── _{ot,angular}_control_preservation_transcript_cdsmask.csv
-├── 2026-07-16_mammalian-orthologs-transcript_cdsmask/blocks0..31/
-├── 2026-07-28_evo2-platypus-paired/stage2_cds_mean/
-├── 2026-08-08_platypus-strat-400/
-└── layer_sweep_summaries/mammalian-orthologs-cdsmask-48fam/
-```
-
-Everything a full `--run` needs is not: `data/` (sequences, manifests, Evo2 embedding caches) and
-the remaining contents of `results/` are ignored by Git and must be rebuilt locally. `deprecated/`
-is likewise ignored. Earlier and superseded analyses remain recoverable from Git history.
+Everything a full `--run` needs is local and ignored by Git: `data/` (sequences, manifests, Evo2
+embedding caches), the dated run directories under `results/`, and `deprecated/`. The raw
+per-sample scores and generated sequences are archived separately. Earlier and superseded analyses
+remain recoverable from Git history.
 
 ## Contributing
 

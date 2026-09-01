@@ -111,57 +111,67 @@ stage "~10 min"     "E4. merge rates with the direction statistics" \
   $PY $S/strat/stage5_merge.py --run $R --layers 27 --modes cds_mean
 stage "~10 min"     "E5. does evolutionary rate predict steering gain?" \
   $PY $S/strat/stage5_gain.py --run $R --arms $ARM
+
+say "Tracked figure inputs"
+
+# Collapses the run dirs above into figure_data/, which is what every figure below reads.
+stage "~1 min, CPU"  "F1. build the tracked figure_data/ tables" \
+  $PY scripts/build_figure_data.py
 fi
 
 say "Figures 5-11"
 
+FD=figure_data
 if need "figs 5 + 11: strata composition, rate matrix" \
-        "$R/stage1/pairs.csv" "$R/stage1/attrition.csv" \
-        "$R/stage2/aligned_coverage.csv" "$R/geom_cds_mean/per_gene_by_layer.csv" \
-        "$R/stage5/tree_stats.csv" "$R/stage5/dnds.csv" \
-        "$R/stage5/rate_vs_direction.csv" "$R/stage5/rate_vs_direction_shape.csv" \
-        "$R/$ARM/stage4_scores_nt.csv"; then
+        $FD/exp3_panel.csv $FD/exp3_panel_coverage.csv $FD/exp3_rates_tree_stats.csv \
+        $FD/exp3_rates_dnds.csv $FD/exp3_rates_vs_direction.csv $FD/exp3_rates_vs_gain.csv \
+        $FD/exp3_direction_per_gene_by_layer.csv $FD/exp3_steering_outcomes.csv; then
   fig "figs 5 + 11: strata composition, rate matrix" \
-    $PY $S/strat/hypothesis_figures.py --run "$R" --only 5 8 --pub
+    $PY $S/strat/hypothesis_figures.py --run "$R" --from-figure-data --only 5 8 --pub
   collect "$R/figures/pub/8b_strata_composition_frame" fig05_stratum_composition
   collect "$R/figures/pub/5_rate_outcome_matrix"       fig11_rate_predictor_outcome_matrix
 fi
 
 # Figures 6a/6b come from the ~100-gene paired panel, not the n=400 one.
 if need "figs 6a/6b: LOO cosine, magnitude spread" \
-        "$PAIRED/layer_stats.csv" "$PAIRED/per_gene_by_layer.csv" \
-        "$PAIRED/null_distributions.npz"; then
+        $FD/exp3_direction_layer_stats.csv $FD/exp3_direction_per_gene_by_layer.csv \
+        $FD/exp3_direction_nulls.npz; then
   fig "figs 6a/6b: LOO cosine, magnitude spread" $PY $S/figures.py \
-    --stage2-dir "$PAIRED" --structure-suffix _cds_mean --label 'CDS mean' --pub
+    --from-figure-data --out-dir "$PAIRED/figures" --structure-suffix _cds_mean \
+    --label 'CDS mean' --pub
   collect "$PAIRED/figures/pub/1_loo_median_by_layer" fig06a_leave_one_out_cosine_by_block
   collect "$PAIRED/figures/pub/8b_magnitude_spread"   fig06b_delta_magnitude_spread_by_block
 fi
 
-if need "fig 7: steering delta by stratum" "$R/$ARM/stage4_scores_nt.csv"; then
+if need "fig 7: steering delta by stratum" $FD/exp3_steering_outcomes.csv; then
   fig "fig 7: steering delta by stratum" $PY $S/strat/steering_delta_strip.py \
-    --run "$R" --arm-dir $ARM --style violin-strata \
+    --run "$R" --arm-dir $ARM --from-figure-data --style violin-strata \
     --stem 10_steering_delta_violin_strata --pub
   collect "$R/figures/pub/10_steering_delta_violin_strata" fig07_steering_delta_by_stratum
 fi
 
-if need "fig 8: dose response by stratum" "$R/$ARM/stage4_scores_nt.csv"; then
+if need "fig 8: dose response by stratum" $FD/exp3_steering_outcomes.csv; then
   fig "fig 8: dose response by stratum" $PY $S/strat/dose_and_alpha_figures.py \
-    --run "$R" --dir $ARM --pub
+    --run "$R" --dir $ARM --from-figure-data --pub
   collect "$R/figures/pub/6d_dose_by_stratum" fig08_dose_response_by_stratum
 fi
 
-if need "figs 9a/9b: leave-human vs platypus choice" "$R/site_directionality/summary.csv"; then
+if need "figs 9a/9b: leave-human vs platypus choice" \
+        $FD/exp3_site_directionality_summary.csv $FD/exp3_site_directionality_gc_class.csv \
+        $FD/exp3_site_directionality_per_gene.csv; then
   fig "figs 9a/9b: leave-human vs platypus choice" $PY $S/strat/site_directionality_figures.py \
-    --run "$R" --layers 27 --site-set both --pub
+    --run "$R" --from-figure-data --layers 27 --site-set both --pub
   collect "$R/figures_27/pub/18_leave_human_vs_platypus_choice" \
           fig09a_leave_human_vs_platypus_choice_private
   collect "$R/figures_27/pub/18_leave_human_vs_platypus_choice_platy_not_human" \
           fig09b_leave_human_vs_platypus_choice_loose
 fi
 
-if need "fig 10: GC by codon position" "$R/$ARM/generations.jsonl.gz"; then
+if need "fig 10: GC by codon position" \
+        $FD/exp3_generation_composition.csv $FD/exp3_generation_reference_windows.csv \
+        $FD/exp3_codon_substitutions.csv; then
   fig "fig 10: GC by codon position" $PY $S/strat/gc_codon_figures.py \
-    --run "$R" --layer 27 --only 14 --pub
+    --run "$R" --from-figure-data --layer 27 --only 14 --pub
   collect "$R/figures_27/pub/14_gc_codon_position" fig10_gc_by_codon_position
 fi
 

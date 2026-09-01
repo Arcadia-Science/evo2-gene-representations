@@ -21,6 +21,8 @@ import arcadia_pub as pub  # noqa: E402
 import arcadia_style as acs  # noqa: E402
 from plot_utils import set_pub_style  # noqa: E402
 
+import figure_data  # noqa: E402
+
 
 def _load(name: str):
     spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(f"{name}.py"))
@@ -459,6 +461,11 @@ def main() -> None:
     )
     ap.add_argument("--run", type=Path, required=True)
     ap.add_argument("--data", default="site_directionality")
+    ap.add_argument(
+        "--from-figure-data",
+        action="store_true",
+        help="read the tracked site-directionality tables in figure_data/ instead of a run dir",
+    )
     ap.add_argument("--layers", type=int, nargs="*", default=[27, 24])
     ap.add_argument("--site-set", default="private", choices=["private", "platy_not_human", "both"])
     ap.add_argument(
@@ -482,10 +489,15 @@ def main() -> None:
 
     if args.pub:
         pub.enable()
-    d = args.run / args.data
-    summ = pd.read_csv(d / "summary.csv")
-    gc = pd.read_csv(d / "gc_class.csv")
-    per = pd.read_csv(d / "per_gene.csv")
+    if args.from_figure_data:
+        summ = figure_data.table("exp3_site_directionality_summary")
+        gc = figure_data.table("exp3_site_directionality_gc_class")
+        per = figure_data.table("exp3_site_directionality_per_gene")
+    else:
+        d = args.run / args.data
+        summ = pd.read_csv(d / "summary.csv")
+        gc = pd.read_csv(d / "gc_class.csv")
+        per = pd.read_csv(d / "per_gene.csv")
 
     sets = ["private", "platy_not_human"] if args.site_set == "both" else [args.site_set]
     for layer in args.layers:

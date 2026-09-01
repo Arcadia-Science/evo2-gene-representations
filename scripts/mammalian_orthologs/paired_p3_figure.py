@@ -13,6 +13,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from controls.make_control_sequences import PAIRED_P3_CONTROLS  # noqa: E402
 
+import figure_data  # noqa: E402
+
 RUN = ROOT / "results" / "2026-07-16_mammalian-orthologs-transcript_cdsmask"
 SYN, MIS = PAIRED_P3_CONTROLS
 FLOOR = "kmer6_shuffle"
@@ -35,34 +37,30 @@ def _style():
             print(f"  [style] {mod}.{fn}() unavailable ({type(e).__name__}: {e})")
 
 
+def _preservation() -> pd.DataFrame:
+    """The tidy control-preservation table, both axes, all blocks."""
+    return figure_data.table("exp2_control_preservation")
+
+
 def load_within() -> pd.DataFrame:
-    d = pd.read_csv(RUN / "control_rho_by_layer.csv")
-    return d.pivot_table(index="layer", columns="condition", values="rho_preservation").loc[LAYERS]
+    """Layer x condition mean over families of the within-family preservation rho."""
+    d = _preservation()
+    d = d[d.axis == "within_family"]
+    return d.pivot_table(index="layer", columns="condition", values="rho", aggfunc="mean").loc[
+        LAYERS
+    ]
 
 
 def load_between() -> pd.DataFrame:
-    rows = []
-    for L in LAYERS:
-        s = pd.read_csv(RUN / f"blocks{L}/controls/control_between_scores.csv").set_index(
-            "condition"
-        )
-        rows.append(
-            {
-                "layer": L,
-                **{
-                    c: s.loc[c, "rho_vs_natural_between"] for c in (SYN, MIS, FLOOR) if c in s.index
-                },
-            }
-        )
-    return pd.DataFrame(rows).set_index("layer")
+    d = _preservation()
+    d = d[(d.axis == "between_family") & d.condition.isin([SYN, MIS, FLOOR])]
+    return d.pivot_table(index="layer", columns="condition", values="rho").loc[LAYERS]
 
 
 def load_per_family(layer: int) -> pd.DataFrame:
-    d = pd.read_csv(RUN / f"blocks{layer}/controls/control_within_scores.csv")
-    d = d[d.condition.isin([SYN, MIS])]
-    return d.pivot_table(
-        index="family", columns="condition", values="rho_angular_vs_natural"
-    ).dropna()
+    d = _preservation()
+    d = d[(d.axis == "within_family") & (d.layer == layer) & d.condition.isin([SYN, MIS])]
+    return d.pivot_table(index="family", columns="condition", values="rho").dropna()
 
 
 def paired_stats(layers: list[int]) -> pd.DataFrame:
@@ -222,6 +220,7 @@ def main() -> None:
     )
 
     out = Path(a.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
     stats_tbl.to_csv(f"{out}_paired_stats.csv", index=False)
     figure(within, between, out)
 

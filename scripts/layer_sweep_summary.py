@@ -18,6 +18,8 @@ import arcadia_style as acs  # noqa: E402
 from gene_families import family_colors  # noqa: E402
 from plot_utils import set_pub_style  # noqa: E402
 
+import figure_data  # noqa: E402
+
 # ── Shared style constants
 AXIS_COLORS = {
     "1_homology": acs.apc.dragon,
@@ -875,7 +877,7 @@ def main() -> None:
     )
     ap.add_argument(
         "--glob",
-        required=True,
+        default="",
         help="glob for the sweep run dirs, e.g. 'results/2026-07-01_evo2-human-panel/blocks*'",
     )
     ap.add_argument("--out-dir", required=True, help="where to write the summary figures")
@@ -989,18 +991,28 @@ def main() -> None:
         "(the caption carries it). Writes into <out-dir>/pub/ so the diagnostic "
         "figures the results docs link to are left alone.",
     )
+    ap.add_argument(
+        "--from-figure-data",
+        action="store_true",
+        help="read the tidy tables in figure_data/ instead of globbing per-layer run dirs. "
+        "This is the publication path: it plots the tracked numbers directly and writes no "
+        "roll-up CSV, so rendering a figure never rewrites one of its own inputs.",
+    )
     args = ap.parse_args()
 
     if args.pub:
         pub.enable()
 
-    layers = discover_layers(args.glob)
-    if not layers:
+    if not args.from_figure_data and not args.glob:
+        sys.exit("pass --glob for a run-dir sweep, or --from-figure-data for the tracked tables")
+    layers = [] if args.from_figure_data else discover_layers(args.glob)
+    if not layers and not args.from_figure_data:
         sys.exit(f"No layer run dirs matched {args.glob!r}")
     title = args.title or args.glob
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    print(f"{title}: {len(layers)} layers [{layers[0][0]}..{layers[-1][0]}]")
+    if layers:
+        print(f"{title}: {len(layers)} layers [{layers[0][0]}..{layers[-1][0]}]")
 
     if args.kmer_k:
         # k is not in the score CSVs and differs between panels, so it is asserted on the command
@@ -1015,13 +1027,21 @@ def main() -> None:
                     col,
                 )
 
-    between = load_between(layers, args.between_scores, args.between_approach)
-    within = load_within(layers, args.within_file_suffix)
+    if args.from_figure_data:
+        between = figure_data.table("exp1_between_family_by_layer")
+        within = figure_data.table("exp1_within_family_by_layer")
+        print(f"{title}: figure_data/, {between.layer.nunique()} layers")
+    else:
+        between = load_between(layers, args.between_scores, args.between_approach)
+        within = load_within(layers, args.within_file_suffix)
     sfx = args.stem_suffix
-    if not between.empty:
-        between.to_csv(out_dir / f"between_axis_vs_layer{sfx}.csv", index=False)
-    if not within.empty:
-        within.to_csv(out_dir / f"within_family_vs_layer{sfx}.csv", index=False)
+    # The roll-up CSVs are the build step's job. Writing them here would mean a --figures run
+    # rewrote one of its own tracked inputs.
+    if not args.from_figure_data:
+        if not between.empty:
+            between.to_csv(out_dir / f"between_axis_vs_layer{sfx}.csv", index=False)
+        if not within.empty:
+            within.to_csv(out_dir / f"within_family_vs_layer{sfx}.csv", index=False)
     plot_between(
         between,
         out_dir,
@@ -1034,21 +1054,22 @@ def main() -> None:
     plot_within(within, out_dir, title, args.exclude_within, sfx)
     if args.within_band:
         plot_within_band(within, out_dir, title, args.exclude_within, sfx, args.footnote)
-    write_provenance(
-        layers,
-        between,
-        within,
-        out_dir,
-        args.glob,
-        title,
-        args.exclude_within,
-        args.exclude_between,
-        sfx,
-        args.lead_per_baseline,
-        args.between_scores,
-        args.between_approach,
-    )
-    if not args.no_baselines:
+    if layers:
+        write_provenance(
+            layers,
+            between,
+            within,
+            out_dir,
+            args.glob,
+            title,
+            args.exclude_within,
+            args.exclude_between,
+            sfx,
+            args.lead_per_baseline,
+            args.between_scores,
+            args.between_approach,
+        )
+    if layers and not args.no_baselines:
         cache = _resolve_patristic_cache(args.glob, args.patristic_cache)
         collect_baselines(layers, within, out_dir, cache)
 
