@@ -106,7 +106,23 @@ def main() -> None:
     ap.add_argument("--trial-target", type=int, default=400)
     ap.add_argument("--min-samples", type=int, default=5)
     ap.add_argument("--max-samples", type=int, default=16)
-    ap.add_argument("--min-sites", type=int, default=20)
+    ap.add_argument(
+        "--min-sites",
+        type=int,
+        default=20,
+        help="diagnostic-site target the generation window is extended toward (up to "
+        "--max-gen-bp). A target, not an inclusion cutoff -- that is --min-sites-keep.",
+    )
+    ap.add_argument(
+        "--min-sites-keep",
+        type=int,
+        default=5,
+        help="drop a gene only below this many diagnostic sites. A short CDS can still be steered, "
+        "just scored on fewer sites: after the 90 bp prompt PCP4 has 84 bp of continuation and 9 "
+        "diagnostic sites, COX17 54 bp and 12, against a panel median of 191. They are kept and "
+        "n_diag is recorded in scoring_plan.csv, so anything downstream can weight or exclude by "
+        "scoring power instead of losing the gene outright.",
+    )
     ap.add_argument("--gen-bp", type=int, default=1000)
     ap.add_argument("--max-gen-bp", type=int, default=2500)
     ap.add_argument("--genes", nargs="*", default=None)
@@ -230,7 +246,9 @@ def main() -> None:
                 f"{g}: prompt shorter than {PREFIX_BP} bp at offset "
                 f"{off_h.get(g, 0)} -- stage 1 should have gated this"
             )
-    usable = [g for g in genes if plan[g]["n_diag"] >= args.min_sites and plan[g]["n_tokens"] >= 30]
+    usable = [
+        g for g in genes if plan[g]["n_diag"] >= args.min_sites_keep and plan[g]["n_tokens"] >= 30
+    ]
     dropped = [g for g in genes if g not in usable]
     pd.DataFrame(
         [
@@ -243,10 +261,16 @@ def main() -> None:
             for g in genes
         ]
     ).to_csv(out / "scoring_plan.csv", index=False)
+    thin = [g for g in usable if plan[g]["n_diag"] < args.min_sites]
     log(
-        f"{len(usable)}/{len(genes)} genes usable; dropped {len(dropped)} for <{args.min_sites} "
-        f"sites: {dropped[:10]}"
+        f"{len(usable)}/{len(genes)} genes usable; dropped {len(dropped)} for "
+        f"<{args.min_sites_keep} sites: {dropped[:10]}"
     )
+    if thin:
+        log(
+            f"  {len(thin)} kept with <{args.min_sites} diagnostic sites (noisier per-gene "
+            f"scores): {[(g, plan[g]['n_diag']) for g in thin[:10]]}"
+        )
     ns_arr = np.array([plan[g]["n_samples"] for g in usable])
     log(
         f"n_samples: mean {ns_arr.mean():.1f} min {ns_arr.min()} max {ns_arr.max()}  |  "
@@ -486,6 +510,7 @@ def main() -> None:
                 "gen_bp": args.gen_bp,
                 "max_gen_bp": args.max_gen_bp,
                 "min_sites": args.min_sites,
+                "min_sites_keep": args.min_sites_keep,
                 "n_genes": len(usable),
                 "dropped": dropped,
                 "temperature": args.temperature,
