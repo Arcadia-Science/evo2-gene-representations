@@ -137,9 +137,13 @@ def score_all_layers(stack, meta, gt, layers, arm, distance="geodesic"):
         run.mkdir(parents=True, exist_ok=True)
         for base, (fname, col) in BASELINES.items():
             fam_mean = df[df.baseline == base].groupby("family")["rho"].mean().reset_index()
-            fam_mean.columns = ["family", col]
-            # angular writes alongside the geodesic tables, never over them
-            out = fname if distance == "geodesic" else fname.replace(".csv", "_angular.csv")
+            # The metric is named in BOTH the filename and the column. Naming only the file was
+            # the old behaviour and it read as "geodesic" to anyone who opened the CSV.
+            out, col_out = fname, col
+            if distance != "geodesic":
+                out = fname.replace(".csv", "_angular.csv")
+                col_out = col.replace("spearman_geodesic_", "spearman_angular_")
+            fam_mean.columns = ["family", col_out]
             fam_mean.to_csv(run / out, index=False)
     return pd.DataFrame(per_group_rows), sweep_root
 
