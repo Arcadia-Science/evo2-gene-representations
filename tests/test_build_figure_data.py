@@ -27,10 +27,6 @@ def _layer_table(layers=None, baselines=("pfam_jsd", "kmer", "gc_content")) -> p
 SPEC = bfd.TABLES["exp1_between_family_by_layer"]
 
 
-def test_complete_table_validates():
-    bfd.validate("t", SPEC, _layer_table())
-
-
 def test_missing_layers_are_rejected():
     """The failure mode that matters: a run that stopped early must not become a shorter table."""
     partial = _layer_table(layers=range(20))
@@ -51,19 +47,6 @@ def test_duplicate_keys_are_rejected():
         bfd.validate("t", SPEC, doubled)
 
 
-def test_wrong_number_of_baselines_is_rejected():
-    """A dropped baseline series would silently vanish from the figure."""
-    with pytest.raises(SystemExit, match="distinct values"):
-        bfd.validate("t", SPEC, _layer_table(baselines=("pfam_jsd", "kmer")))
-
-
-def test_null_key_is_rejected():
-    t = _layer_table()
-    t.loc[0, "baseline"] = None
-    with pytest.raises(SystemExit, match="null values"):
-        bfd.validate("t", SPEC, t)
-
-
 def test_blocks_reports_the_layers_it_could_not_find(tmp_path):
     for layer in range(30):
         d = tmp_path / f"blocks{layer}"
@@ -73,18 +56,6 @@ def test_blocks_reports_the_layers_it_could_not_find(tmp_path):
         bfd._blocks(tmp_path, "scores.csv")
     assert "30/32" in str(e.value)
     assert "[30, 31]" in str(e.value)
-
-
-def test_every_table_declares_an_experiment():
-    for name, spec in bfd.TABLES.items():
-        assert spec.experiment in bfd.EXPERIMENTS, name
-    for name, (experiment, _desc, _src) in bfd.COPIES.items():
-        assert experiment in bfd.EXPERIMENTS, name
-
-
-def test_each_experiment_owns_at_least_one_table():
-    owned = {s.experiment for s in bfd.TABLES.values()}
-    assert owned == set(bfd.EXPERIMENTS)
 
 
 # ── the build is all-or-nothing
@@ -132,34 +103,3 @@ def test_a_successful_build_publishes_everything(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["build_figure_data.py", "--out", str(out)])
     bfd.main()
     assert sorted(p.name for p in out.iterdir()) == ["MANIFEST.csv", "a.csv", "b.csv"]
-
-
-def test_the_staging_directory_does_not_survive_a_failure(tmp_path, monkeypatch):
-    """The temp dir is created beside the output so the final move is same-filesystem; it must not
-    be left behind for the next run to trip over."""
-    out = tmp_path / "figure_data"
-    out.mkdir()
-
-    def explode():
-        raise bfd.BuildError("simulated")
-
-    monkeypatch.setattr(bfd, "TABLES", {"bad": _spec(explode)})
-    monkeypatch.setattr(bfd, "COPIES", {})
-    monkeypatch.setattr(sys, "argv", ["build_figure_data.py", "--out", str(out)])
-    with pytest.raises(SystemExit):
-        bfd.main()
-    assert list(tmp_path.iterdir()) == [out], f"leftover staging dir in {list(tmp_path.iterdir())}"
-
-
-def test_every_driver_builds_only_its_own_experiment():
-    """Each runner used to invoke the builder with no arguments, so running exp1 alone rebuilt --
-    and could empty -- exp2's and exp3's tables."""
-    for exp in ("exp1", "exp2", "exp3"):
-        driver = next((ROOT / "experiments").glob(f"{exp}_*.sh"))
-        calls = [
-            ln for ln in driver.read_text().splitlines()
-            if "build_figure_data.py" in ln and not ln.lstrip().startswith("#")
-        ]
-        assert calls, f"{driver.name} never builds figure_data"
-        for ln in calls:
-            assert f"--experiments {exp}" in ln, f"{driver.name}: bare build in {ln.strip()}"

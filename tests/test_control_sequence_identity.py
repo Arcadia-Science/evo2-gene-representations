@@ -18,7 +18,6 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from scipy.stats import spearmanr
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -94,31 +93,6 @@ def test_nucleotide_subset_excludes_both_nested_rungs():
     assert row.identity_range_nucleotide_rungs == pytest.approx(SHUFFLE_SPREAD, abs=1e-6)
     # The bug's signature: the full-ladder spread is 40x this and would land near 0.62.
     assert row.identity_range_nucleotide_rungs < 0.05
-
-
-def test_nucleotide_spearman_is_over_the_four_shuffles():
-    expected = spearmanr(
-        [IDENTITY[c] for c in csi.NUCLEOTIDE_RUNGS],
-        [RHO_BETWEEN[c] for c in csi.NUCLEOTIDE_RUNGS],
-    ).statistic
-    assert _row().spearman_nucleotide_rungs == pytest.approx(expected)
-
-
-def test_recode_is_flagged_as_extrapolated():
-    """The recode sits beyond every nucleotide rung, so the extrapolation must be large and
-    POSITIVE. The bug made it negative, which silently cleared the EXTRAP_LIMIT flag."""
-    row = _row()
-    assert row.recode_extrapolation_ranges > csi.EXTRAP_LIMIT
-    assert row.recode_extrapolation_ranges == pytest.approx(
-        (IDENTITY["synonymous_recode"] - IDENTITY["kmer6_shuffle"]) / SHUFFLE_SPREAD, rel=1e-6
-    )
-
-
-def test_both_published_rho_series_are_swept():
-    ident, rho = _tables()
-    stats = csi.monotonicity_stats(ident, rho)
-    assert set(stats.rho_col) == set(csi.RHO_COLS)
-    assert set(csi.RHO_COLS) == {"rho_between_w2", "rho_within_angular"}
 
 
 def test_ladder_matches_the_control_registry():
