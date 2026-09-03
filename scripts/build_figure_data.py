@@ -164,8 +164,7 @@ def control_identity_by_family() -> pd.DataFrame:
 
 
 # Figures 6a/6b were rendered from the 103-gene family panel until 2026-09-01 and now come from
-# the n=400 conservation-stratified panel, the same one every other exp3 figure uses. The retired
-# panel's tables are archived under figure_data/old_paired103/ and its figures as "... (OLD)".
+# the n=400 conservation-stratified panel, the same one every other exp3 figure uses.
 PANEL = "strat400"
 
 
