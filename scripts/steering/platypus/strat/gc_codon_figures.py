@@ -11,8 +11,7 @@ CPU only, built from artefacts the run already has. Two modes:
 Five further diagnostic figures (this script's internal numbering 12, 13, 15, 16, 17) lived here
 until 2026-09-03. None was in the pub, and figures 16/17 -- the block-24 vs block-27 comparison --
 were the reason the shared cache spanned two intervention layers, which leaked block-24 rows into
-the tracked Figure 10 tables. They are archived, not deleted, under
-deprecated/gc-codon-diagnostics-2026-09-03/.
+the tracked Figure 10 tables.
 """
 
 from __future__ import annotations

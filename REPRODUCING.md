@@ -212,9 +212,8 @@ produces (5–11).
 
 A second 103-gene paired panel supplied Figures 6a–6b until 2026-09-01, when they moved to the
 n=400 panel so the direction geometry and the steering results it explains come from the same gene
-set. The stages that built it are archived under
-`deprecated/paired103-panel-stages-2026-09-03/`; removing them saved ~2.5 h per run (2 h of it GPU)
-producing output nothing read.
+set. The stages that built it were removed from the pipeline on 2026-09-03; they cost ~2.5 h per
+run (2 h of it GPU) producing output nothing read.
 
 The production steering stages are:
 
