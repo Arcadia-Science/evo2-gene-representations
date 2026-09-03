@@ -65,7 +65,7 @@ Full runs require large local datasets and many GPU-hours. See
 | `scripts/controls/` | Composition-control construction and plotting |
 | `scripts/steering/platypus/` | Experiment 3 paired-panel and steering analyses |
 | `scripts/evo2/evo2_embedding.py` | Shared Evo2 model loading and all-block position extraction |
-| `scripts/geodesic_utils.py` | Active graph, geodesic, centroid, and Mantel utilities |
+| `scripts/geodesic_utils.py` | Graph, geodesic, centroid, and Mantel utilities (Mantel and upper-triangle helpers are metric-agnostic and used by the Wasserstein path; the geodesic and centroid functions serve legacy analyses only) |
 | `scripts/arcadia_pub.py`, `scripts/arcadia_style.py` | Publication figure geometry and styling |
 
 The canonical family definitions are in
@@ -78,10 +78,13 @@ The canonical family definitions are in
 only input `--figures` needs, so figure rendering works on a fresh clone with no downloads and no
 GPU. `scripts/build_figure_data.py` writes it from a completed `--run`.
 
-Everything a full `--run` needs is local and ignored by Git: `data/` (sequences, manifests, Evo2
-embedding caches), the dated run directories under `results/`, and `deprecated/`. The raw
-per-sample scores and generated sequences are archived separately. Earlier and superseded analyses
-remain recoverable from Git history.
+Everything a full `--run` produces is local and ignored by Git: `data/` (sequences, manifests, Evo2
+embedding caches), the dated run directories under `results/`, and `deprecated/`. It also reads
+reference downloads that are neither tracked nor produced by the pipeline — Ensembl genomes, GTFs
+and CDS FASTAs — which resolve under `data/external/` by default and are relocatable with the
+environment variables in [REPRODUCING.md](REPRODUCING.md#reference-downloads-and-where-they-live).
+The raw per-sample scores and generated sequences are archived separately. Earlier and superseded
+analyses remain recoverable from Git history.
 
 ## Contributing
 

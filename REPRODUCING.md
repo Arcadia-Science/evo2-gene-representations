@@ -9,9 +9,10 @@ bash experiments/exp2_composition_controls.sh
 bash experiments/exp3_platypus_steering.sh
 ```
 
-Use `--figures` to render from existing artifacts or `--run` for an end-to-end run. Full runs
-are resumable but require the local datasets, external bioinformatics tools, Evo2-7B, and many
-GPU-hours.
+Use `--figures` to render from existing artifacts or `--run` for an end-to-end run. `--figures`
+needs nothing but the tracked `figure_data/`. Full runs are resumable, and additionally need
+Evo2-7B, many GPU-hours, the reference downloads and the external tools listed under
+[Required inputs](#required-inputs) — each runner checks the tools before it starts work.
 
 ## Publication scope
 
@@ -40,6 +41,74 @@ hidden states are selected at CDS positions and mean-pooled over the second half
 
 Each runner copies its completed panels into `pub/figures/`.
 
+### Reference downloads and where they live
+
+A full `--run` also needs large reference files that no part of the repository tracks and that are
+too big to ship. Every path is resolved by [`scripts/paths.py`](scripts/paths.py) and defaults to a
+location inside the checkout, under the git-ignored `data/external/`, so a fresh clone resolves
+somewhere writable without configuration. Set an environment variable to point anywhere else — for
+example at a copy that already exists on a fast local disk:
+
+| Variable | Default | Holds | Needed by |
+|---|---|---|---|
+| `GLM_SCRATCH` | `data/external` | root for all of the below | — |
+| `GLM_MAMMAL_GENOMES` | `$GLM_SCRATCH/mammal_genomes` | Ensembl genome FASTA + GTF, 24 species | exp 1, A2–A3 |
+| `GLM_STRAT_SEQS` | `$GLM_SCRATCH/strat_seqs` | human + platypus CDS, peptide and GTF | exp 3, A1–A2 |
+| `GLM_STRAT_MAMMAL_CDS` | `$GLM_STRAT_SEQS/mammals` | per-species CDS FASTA, 24 mammals | exp 3, E1 |
+| `GLM_TMPDIR` | system temp (`TMPDIR`) | MAFFT scratch during alignment | exp 1, B2 |
+
+```bash
+export GLM_SCRATCH=/mnt/fast/glm        # move all of them at once
+export GLM_MAMMAL_GENOMES=/mnt/genomes  # or just one
+```
+
+`mammal_genomes` is fetched by `scripts/mammalian_orthologs/download_bulk.py` (experiment 1, stage
+A2). The `strat_seqs` files are **not fetched by any script** — download them from
+<https://ftp.ensembl.org/pub/release-116/>, matching the release the Compara orthology used:
+
+| File | Path |
+|---|---|
+| `Homo_sapiens.GRCh38.cds.all.fa.gz` | `fasta/homo_sapiens/cds/` |
+| `Homo_sapiens.GRCh38.pep.all.fa.gz` | `fasta/homo_sapiens/pep/` |
+| `Homo_sapiens.GRCh38.116.gtf.gz` | `gtf/homo_sapiens/` |
+| `Ornithorhynchus_anatinus.mOrnAna1.p.v1.cds.all.fa.gz` | `fasta/ornithorhynchus_anatinus/cds/` |
+| `Ornithorhynchus_anatinus.mOrnAna1.p.v1.116.gtf.gz` | `gtf/ornithorhynchus_anatinus/` |
+
+and one `<species>.cds.fa.gz` per mammal in the panel under `$GLM_STRAT_MAMMAL_CDS/`.
+
+The mammalian species tree is a third download: the pruned VertLife posterior set at
+`data/mammalian_orthologs/tree/vertlife_pruned/output.nex`, exported from
+<https://vertlife.org/data/mammals/> for the 24 species in `build_species_tree.py`'s `V2E` map
+(experiment 1, stage A6).
+
+A stage that needs one of these and cannot find it stops immediately, naming the file, the path it
+looked in, and the variable that moves it — rather than failing partway through.
+
+### External tools
+
+Beyond the Python dependencies, `--run` shells out to these. None is pip-installable, and
+`--figures` needs none of them. Each runner checks its own before doing any work; to check by hand:
+
+```bash
+uv run python scripts/check_tools.py            # all of them, with versions
+uv run python scripts/check_tools.py --exp exp3 # just one experiment's
+```
+
+| Tool | Version used | Found via | Needed by | Install |
+|---|---|---|---|---|
+| `mafft` | v7.505 | `PATH` | exp 1 B2, exp 3 E2 | `apt install mafft` or `conda install -c bioconda mafft` |
+| `FastTree` | 2.1.11 | `PATH` | exp 1 B2 | `apt install fasttree` or `conda install -c bioconda fasttree` |
+| `mmseqs` | 15-6f452 | `PATH` | exp 3 A1 | `apt install mmseqs2` or `conda install -c bioconda mmseqs2` |
+| `iqtree2` | 2.3.6 | `data/tools/` | exp 3 E2 | a release from <https://github.com/iqtree/iqtree2/releases> |
+| `trimal` | 1.5.rev0 | `data/tools/` | exp 3 E2, E3 | build from <https://github.com/inab/trimal> |
+| `codeml` | PAML 4.10.10 | `data/tools/` | exp 3 E3 | build PAML, copy `src/codeml` |
+| `yn00` | PAML 4.10.10 | `data/tools/` | exp 3 E3 | build PAML, copy `src/yn00` |
+
+`data/tools/` is git-ignored, so the four binaries there do not survive a clone and must be
+rebuilt or re-downloaded. PAML is at <http://abacus.gene.ucl.ac.uk/software/paml.html>.
+`scripts/check_tools.py` is the single registry behind both the table and the runtime errors, so a
+missing tool reports the same install command wherever it is discovered.
+
 ## Experiment 1: gene-family geometry
 
 ```bash
@@ -56,7 +125,7 @@ The runner performs the following stages:
 4. Embed the CDS positions of each transcript locus at all 32 blocks.
 5. Score within-family geometry against the species tree, MAFFT/FastTree patristic distances,
    6-mer distances, and GC differences.
-6. Score between-family centroid geodesics and exact Wasserstein distances against Pfam-HMM JSD,
+6. Score between-family exact Wasserstein distances against Pfam-HMM JSD,
    6-mer, and GC baselines.
 7. Run the all-layer angular bootstrap and Wilcoxon uncertainty analyses.
 
