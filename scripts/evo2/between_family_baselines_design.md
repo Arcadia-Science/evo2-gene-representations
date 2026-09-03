@@ -12,6 +12,7 @@ Experiment 1 uses three between-family references:
 | Mean cross-family 6-mer distance | Nucleotide composition | `scripts/mammalian_orthologs/mammal_between.py` |
 | Difference in mean GC content | Coarse nucleotide composition | `scripts/mammalian_orthologs/mammal_between.py` |
 
-These matrices are scored against centroid-geodesic and exact Wasserstein representation distances
-at all 32 blocks. See [`ot_between_family_design.md`](../baselines/ot_between_family_design.md) and
+These matrices are scored against exact Wasserstein representation distances at all 32 blocks.
+The publication path is Wasserstein only; the centroid-geodesic scoring this document used to
+describe remains in `mammal_between.py` for legacy analyses and produces no manuscript output. See [`ot_between_family_design.md`](../baselines/ot_between_family_design.md) and
 [`REPRODUCING.md`](../../REPRODUCING.md).
