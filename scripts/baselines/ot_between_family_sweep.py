@@ -16,21 +16,11 @@ sys.path.insert(0, str(ROOT / "scripts" / "mammalian_orthologs"))
 
 import mammal_between as mammal  # noqa: E402
 from geodesic_utils import mantel_test, upper_triangle  # noqa: E402
-from ot_between_family import compute_ot_matrices  # noqa: E402
+from ot_between_family import compute_ot_matrices, family_order  # noqa: E402
 
 ARM = "transcript_cdsmask"
 MANIFEST = "complete_manifest.csv"
 RUN = ROOT / "results" / f"2026-07-16_mammalian-orthologs-{ARM}"
-CENTROID_FILE = "evo2_mammal_centroid_distances.csv"
-
-
-def family_order() -> list[str]:
-    """Read the canonical family order established by the centroid analysis."""
-    for block_dir in sorted(RUN.glob("blocks*")):
-        path = block_dir / CENTROID_FILE
-        if path.exists():
-            return pd.read_csv(path, index_col=0).index.tolist()
-    raise SystemExit(f"no {CENTROID_FILE} under {RUN}/blocks*")
 
 
 def baseline_matrices(metadata: pd.DataFrame, families: list[str]) -> dict[str, np.ndarray]:
@@ -84,8 +74,9 @@ def main() -> None:
     args = parser.parse_args()
 
     stack, metadata = mammal.load_embedded(ARM, MANIFEST)
-    families = family_order()
     family_labels = metadata["family"].to_numpy()
+    # Derived from the panel that was actually embedded, not from a legacy centroid artifact.
+    families = family_order(family_labels)
     baselines = baseline_matrices(metadata, families)
     print(f"{stack.shape[1]} loci, {len(families)} families, {len(args.layers)} layers")
 
