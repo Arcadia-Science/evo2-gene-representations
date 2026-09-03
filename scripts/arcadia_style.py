@@ -14,7 +14,7 @@ __all__ = [
     "resolve",
     "SEQUENTIAL",
     "DIVERGING",
-    "HEATMAP_GEODESIC",
+    "HEATMAP_MODEL",
     "HEATMAP_JSD",
     "HEATMAP_KMER",
     "MISSING",
@@ -129,7 +129,7 @@ DIVERGING = "apc:red_blue_r"  # low = blue, high = red (matplotlib RdBu_r's dire
 DIVERGING_WARM_COOL = "apc:orange_sage_r"  # low = sage/green, high = orange (RdYlGn_r)
 
 # Per-baseline heatmap gradients keep each baseline's hue consistent across figures.
-HEATMAP_GEODESIC = "apc:oranges_r"  # model geodesic  (was YlOrRd)
+HEATMAP_MODEL = "apc:oranges_r"  # model representation distance  (was YlOrRd)
 HEATMAP_JSD = "apc:blues_r"  # Pfam-domain JSD  (was Blues)
 HEATMAP_KMER = "apc:purples_r"  # k-mer divergence  (was Purples)
 HEATMAP_TAXONOMY = "apc:sages_r"  # taxonomic-rank distance
@@ -156,7 +156,7 @@ WITHIN_PALETTE = {
     "kmer": apc.aster,  # HEATMAP_KMER (purples)
     "patristic": apc.amber,
     "taxonomy": apc.asparagus,  # HEATMAP_TAXONOMY (sages)
-    "geodesic": apc.terracotta,  # HEATMAP_GEODESIC (oranges)
+    "model": apc.terracotta,  # HEATMAP_MODEL (oranges)
     "jsd": apc.aegean,  # HEATMAP_JSD (blues)
 }
 

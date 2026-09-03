@@ -1,4 +1,4 @@
-"""Between-family control preservation: centroid geodesic vs centroid-free Wasserstein."""
+"""Control preservation: between-family Wasserstein and within-family angular distance."""
 
 from __future__ import annotations
 import argparse

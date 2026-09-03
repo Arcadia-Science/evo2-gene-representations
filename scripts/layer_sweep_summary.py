@@ -49,25 +49,28 @@ PUB_BASELINE_LABELS = {
 # throughout: dashes read as a data property rather than an identifier.
 LEAD_SHAPES = [("o", "-"), ("s", "-"), ("^", "-"), ("D", "-")]
 
-# Within-family baselines: (label, csv filename, rho column). Whatever is present on disk gets a
-# panel. The k-mer baseline lives in one of two filenames that share a column name, first wins.
+# Within-family baselines: (label, csv filenames, baseline stem). Whatever is present on disk gets
+# a panel. The k-mer baseline lives in one of two filenames that share a column name, first wins.
+# The stem is not the column: the column carries the DISTANCE that was scored, so the same
+# baseline is `spearman_angular_<stem>` in an `_angular` table and `spearman_geodesic_<stem>` in a
+# graph table. `_resolve_col` picks whichever the file actually has.
 WITHIN_SPECS = [
     (
         "k-mer composition (CDS)",
         ["axisB_within_family_correlations.csv", "kmer_within_family_correlations.csv"],
-        "spearman_geodesic_kmer",
+        "kmer",
     ),
-    ("patristic tree", ["within_family_patristic.csv"], "spearman_geodesic_patristic"),
-    ("taxonomy", ["axisB_within_family_correlations.csv"], "spearman_geodesic_taxonomy"),
+    ("patristic tree", ["within_family_patristic.csv"], "patristic"),
+    ("taxonomy", ["axisB_within_family_correlations.csv"], "taxonomy"),
     (
         "k-mer (transcript null)",
         ["within_family_kmer_transcript.csv"],
-        "spearman_geodesic_kmer_transcript",
+        "kmer_transcript",
     ),
-    # mammalian ortholog panel: within-ortholog-group geodesic vs the INDEPENDENT species tree
-    ("species tree (mammal)", ["within_family_speciestree.csv"], "spearman_geodesic_speciestree"),
+    # mammalian ortholog panel: within-ortholog-group distance vs the INDEPENDENT species tree
+    ("species tree (mammal)", ["within_family_speciestree.csv"], "speciestree"),
     # Mononucleotide composition control.
-    ("GC content (control)", ["within_family_gc.csv"], "spearman_geodesic_gc"),
+    ("GC content (control)", ["within_family_gc.csv"], "gc"),
 ]
 
 # Optional trailing "-<tag>" (e.g. "-cds") lets an input-variant sweep (…-blocks15-cds) parse the
@@ -129,17 +132,35 @@ def load_between(
     return pd.DataFrame(rows)
 
 
+def _resolve_col(df: pd.DataFrame, stem: str) -> str | None:
+    """The scored-distance column for one baseline, or None if this table does not carry it.
+
+    A table names the distance in its column, so the same baseline is `spearman_angular_<stem>` in
+    an `_angular` table and `spearman_geodesic_<stem>` in a graph table. Both are accepted because
+    `_angular` tables written before the header fix still carry the geodesic name -- migrate those
+    with scripts/mammalian_orthologs/migrate_angular_column_names.py.
+
+    None is an ordinary outcome, not an error: axisB_within_family_correlations.csv is read once
+    per baseline it holds, so every other baseline's stem legitimately misses.
+    """
+    for prefix in ("spearman_angular_", "spearman_geodesic_"):
+        if (col := f"{prefix}{stem}") in df.columns:
+            return col
+    return None
+
+
 def load_within(layers: list[tuple[int, Path]], file_suffix: str = "") -> pd.DataFrame:
     """Long frame: one row per (layer, metric, family) with rho."""
     rows = []
     for layer, run_dir in layers:
-        for label, filenames, col in WITHIN_SPECS:
+        for label, filenames, stem in WITHIN_SPECS:
             for fn in filenames:
                 f = run_dir / (fn.replace(".csv", f"{file_suffix}.csv") if file_suffix else fn)
                 if not f.exists():
                     continue
                 df = pd.read_csv(f)
-                if col not in df.columns or "family" not in df.columns:
+                col = _resolve_col(df, stem)
+                if col is None or "family" not in df.columns:
                     continue
                 for _, r in df.iterrows():
                     rows.append(
@@ -702,7 +723,7 @@ def collect_baselines(
     manifest = [
         "# Layer-independent ground-truth baselines (stored once).",
         "# Copied by scripts/layer_sweep_summary.py from the all-layer sweep;",
-        "# identical across every layer (only the per-layer geodesic differs).",
+        "# identical across every layer (only the per-layer model distances differ).",
         "# columns: dir/file  n_layers_present  n_distinct_hashes  source",
         "",
     ]
@@ -907,8 +928,9 @@ def main() -> None:
         "--between-approach",
         default=None,
         metavar="NAME",
-        help="filter --between-scores to one approach (geodesic / wasserstein / "
-        "fgw_alpha0.25). Only meaningful for a file that has an 'approach' column.",
+        help="filter --between-scores to one approach. The current sweep writes only "
+        "'wasserstein'; older files may also hold 'geodesic' or 'fgw_alpha0.25'. Only "
+        "meaningful for a file that has an 'approach' column.",
     )
     ap.add_argument(
         "--within-file-suffix",
@@ -923,7 +945,7 @@ def main() -> None:
         default=None,
         metavar="K",
         help="annotate the k-mer panels as k-mer(k=K). The k is NOT recorded in the "
-        "score CSVs (the column is just spearman_geodesic_kmer), and it differs "
+        "score CSVs (the column is just spearman_<distance>_kmer), and it differs "
         "between panels, so it must be asserted rather than inferred. The mammal "
         "arms use k=6 (mammal_between.kmer_between / mammal_score, both k=6).",
     )
@@ -1017,14 +1039,14 @@ def main() -> None:
     if args.kmer_k:
         # k is not in the score CSVs and differs between panels, so it is asserted on the command
         # line. Patch SPECS, not the loaded frame: panel order is matched against these labels.
-        for i, (lab, files, col) in enumerate(WITHIN_SPECS):
+        for i, (lab, files, stem) in enumerate(WITHIN_SPECS):
             if lab.startswith("k-mer"):
                 WITHIN_SPECS[i] = (
                     lab.replace(")", f", k={args.kmer_k})")
                     if lab.endswith(")")
                     else f"{lab} (k={args.kmer_k})",
                     files,
-                    col,
+                    stem,
                 )
 
     if args.from_figure_data:
