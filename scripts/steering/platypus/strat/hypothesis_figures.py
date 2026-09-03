@@ -902,7 +902,7 @@ def fig7_conservation(
     save(fig, out, "7_conservation_scatter")
 
 
-def autapomorphy_stats(scores: pd.DataFrame, spec: dict) -> pd.DataFrame:
+def private_bp_stats(scores: pd.DataFrame, spec: dict) -> pd.DataFrame:
     """Per-gene statistics of the READOUT ITSELF, for the composition figure."""
     u = scores[scores.condition == "unsteered"]
     agg = {"n_sites": (spec["n_col"], "mean"), "unsteered": ("metric", "mean")}
@@ -928,7 +928,7 @@ def autapomorphy_stats(scores: pd.DataFrame, spec: dict) -> pd.DataFrame:
 
 def fig8_strata(run: Path, out: Path, df: pd.DataFrame, scores: pd.DataFrame, spec: dict) -> None:
     """What is actually in each stratum: the defining axis, the covariates, the rate statistics, and
-    the autapomorphy statistics of the readout.
+    the private-bp statistics of the readout.
     """
     pairs = _read(run / "stage1" / "pairs.csv", "exp3_panel")
     m = pairs.merge(
@@ -937,7 +937,7 @@ def fig8_strata(run: Path, out: Path, df: pd.DataFrame, scores: pd.DataFrame, sp
         how="left",
     )
     m["log_cds"] = np.log10(m.cds_len_human)
-    m = m.merge(autapomorphy_stats(scores, spec), on="gene", how="left")
+    m = m.merge(private_bp_stats(scores, spec), on="gene", how="left")
     # Omit the redundant fractional `aa_identity`; `perc_id_hp` is the percentage-scale measure.
     # Use parallel quantity names in panel titles and place symbols and units on axes.
     kind = spec["report"]["metric"]

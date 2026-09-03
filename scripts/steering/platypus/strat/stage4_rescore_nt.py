@@ -29,7 +29,7 @@ BASES = frozenset("ACGT")
 _G: dict = {}
 
 
-def autapomorphic_subset(
+def private_bp_subset(
     plat_cds: str, cont_offset: int, diag: dict[int, str], orthologs: dict[str, str]
 ) -> tuple[dict[int, str], int]:
     """Drop diagnostic sites whose platypus base is shared by ANY other mammal."""
@@ -82,8 +82,8 @@ def score_sites(
     return {
         "pct_diagnostic_correct": (100 * dh / dt) if dt else np.nan,
         "n_diagnostic_scorable": dt,
-        "pct_autapomorphy_correct": (100 * ah / at) if at else np.nan,
-        "n_autapomorphy_scorable": at,
+        "pct_private_bp_correct": (100 * ah / at) if at else np.nan,
+        "n_private_bp_scorable": at,
     }
 
 
@@ -101,7 +101,7 @@ def _one_gene(gene: str) -> list[dict]:
     diag = diagnostic_sites_nt(human, target)
     f = ORTHO_DIR / f"{gene}.fasta"
     orthologs = read_fasta(f, header_field=1, uppercase=False) if f.exists() else {}
-    auta, voters = autapomorphic_subset(cp, cont_offset, diag, orthologs)
+    auta, voters = private_bp_subset(cp, cont_offset, diag, orthologs)
     out = []
     for rec in _G["gens"].get(gene, []):
         s = score_sites(rec["seq"], target, diag, auta)
@@ -185,7 +185,7 @@ def main() -> None:
     miss = int(merged.pct_diagnostic_correct.isna().sum())
     merged.to_csv(d / args.out, index=False)
     print(f"\n[wrote] {d / args.out}  rows {len(merged)}  unrescored {miss}")
-    for col in ("pct_diagnostic_correct", "pct_autapomorphy_correct"):
+    for col in ("pct_diagnostic_correct", "pct_private_bp_correct"):
         m = merged.groupby("condition")[col].mean().round(2)
         print(f"\n{col} by condition:\n{m.to_string()}")
 

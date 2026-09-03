@@ -21,8 +21,8 @@ DEFAULT_METRIC = "private"
 # Keep the legacy column name unchanged to prevent it from being mistaken for the strict metric.
 METRICS: dict[str, dict[str, str]] = {
     "private": {
-        "col": "pct_autapomorphy_correct",
-        "n_col": "n_autapomorphy_scorable",
+        "col": "pct_private_bp_correct",
+        "n_col": "n_private_bp_scorable",
         "delta_label": "private-bp gain",
         "level_label": "private bp correct",
         "axis_delta": "Δ private bp recovered (pp)",
@@ -127,7 +127,9 @@ def load_scores(
     """
     Load a stage-4 score table and guarantee the requested metric is present and named `metric`.
     """
-    spec = dict(METRICS[ALIASES.get(metric, metric)])
+    # Resolve the alias once: `metric` is what the user typed, `resolved` is the METRICS key.
+    resolved = ALIASES.get(metric, metric)
+    spec = dict(METRICS[resolved])
     path = resolve_scores_path(run, arm_dir, scores, from_figure_data)
     if not path.exists():
         sys.exit(f"no score table at {path}\n  run the steering arm first, or pass --scores")
@@ -141,9 +143,9 @@ def load_scores(
             f"  The {metric} site set comes from the nucleotide rescore. Produce it with:\n\n    "
             + RESCORE_CMD.format(run=run, arm_dir=arm_dir)
             + "\n\n"
-            f"  (that needs data/platypus_strat_orthologs/cds/ from autapomorphy_orthologs.py).\n"
+            f"  (that needs data/platypus_strat_orthologs/cds/ from private_site_orthologs.py).\n"
             f"  To plot the other site set meanwhile, pass --metric "
-            f"{'diagnostic' if metric == 'autapomorphy' else 'autapomorphy'}."
+            f"{'private' if resolved == 'platy_not_human' else 'platy_not_human'}."
         )
 
     df = df.copy()
@@ -151,7 +153,7 @@ def load_scores(
 
     # ---- evidence base -------------------------------------------------------------------------
     # A gene is UNSCORABLE for this metric when it has no scorable site of that kind: no orthologs
-    # voted (autapomorphy), or the alignment yielded no site at all. stage4_rescore_nt leaves those
+    # voted (private bp), or the alignment yielded no site at all. stage4_rescore_nt leaves those
     # NaN rather than counting every diagnostic site as private, so the NaN is correct — but it is
     # invisible to a `groupby().mean()`, which is how an uneven evidence base slips into a figure.
     voters = None
@@ -178,7 +180,7 @@ def load_scores(
     spec["report"] = report
 
     if not quiet:
-        if metric == "legacy":
+        if resolved == "legacy":
             print(
                 "[metric] *** LEGACY COLUMN -- historical reproduction only. This is the "
                 "pre-2026-08-18 pairwise number whose own control read 9.3% in the most-diverged "

@@ -1,5 +1,8 @@
-"""Fetch 1:1 mammalian ortholog CDS for the platypus-strat panel, so platypus AUTAPOMORPHIES can be
-defined for it. CPU + network only, no GPU.
+"""Fetch 1:1 mammalian ortholog CDS for the platypus-strat panel, so platypus PRIVATE BASE PAIRS
+can be defined for it. CPU + network only, no GPU.
+
+A private bp is a position where the platypus base differs from human and no other sampled mammal
+carries it, so calling one needs every ortholog this script downloads.
 """
 
 from __future__ import annotations
@@ -11,6 +14,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts" / "mammalian_orthologs"))
@@ -36,7 +41,7 @@ def log(msg: str) -> None:
 
 def qc(cds: str) -> tuple[bool, str]:
     """Same gates as extract_loci: a CDS that is not in frame cannot be codon-aligned, and
-    codon_blocks (the aligner used to call autapomorphies) assumes complete codons."""
+    codon_blocks (the aligner used to call private bp) assumes complete codons."""
     if not cds:
         return False, "empty"
     flags = []
@@ -89,28 +94,35 @@ def main() -> None:
     ap.add_argument("--genes", nargs="*", default=None)
     args = ap.parse_args()
 
-    sym_path = args.run / "stage1" / "gene_symbols.tsv"
-    rows = list(csv.DictReader(sym_path.open(), delimiter="\t"))
-    panel = {r["gene"]: r["symbol"] for r in rows if r.get("symbol")}
+    # The panel is stage 1's output, so this stage must run AFTER stage1_qc. It used to read a
+    # `gene_symbols.tsv` that no script in the repository writes, for HGNC symbols that
+    # fetch_homologies discards whenever a gene id is supplied -- which is always, here.
+    pairs_path = args.run / "stage1" / "pairs.csv"
+    if not pairs_path.exists():
+        sys.exit(
+            f"no panel at {pairs_path}\n"
+            "  this stage reads the gene set stage 1 selected; run stage1_qc.py first"
+        )
+    panel = pd.read_csv(pairs_path)["gene_id"].astype(str).tolist()
     if args.genes:
-        panel = {g: s for g, s in panel.items() if g in set(args.genes)}
-    log(f"panel: {len(panel)} genes with symbols (from {sym_path})")
+        panel = [g for g in panel if g in set(args.genes)]
+    log(f"panel: {len(panel)} genes (from {pairs_path})")
 
     stage1_plat = read_fasta(args.run / "stage1" / "cds_platypus.fasta", uppercase=False)
     (OUT_DIR / "cds").mkdir(parents=True, exist_ok=True)
 
     # ---- 1. Cached Compara homologies
-    todo = list(panel.items())
+    todo = list(panel)
     homs: dict[str, dict[str, str]] = {}
     done = [0]
 
-    def resolve_one(item: tuple[str, str]) -> None:
-        gene, symbol = item
+    def resolve_one(gene: str) -> None:
         try:
-            # Key homology queries by Ensembl gene ID to avoid ambiguous symbols.
-            hs = fetch_homologies(symbol, gene_id=gene)
+            # Keyed by Ensembl gene ID: the symbol argument is the no-id fallback path, and an
+            # ambiguous symbol there silently resolves to the wrong gene's orthologs.
+            hs = fetch_homologies("", gene_id=gene)
         except Exception as e:  # noqa: BLE001
-            log(f"  {gene} {symbol}: homology failed {e}")
+            log(f"  {gene}: homology failed {e}")
             hs = []
         keep: dict[str, str] = {}
         for h in hs:
