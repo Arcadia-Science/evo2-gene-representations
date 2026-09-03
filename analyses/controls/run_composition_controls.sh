@@ -1,38 +1,42 @@
 #!/usr/bin/env bash
-# Experiment 2 — can composition-matched controls reproduce the gene-family geometry?
-# Produces publication figures 4, 12 and 13.
+# Composition controls — can composition-matched controls reproduce the gene-family geometry?
+# Produces the three control panels (04, 12 and 13) into analyses/controls/figures/.
 #
-#   bash experiments/exp2_composition_controls.sh            # print the plan, run nothing
-#   bash experiments/exp2_composition_controls.sh --figures  # re-render figs 4, 12, 13 (~3 min, CPU)
-#   bash experiments/exp2_composition_controls.sh --run      # full pipeline           (~160 h, GPU)
+#   bash analyses/controls/run_composition_controls.sh            # print the plan, run nothing
+#   bash analyses/controls/run_composition_controls.sh --figures  # re-render the panels (~3 min, CPU)
+#   bash analyses/controls/run_composition_controls.sh --run      # full pipeline        (~160 h, GPU)
 #
 # Controls replace coding positions in place, preserving the transcript span and CDS mask; the
 # ladder ranges from GC matching to protein-preserving recoding.
 #
+# This is an additional analysis over experiment 1's mammal panel, not one of the two publication
+# experiments. See analyses/controls/README.md for what it measures and when to reach for it.
+#
 # REQUIRES EXPERIMENT 1 for --run: this reuses exp1's mammal panel. Stage C1 reads
 # data/cache/mammal_cds_positions.json (exp1 A7, build_cds_masks_mammal.py) and stage D2 reads
 # blocks15/betweenfam_ot_metadata.json (exp1 B3). Run exp1 --run first. --figures needs nothing
-# but the tracked figure_data/ tables.
+# but the tracked analyses/controls/figure_data/ tables.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 MODE="${1:-plan}"
 case "$MODE" in
   --run) MODE=run ;;
   --figures) MODE=figures ;;
   plan|--plan|"") MODE=plan ;;
-  -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
   *) echo "unknown option: $MODE (use --run, --figures, or nothing)"; exit 2 ;;
 esac
 
 PY="uv run --no-sync python"
 RUN=results/2026-07-16_mammalian-orthologs-transcript_cdsmask
-OUT=pub/figures
+FD=analyses/controls/figure_data
+OUT=analyses/controls/figures
 source experiments/_helpers.sh
-init_experiment exp2
-preflight_tools exp2
+init_experiment controls
+preflight_tools controls
 
-echo "Experiment 2 — composition controls (figures 4, 12, 13)"
+echo "Composition controls (panels 04, 12, 13)"
 [ "$MODE" = plan ]    && echo "DRY RUN — nothing will execute."
 [ "$MODE" = figures ] && echo "FIGURES ONLY — re-rendering from artifacts on disk."
 
@@ -74,7 +78,7 @@ say "Scoring"
 
 # Preservation rho is measured against the natural geometry, so a rung is scored only once its
 # embedding cache is complete; partial rungs are skipped rather than scored on a subset.
-stage "~2 h, CPU"   "D1. W2/angular control preservation and Figure 12 source tables" \
+stage "~2 h, CPU"   "D1. W2/angular control preservation and panel 12 source tables" \
   $PY scripts/mammalian_orthologs/mammal_controls_score.py --arm transcript_cdsmask
 # OPTIONAL: an independent graph-free recomputation kept as a cross-check. Nothing reads its
 # output; figure 4 comes from D1. Skipping D2 changes no figure.
@@ -86,33 +90,33 @@ stage "~2 h, CPU"   "D2. control preservation, graph-free (optional cross-check)
 stage "~15 min, CPU" "D3. nucleotide identity of each control to its source gene" \
   $PY scripts/controls/control_sequence_identity.py --stage identity
 
-stage "~1 min, CPU"  "D4. refresh this experiment's figure_data/ tables" \
-  $PY scripts/build_figure_data.py --experiments exp2
+stage "~1 min, CPU"  "D4. refresh this analysis's figure_data/ tables" \
+  $PY scripts/build_figure_data.py --experiments controls
 fi
 
-say "Figures 4, 12 and 13"
+say "Panels 04, 12 and 13"
 
-if need "fig 4: controls vs natural by layer" figure_data/exp2_control_preservation.csv; then
-  fig "fig 4: controls vs natural by layer" $PY scripts/controls/plot_control_wasserstein.py --pub
+if need "panel 04: controls vs natural by layer" $FD/control_preservation.csv; then
+  fig "panel 04: controls vs natural by layer" $PY scripts/controls/plot_control_wasserstein.py --pub
   collect "results/layer_sweep_summaries/pub/controls_layer_summary_mammalian-orthologs-cdsmask-48fam-wasserstein" \
           fig04_controls_vs_natural_by_layer
 fi
 
-if need "fig 12: paired p3, protein vs nucleotide" figure_data/exp2_control_preservation.csv; then
-  fig "fig 12: paired p3, protein vs nucleotide" \
+if need "panel 12: paired p3, protein vs nucleotide" $FD/control_preservation.csv; then
+  fig "panel 12: paired p3, protein vs nucleotide" \
     $PY scripts/mammalian_orthologs/paired_p3_figure.py --pub
   collect "$RUN/pub/paired_p3_protein_vs_nucleotide" fig12_paired_p3_protein_vs_nucleotide
 fi
 
-if need "fig 13: control identity vs rho" figure_data/exp2_control_identity.csv \
-                                          figure_data/exp2_control_identity_by_family.csv; then
-  fig "fig 13: control identity vs rho" \
+if need "panel 13: control identity vs rho" $FD/control_identity.csv \
+                                          $FD/control_identity_by_family.csv; then
+  fig "panel 13: control identity vs rho" \
     $PY scripts/controls/control_sequence_identity.py --stage figure --pub
   collect "$RUN/pub/control_identity_vs_rho" fig13_control_identity_vs_rho
 fi
 
 if [ "$MODE" = plan ]; then
-  echo; echo "══ dry run complete. --figures to re-render, --run for the whole experiment."
+  echo; echo "══ dry run complete. --figures to re-render, --run for the whole analysis."
   exit 0
 fi
 

@@ -72,7 +72,8 @@ stage "~34 h, GPU"  "B1. embed 11,288 loci x 32 blocks, CDS-masked" \
 stage "~3 h, CPU"   "B2. angular within-family distances vs patristic / species tree / k-mer / GC" \
   $PY scripts/mammalian_orthologs/mammal_score.py --arm transcript_cdsmask --distance angular
 
-# Experiment 2 uses these natural W2 matrices as the reference for control preservation.
+# The composition-controls analysis (analyses/controls/) uses these natural W2 matrices
+# as its reference for control preservation.
 stage "~20 min, CPU" "B3. Wasserstein sweep, all layers (Mantel optional, skipped)" \
   $PY scripts/baselines/ot_between_family_sweep.py --n-perms 0
 

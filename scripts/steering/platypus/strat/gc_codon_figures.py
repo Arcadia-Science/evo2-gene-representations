@@ -292,8 +292,8 @@ def composition_table(
     """(per-gene-per-condition generation composition, per-gene reference windows)."""
     if FROM_FIGURE_DATA:
         return (
-            figure_data.table("exp3_generation_composition"),
-            figure_data.table("exp3_generation_reference_windows").set_index("gene"),
+            figure_data.table("exp2_generation_composition"),
+            figure_data.table("exp2_generation_reference_windows").set_index("gene"),
         )
     gc_cache, ref_cache = out / "12b_composition_gene_means.csv", out / "12c_reference_windows.csv"
     if gc_cache.exists() and ref_cache.exists() and not refresh:
@@ -497,7 +497,7 @@ def codon_stats(
 ) -> pd.DataFrame:
     """Per-(gene, condition) codon-level stats, cached — the alignments cost a few minutes."""
     if FROM_FIGURE_DATA:
-        return figure_data.table("exp3_codon_substitutions")
+        return figure_data.table("exp2_codon_substitutions")
     cache = out / "13b_codon_substitution_stats.csv"
     if cache.exists() and not refresh:
         print(f"  (reusing {cache.name}; pass --refresh-codons to recompute)")

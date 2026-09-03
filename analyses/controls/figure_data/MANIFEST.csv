@@ -1,0 +1,4 @@
+file,rows,columns,bytes,description
+control_preservation.csv,14112,5,926700,"Panels 04, 12 — control vs natural geometry"
+control_identity.csv,6,25,3000,Panel 13 — control identity to source vs the rho it produces
+control_identity_by_family.csv,288,6,25992,Panel 13 — the same identity per family

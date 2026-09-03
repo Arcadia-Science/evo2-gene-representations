@@ -1,7 +1,7 @@
 # Methods — activation steering in Evo2, human → platypus
 
-**Document status:** method reference for Experiment 3. The canonical command order is
-`experiments/exp3_platypus_steering.sh`; production results are in `results_n400.md` and
+**Document status:** method reference for Experiment 2. The canonical command order is
+`experiments/exp2_platypus_steering.sh`; production results are in `results_n400.md` and
 `results_site_directionality.md`.
 
 This document describes the experimental apparatus without assuming access to the source code.

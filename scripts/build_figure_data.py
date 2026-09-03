@@ -1,11 +1,14 @@
-"""Build `figure_data/` — the tidy tables every publication figure reads.
+"""Build the tidy tables every figure reads.
 
-Each figure generator reads one or two files from here, so the dated run directories under
-`results/` stay local build artifacts and `figure_data/` is the tracked form of the same numbers.
+Each figure generator reads one or two of them and nothing else, so the dated run directories under
+`results/` stay local build artifacts and the tracked tables are the form the numbers ship in. Each
+set lives with the analysis that owns it: the publication experiments write `figure_data/`, and the
+composition controls write `analyses/controls/figure_data/`.
 
 Build one experiment's tables, or all of them:
 
     uv run python scripts/build_figure_data.py --experiments exp1
+    uv run python scripts/build_figure_data.py --experiments controls
     uv run python scripts/build_figure_data.py
 
 Every table is validated before anything is published, and the whole set is staged in a temporary
@@ -26,6 +29,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "figure_data"
+CONTROLS_OUT = ROOT / "analyses" / "controls" / "figure_data"
 RESULTS = ROOT / "results"
 
 MAMMAL = RESULTS / "2026-07-16_mammalian-orthologs-transcript_cdsmask"
@@ -37,7 +41,10 @@ ARM = "stage4_cds_mean_blocks27"
 N_BLOCKS = 32
 LAYERS = list(range(N_BLOCKS))
 
-EXPERIMENTS = ("exp1", "exp2", "exp3")
+# The two publication experiments, plus the composition-controls analysis, which is not part of
+# the publication pipeline and keeps its tables beside its own runner in analyses/controls/.
+EXPERIMENTS = ("exp1", "exp2", "controls")
+DESTINATIONS = {"exp1": OUT, "exp2": OUT, "controls": CONTROLS_OUT}
 
 # stage 4 names a condition from a non-reported layer with a trailing `_L<n>` (see
 # gc_codon_figures.layer_suffix); the reported block-27 conditions carry no suffix.
@@ -112,7 +119,7 @@ def within_family_by_layer() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-# ── Experiment 2
+# ── Composition controls (analyses/controls/)
 
 
 def control_preservation() -> pd.DataFrame:
@@ -160,11 +167,11 @@ def control_identity_by_family() -> pd.DataFrame:
     return _read(MAMMAL / "control_sequence_identity_by_family.csv")
 
 
-# ── Experiment 3
+# ── Experiment 2
 
 
 # Figures 6a/6b were rendered from the 103-gene family panel until 2026-09-01 and now come from
-# the n=400 conservation-stratified panel, the same one every other exp3 figure uses.
+# the n=400 conservation-stratified panel, the same one every other exp2 figure uses.
 PANEL = "strat400"
 
 
@@ -319,33 +326,33 @@ TABLES: dict[str, Spec] = {
         unique=("layer", "metric", "family"),
         counts={"metric": len(WITHIN_BASELINES)},
     ),
-    "exp2_control_preservation": Spec(
-        "exp2",
-        "Figures 4, 12 — control vs natural geometry",
+    "control_preservation": Spec(
+        "controls",
+        "Panels 04, 12 — control vs natural geometry",
         control_preservation,
         columns=("layer", "condition", "axis", "family", "rho"),
         all_layers=True,
         unique=("layer", "condition", "axis", "family"),
         counts={"axis": 2},
     ),
-    "exp2_control_identity": Spec(
-        "exp2",
-        "Figure 13 — control identity to source vs the rho it produces",
+    "control_identity": Spec(
+        "controls",
+        "Panel 13 — control identity to source vs the rho it produces",
         control_identity,
         columns=("condition", "pos_identity", "null_pos_identity", "pos_excess", "n_seqs"),
         unique=("condition",),
         counts={"condition": 6},
     ),
-    "exp2_control_identity_by_family": Spec(
-        "exp2",
-        "Figure 13 — the same identity per family",
+    "control_identity_by_family": Spec(
+        "controls",
+        "Panel 13 — the same identity per family",
         control_identity_by_family,
         columns=("condition", "family", "pos_identity", "n_seqs"),
         unique=("condition", "family"),
         counts={"condition": 6, "family": 48},
     ),
-    "exp3_direction_layer_stats": Spec(
-        "exp3",
+    "exp2_direction_layer_stats": Spec(
+        "exp2",
         "Figures 6a, 6b — per-layer direction statistics",
         direction_layer_stats,
         columns=("panel", "layer", "loo_median", "delta_norm_cv"),
@@ -353,8 +360,8 @@ TABLES: dict[str, Spec] = {
         unique=("panel", "layer"),
         counts={"panel": 1},
     ),
-    "exp3_direction_per_gene_by_layer": Spec(
-        "exp3",
+    "exp2_direction_per_gene_by_layer": Spec(
+        "exp2",
         "Figures 6b, 11 — per-gene direction geometry",
         direction_per_gene_by_layer,
         columns=("panel", "layer", "gene", "loo_cos", "delta_norm"),
@@ -362,29 +369,29 @@ TABLES: dict[str, Spec] = {
         unique=("panel", "layer", "gene"),
         counts={"panel": 1},
     ),
-    "exp3_panel": Spec(
-        "exp3",
+    "exp2_panel": Spec(
+        "exp2",
         "Figure 5 — the 400 human/platypus pairs",
         lambda: _read(STRAT / "stage1" / "pairs.csv"),
         columns=("gene", "stratum", "perc_id_hp"),
         unique=("gene",),
         counts={"stratum": 5},
     ),
-    "exp3_panel_attrition": Spec(
-        "exp3",
+    "exp2_panel_attrition": Spec(
+        "exp2",
         "Figure 5 — candidates dropped by QC",
         lambda: _read(STRAT / "stage1" / "attrition.csv"),
         columns=("gene_id", "reason"),
     ),
-    "exp3_panel_coverage": Spec(
-        "exp3",
+    "exp2_panel_coverage": Spec(
+        "exp2",
         "Figure 5 — aligned CDS coverage per pair",
         lambda: _read(STRAT / "stage2" / "aligned_coverage.csv"),
         columns=("gene", "retained_frac"),
         unique=("gene",),
     ),
-    "exp3_steering_outcomes": Spec(
-        "exp3",
+    "exp2_steering_outcomes": Spec(
+        "exp2",
         "Figures 7, 8 — steering outcomes per gene and condition",
         steering_outcomes,
         columns=("gene", "condition", "stratum", "pct_private_bp_correct", "aa_id_to_target"),
@@ -392,78 +399,78 @@ TABLES: dict[str, Spec] = {
         counts={"condition": len(STEER_CONDITIONS)},
         complete=("gene", "condition"),
     ),
-    "exp3_site_directionality_summary": Spec(
-        "exp3",
+    "exp2_site_directionality_summary": Spec(
+        "exp2",
         "Figures 9a, 9b — leave-human and platypus-choice rates",
         lambda: _read(STRAT / "site_directionality" / "summary.csv"),
         columns=("site_set", "condition", "d_L", "d_C"),
         unique=("site_set", "condition"),
     ),
-    "exp3_site_directionality_gc_class": Spec(
-        "exp3",
+    "exp2_site_directionality_gc_class": Spec(
+        "exp2",
         "Figures 9a, 9b — the same, split by GC class",
         lambda: _read(STRAT / "site_directionality" / "gc_class.csv"),
         columns=("site_set", "condition", "gc_class"),
         unique=("site_set", "condition", "gc_class"),
         counts={"gc_class": 3},
     ),
-    "exp3_site_directionality_per_gene": Spec(
-        "exp3",
+    "exp2_site_directionality_per_gene": Spec(
+        "exp2",
         "Figures 9a, 9b — per-gene spread",
         lambda: _read(STRAT / "site_directionality" / "per_gene.csv"),
         columns=("gene", "condition", "site_set", "excess"),
         unique=("gene", "condition", "site_set"),
     ),
-    "exp3_generation_composition": Spec(
-        "exp3",
+    "exp2_generation_composition": Spec(
+        "exp2",
         "Figure 10 — GC of the generations",
         lambda: _read(STRAT / "figures" / "12b_composition_gene_means.csv"),
         columns=("gene", "condition", "gc", "gc3"),
         unique=("gene", "condition"),
         one_layer=True,
     ),
-    "exp3_generation_reference_windows": Spec(
-        "exp3",
+    "exp2_generation_reference_windows": Spec(
+        "exp2",
         "Figure 10 — human and platypus reference GC",
         lambda: _read(STRAT / "figures" / "12c_reference_windows.csv"),
         columns=("gene", "gc_human", "gc_platypus"),
         unique=("gene",),
     ),
-    "exp3_codon_substitutions": Spec(
-        "exp3",
+    "exp2_codon_substitutions": Spec(
+        "exp2",
         "Figure 10 — GC by codon position",
         lambda: _read(STRAT / "figures" / "13b_codon_substitution_stats.csv"),
         columns=("gene", "condition", "gc1", "gc2", "gc3"),
         one_layer=True,
     ),
-    "exp3_rates_tree_stats": Spec(
-        "exp3",
+    "exp2_rates_tree_stats": Spec(
+        "exp2",
         "Figure 11 — fixed-topology branch lengths",
         lambda: _read(STRAT / "stage5" / "tree_stats.csv"),
         columns=("gene", "status"),
         unique=("gene",),
     ),
-    "exp3_rates_dnds": Spec(
-        "exp3",
+    "exp2_rates_dnds": Spec(
+        "exp2",
         "Figure 11 — dN, dS and omega",
         lambda: _read(STRAT / "stage5" / "dnds.csv"),
         columns=("gene", "status", "dN_hp_yn", "dS_hp_yn"),
         unique=("gene",),
     ),
-    "exp3_rates_vs_direction": Spec(
-        "exp3",
+    "exp2_rates_vs_direction": Spec(
+        "exp2",
         "Figure 11 — rate vs direction geometry",
         lambda: _read(STRAT / "stage5" / "rate_vs_direction.csv"),
         columns=("predictor", "outcome", "rho"),
     ),
-    "exp3_rates_vs_direction_shape": Spec(
-        "exp3",
+    "exp2_rates_vs_direction_shape": Spec(
+        "exp2",
         "Figure 11 — the same, shape tests",
         lambda: _read(STRAT / "stage5" / "rate_vs_direction_shape.csv"),
         columns=("predictor", "outcome"),
     ),
-    "exp3_rates_vs_gain": Spec(
-        "exp3",
+    "exp2_rates_vs_gain": Spec(
+        "exp2",
         "Figure 11 — rate vs steering gain",
         lambda: _read(STRAT / "stage5" / "rate_vs_gain.csv"),
         columns=("predictor", "condition", "spearman_rho"),
@@ -471,8 +478,8 @@ TABLES: dict[str, Spec] = {
 }
 
 COPIES: dict[str, tuple[str, str, Path]] = {
-    "exp3_direction_nulls.npz": (
-        "exp3",
+    "exp2_direction_nulls.npz": (
+        "exp2",
         "Figures 6a, 6b — permutation nulls",
         STRAT / "geom_cds_mean" / "null_distributions.npz",
     ),
@@ -560,6 +567,37 @@ def write_readme_table(out_dir: Path, manifest: pd.DataFrame) -> None:
     readme.write_text(f"{head}{README_START}\n" + "\n".join(lines) + f"\n{README_END}{tail}")
 
 
+def publish_manifest(out_dir: Path, entries: list[tuple[str, int, int, str]]) -> pd.DataFrame:
+    """Merge this build's rows into one directory's MANIFEST.csv and refresh its README table.
+
+    Merged rather than overwritten, so building one experiment does not drop the rows of another
+    that shares the directory. Rows naming a file that is no longer there are dropped: a table that
+    has been renamed or moved to another directory must not linger in the manifest as a promise the
+    directory cannot keep.
+    """
+    manifest = out_dir / "MANIFEST.csv"
+    rows = {
+        r.file: dict(
+            file=r.file, rows=r.rows, columns=r.columns, bytes=r.bytes, description=r.description
+        )
+        for r in (pd.read_csv(manifest).itertuples() if manifest.exists() else [])
+    }
+    for filename, n_rows, n_cols, desc in entries:
+        rows[filename] = dict(
+            file=filename,
+            rows=n_rows,
+            columns=n_cols,
+            bytes=(out_dir / filename).stat().st_size,
+            description=desc,
+        )
+    rows = {f: r for f, r in rows.items() if (out_dir / f).is_file()}
+    order = [f"{n}.csv" for n in TABLES] + list(COPIES)
+    out = pd.DataFrame([rows[f] for f in order if f in rows])
+    out.to_csv(manifest, index=False)
+    write_readme_table(out_dir, out)
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -570,9 +608,15 @@ def main() -> None:
         choices=EXPERIMENTS,
         default=list(EXPERIMENTS),
         help="which experiments' tables to build (default: all). Each runner builds only its own, "
-        "so an experiment can be run on a machine that has no outputs from the other two.",
+        "so an experiment can be run on a machine that has no outputs from the others.",
     )
-    ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument(
+        "--out",
+        type=Path,
+        help="write every built table here instead of the directory that owns it: figure_data/ "
+        "for the publication experiments, analyses/controls/figure_data/ for the composition "
+        "controls. For one-off builds; the runners never pass it.",
+    )
     args = ap.parse_args()
 
     wanted = set(args.experiments)
@@ -580,51 +624,42 @@ def main() -> None:
     copies = {n: c for n, c in COPIES.items() if c[0] in wanted}
     print(f"building {len(specs) + len(copies)} tables for {', '.join(sorted(wanted))}")
 
-    # Stage everything first: a table that fails validation must not replace a good one.
-    staged: list[tuple[str, int, int, str]] = []
-    with tempfile.TemporaryDirectory(dir=args.out.parent) as tmp:
+    def destination(experiment: str) -> Path:
+        return args.out or DESTINATIONS[experiment]
+
+    # Stage everything first: a table that fails validation must not replace a good one, and a
+    # build spanning two directories must not update one of them and leave the other behind.
+    staged: dict[Path, list[tuple[str, int, int, str]]] = {}
+    with tempfile.TemporaryDirectory(dir=(args.out or OUT).parent) as tmp:
         tmpdir = Path(tmp)
         for name, spec in specs.items():
             table = spec.build()
             validate(name, spec, table)
             table.to_csv(tmpdir / f"{name}.csv", index=False)
-            staged.append((f"{name}.csv", len(table), len(table.columns), spec.description))
+            entry = (f"{name}.csv", len(table), len(table.columns), spec.description)
+            staged.setdefault(destination(spec.experiment), []).append(entry)
             print(f"  {len(table):>7,} x {len(table.columns):<3} {name}.csv")
-        for name, (_exp, desc, src) in copies.items():
+        for name, (experiment, desc, src) in copies.items():
             if not src.exists():
                 raise BuildError(f"missing source {src}")
             shutil.copy2(src, tmpdir / name)
-            staged.append((name, 0, 0, desc))
+            staged.setdefault(destination(experiment), []).append((name, 0, 0, desc))
             print(f"  {'(binary)':>11} {name}")
 
-        args.out.mkdir(parents=True, exist_ok=True)
-        for filename, *_ in staged:
-            shutil.move(str(tmpdir / filename), args.out / filename)
+        for out_dir, entries in staged.items():
+            out_dir.mkdir(parents=True, exist_ok=True)
+            for filename, *_ in entries:
+                shutil.move(str(tmpdir / filename), out_dir / filename)
 
-    # Merge into the manifest so building one experiment does not drop the others' rows.
-    manifest = args.out / "MANIFEST.csv"
-    rows = {
-        r.file: dict(
-            file=r.file, rows=r.rows, columns=r.columns, bytes=r.bytes, description=r.description
+    n_staged = sum(len(e) for e in staged.values())
+    for out_dir, entries in sorted(staged.items()):
+        manifest = publish_manifest(out_dir, entries)
+        print(
+            f"\n{len(entries)} published, {len(manifest)} in manifest, "
+            f"{manifest.bytes.sum() / 1048576:.1f} MiB -> {out_dir}"
         )
-        for r in (pd.read_csv(manifest).itertuples() if manifest.exists() else [])
-    }
-    for filename, n_rows, n_cols, desc in staged:
-        rows[filename] = dict(
-            file=filename,
-            rows=n_rows,
-            columns=n_cols,
-            bytes=(args.out / filename).stat().st_size,
-            description=desc,
-        )
-    order = [f"{n}.csv" for n in TABLES] + list(COPIES)
-    out = pd.DataFrame([rows[f] for f in order if f in rows])
-    out.to_csv(manifest, index=False)
-    write_readme_table(args.out, out)
-    print(
-        f"\n{len(staged)} published, {len(out)} in manifest, "
-        f"{out.bytes.sum() / 1048576:.1f} MiB -> {args.out}"
-    )
+    if not n_staged:
+        print("\nnothing to build")
 
 
 if __name__ == "__main__":

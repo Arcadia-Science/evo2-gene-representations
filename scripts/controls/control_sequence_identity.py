@@ -59,7 +59,8 @@ NUCLEOTIDE_RUNGS = [c for c in LADDER if c not in NESTED_PAIR]
 assert set(LADDER) <= set(mcs.CDSMASK_CONTROLS), "ladder names must match the control registry"
 
 # Figure 4's two series, under the names this file's tables use. Read from
-# figure_data/exp2_control_preservation.csv so figure 13's y-axis cannot drift from figure 4's.
+# analyses/controls/figure_data/control_preservation.csv so figure 13's y-axis cannot drift
+# from figure 4's.
 RHO_COLS = {
     "rho_between_w2": "Between families (Wasserstein)",
     "rho_within_angular": "Within families (angular)",
@@ -305,7 +306,7 @@ def summarise_by_family(per_seq: pd.DataFrame) -> pd.DataFrame:
 def load_rho() -> pd.DataFrame:
     """Figure 4's two series per (layer, condition): between-family Wasserstein, and within-family
     angular averaged over families."""
-    prep = figure_data.table("exp2_control_preservation")
+    prep = figure_data.table("control_preservation")
     between = prep[prep.axis == "between_family"].set_index(["layer", "condition"])["rho"]
     within = prep[prep.axis == "within_family"].groupby(["layer", "condition"])["rho"].mean()
     out = pd.concat({"rho_between_w2": between, "rho_within_angular": within}, axis=1)
@@ -382,7 +383,7 @@ def monotonicity_stats(ident: pd.DataFrame, rho: pd.DataFrame) -> pd.DataFrame:
 def within_rung_stats(by_family: pd.DataFrame, layer: int) -> pd.DataFrame:
     """The test that does not rely on comparing rungs to each other: WITHIN one rung, across
     families, does a family whose sequences retained more identity get a higher rho?"""
-    prep = figure_data.table("exp2_control_preservation")
+    prep = figure_data.table("control_preservation")
     fam = prep[(prep.axis == "within_family") & (prep.layer == layer)][
         ["condition", "family", "rho"]
     ]
@@ -763,7 +764,8 @@ def write_report(
         "",
         f"Run: `{RUN}`  ·  headline layer: `blocks{layer}`",
         "",
-        "ρ is **figure 4's ρ**, read from `figure_data/exp2_control_preservation.csv`: "
+        "ρ is **figure 4's ρ**, read from "
+        "`analyses/controls/figure_data/control_preservation.csv`: "
         "between-family Wasserstein and within-family angular preservation, both against the "
         "natural geometry. Nothing here recomputes geometry.",
         "",
@@ -916,8 +918,8 @@ def main() -> None:
         if args.stage == "identity":
             return
 
-    ident = figure_data.table("exp2_control_identity")
-    by_family = figure_data.table("exp2_control_identity_by_family")
+    ident = figure_data.table("control_identity")
+    by_family = figure_data.table("control_identity_by_family")
     rho = load_rho()
     stats = monotonicity_stats(ident, rho)
     stats.to_csv(RUN / "control_rho_vs_identity_stats.csv", index=False)

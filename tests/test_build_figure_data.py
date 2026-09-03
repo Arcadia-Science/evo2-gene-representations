@@ -103,3 +103,51 @@ def test_a_successful_build_publishes_everything(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["build_figure_data.py", "--out", str(out)])
     bfd.main()
     assert sorted(p.name for p in out.iterdir()) == ["MANIFEST.csv", "a.csv", "b.csv"]
+
+
+# ── each table lands in the directory that owns it
+#
+# The composition-control tables live beside their own runner in analyses/controls/figure_data/,
+# not in the publication set. Routing is by the owning experiment rather than the file name, so a
+# renamed table cannot drift into the wrong directory -- where it would be tracked in the wrong
+# place and, worse, still load, because figure_data.path() searches both.
+
+
+def test_tables_go_to_the_directory_that_owns_them(tmp_path, monkeypatch):
+    publication = tmp_path / "figure_data"
+    controls = tmp_path / "analyses" / "controls" / "figure_data"
+    publication.mkdir(parents=True)
+    controls.mkdir(parents=True)
+
+    monkeypatch.setattr(bfd, "OUT", publication)
+    monkeypatch.setattr(
+        bfd, "DESTINATIONS", {"exp1": publication, "exp2": publication, "controls": controls}
+    )
+    monkeypatch.setattr(
+        bfd,
+        "TABLES",
+        {"exp1_t": _spec(_good), "control_t": _spec(_good, experiment="controls")},
+    )
+    monkeypatch.setattr(bfd, "COPIES", {})
+    monkeypatch.setattr(sys, "argv", ["build_figure_data.py"])
+    bfd.main()
+
+    assert sorted(p.name for p in publication.iterdir()) == ["MANIFEST.csv", "exp1_t.csv"]
+    assert sorted(p.name for p in controls.iterdir()) == ["MANIFEST.csv", "control_t.csv"]
+    assert pd.read_csv(controls / "MANIFEST.csv").file.tolist() == ["control_t.csv"]
+
+
+def test_a_manifest_row_for_a_file_that_moved_away_is_dropped(tmp_path, monkeypatch):
+    """A table that has been renamed or relocated must not linger in the manifest."""
+    out = tmp_path / "figure_data"
+    out.mkdir()
+    pd.DataFrame(
+        [dict(file="gone.csv", rows=1, columns=1, bytes=1, description="moved elsewhere")]
+    ).to_csv(out / "MANIFEST.csv", index=False)
+    (out / "here.csv").write_text("layer\n0\n")
+
+    monkeypatch.setattr(bfd, "TABLES", {"gone": _spec(_good), "here": _spec(_good)})
+    monkeypatch.setattr(bfd, "COPIES", {})
+    manifest = bfd.publish_manifest(out, [("here.csv", 1, 1, "still here")])
+    assert manifest.file.tolist() == ["here.csv"]
+    assert "gone.csv" not in (out / "MANIFEST.csv").read_text()

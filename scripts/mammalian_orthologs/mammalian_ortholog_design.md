@@ -1,7 +1,8 @@
 # Mammalian ortholog experiment design
 
-This document describes the production design used by Experiments 1–2. Canonical commands and
-outputs are listed in [`REPRODUCING.md`](../../REPRODUCING.md).
+This document describes the production design used by experiment 1 and by the composition-controls
+analysis. Canonical commands and outputs are listed in [`REPRODUCING.md`](../../REPRODUCING.md), and
+the control stages in [`analyses/controls/README.md`](../../analyses/controls/README.md).
 
 ## Panel
 
@@ -52,8 +53,8 @@ Mantel permutations by default.
 
 ## Control analysis
 
-Experiment 2 embeds GC-matched, dinucleotide-shuffled, 4-mer-shuffled, 6-mer-shuffled, and
-synonymously recoded sequences. A matched third-codon-position pair contrasts synonymous and
+The composition-controls analysis embeds GC-matched, dinucleotide-shuffled, 4-mer-shuffled,
+6-mer-shuffled, and synonymously recoded sequences. A matched third-codon-position pair contrasts synonymous and
 missense edits at the same eligible sites and rate.
 
 Control preservation is measured against the natural geometry:

@@ -46,11 +46,11 @@ SCRATCH = _env_path("GLM_SCRATCH", ROOT / "data" / "external")
 # by extract_loci_bulk.py (experiment 1, stages A2-A3).
 MAMMAL_GENOMES = _env_path("GLM_MAMMAL_GENOMES", SCRATCH / "mammal_genomes")
 
-# Human and platypus CDS/peptide FASTAs and GTFs for the steering panel (experiment 3, stages
+# Human and platypus CDS/peptide FASTAs and GTFs for the steering panel (experiment 2, stages
 # A1-A2). No script in the repository fetches these; see REPRODUCING.md.
 STRAT_SEQS = _env_path("GLM_STRAT_SEQS", SCRATCH / "strat_seqs")
 
-# Per-species CDS FASTAs for the 24-mammal rate analysis (experiment 3, stage E1).
+# Per-species CDS FASTAs for the 24-mammal rate analysis (experiment 2, stage E1).
 STRAT_MAMMAL_CDS = _env_path("GLM_STRAT_MAMMAL_CDS", STRAT_SEQS / "mammals")
 
 

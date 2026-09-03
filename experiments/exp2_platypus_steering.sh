@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Experiment 3 — does steering toward platypus causally change what Evo2 generates?
+# Experiment 2 — does steering toward platypus causally change what Evo2 generates?
 # Produces publication figures 5 through 11.
 #
-#   bash experiments/exp3_platypus_steering.sh            # print the plan, run nothing
-#   bash experiments/exp3_platypus_steering.sh --figures  # re-render figures 5-11  (~10 min, CPU)
-#   bash experiments/exp3_platypus_steering.sh --run      # full pipeline           (~60 h, GPU)
+#   bash experiments/exp2_platypus_steering.sh            # print the plan, run nothing
+#   bash experiments/exp2_platypus_steering.sh --figures  # re-render figures 5-11  (~10 min, CPU)
+#   bash experiments/exp2_platypus_steering.sh --run      # full pipeline           (~60 h, GPU)
 #
 # Uses 400 human/platypus ortholog pairs stratified by protein identity. Held-out mean directions
 # are injected at block 27 across the configured dose ladder.
@@ -21,7 +21,7 @@ case "$MODE" in
   --run) MODE=run ;;
   --figures) MODE=figures ;;
   plan|--plan|"") MODE=plan ;;
-  -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
   *) echo "unknown option: $MODE (use --run, --figures, or nothing)"; exit 2 ;;
 esac
 
@@ -31,10 +31,10 @@ S=scripts/steering/platypus
 ARM=stage4_cds_mean_blocks27
 OUT=pub/figures
 source experiments/_helpers.sh
-init_experiment exp3
-preflight_tools exp3
+init_experiment exp2
+preflight_tools exp2
 
-echo "Experiment 3 — platypus steering (figures 5-11)"
+echo "Experiment 2 — platypus steering (figures 5-11)"
 [ "$MODE" = plan ]    && echo "DRY RUN — nothing will execute."
 [ "$MODE" = figures ] && echo "FIGURES ONLY — re-rendering from artifacts on disk."
 
@@ -121,16 +121,16 @@ stage "~5 min, CPU"  "F1. composition and codon tables for figure 10" \
 
 # Collapses the run dirs above into figure_data/, which is what every figure below reads.
 stage "~1 min, CPU"  "F2. build this experiment's figure_data/ tables" \
-  $PY scripts/build_figure_data.py --experiments exp3
+  $PY scripts/build_figure_data.py --experiments exp2
 fi
 
 say "Figures 5-11"
 
 FD=figure_data
 if need "figs 5 + 11: strata composition, rate matrix" \
-        $FD/exp3_panel.csv $FD/exp3_panel_coverage.csv $FD/exp3_rates_tree_stats.csv \
-        $FD/exp3_rates_dnds.csv $FD/exp3_rates_vs_direction.csv $FD/exp3_rates_vs_gain.csv \
-        $FD/exp3_direction_per_gene_by_layer.csv $FD/exp3_steering_outcomes.csv; then
+        $FD/exp2_panel.csv $FD/exp2_panel_coverage.csv $FD/exp2_rates_tree_stats.csv \
+        $FD/exp2_rates_dnds.csv $FD/exp2_rates_vs_direction.csv $FD/exp2_rates_vs_gain.csv \
+        $FD/exp2_direction_per_gene_by_layer.csv $FD/exp2_steering_outcomes.csv; then
   fig "figs 5 + 11: strata composition, rate matrix" \
     $PY $S/strat/hypothesis_figures.py --run "$R" --from-figure-data --only 5 8 --pub
   collect "$R/figures/pub/8b_strata_composition_frame" fig05_stratum_composition
@@ -138,10 +138,10 @@ if need "figs 5 + 11: strata composition, rate matrix" \
 fi
 
 # Figures 6a/6b came from the ~100-gene paired panel until 2026-09-01; they now use the same
-# n=400 stratified panel as every other exp3 figure. The retired renders are kept as "... (OLD)".
+# n=400 stratified panel as every other figure here. The retired renders are kept as "... (OLD)".
 if need "figs 6a/6b: LOO cosine, magnitude spread" \
-        $FD/exp3_direction_layer_stats.csv $FD/exp3_direction_per_gene_by_layer.csv \
-        $FD/exp3_direction_nulls.npz; then
+        $FD/exp2_direction_layer_stats.csv $FD/exp2_direction_per_gene_by_layer.csv \
+        $FD/exp2_direction_nulls.npz; then
   fig "figs 6a/6b: LOO cosine, magnitude spread" $PY $S/figures.py \
     --from-figure-data --out-dir "$R/geom_cds_mean/figures" --structure-suffix _cds_mean \
     --label 'CDS mean' --pub
@@ -151,22 +151,22 @@ if need "figs 6a/6b: LOO cosine, magnitude spread" \
           fig06b_delta_magnitude_spread_by_block
 fi
 
-if need "fig 7: steering delta by stratum" $FD/exp3_steering_outcomes.csv; then
+if need "fig 7: steering delta by stratum" $FD/exp2_steering_outcomes.csv; then
   fig "fig 7: steering delta by stratum" $PY $S/strat/steering_delta_strip.py \
     --run "$R" --arm-dir $ARM --from-figure-data --style violin-strata \
     --stem 10_steering_delta_violin_strata --pub
   collect "$R/figures/pub/10_steering_delta_violin_strata" fig07_steering_delta_by_stratum
 fi
 
-if need "fig 8: dose response by stratum" $FD/exp3_steering_outcomes.csv; then
+if need "fig 8: dose response by stratum" $FD/exp2_steering_outcomes.csv; then
   fig "fig 8: dose response by stratum" $PY $S/strat/dose_and_alpha_figures.py \
     --run "$R" --dir $ARM --from-figure-data --pub
   collect "$R/figures/pub/6d_dose_by_stratum" fig08_dose_response_by_stratum
 fi
 
 if need "figs 9a/9b: leave-human vs platypus choice" \
-        $FD/exp3_site_directionality_summary.csv $FD/exp3_site_directionality_gc_class.csv \
-        $FD/exp3_site_directionality_per_gene.csv; then
+        $FD/exp2_site_directionality_summary.csv $FD/exp2_site_directionality_gc_class.csv \
+        $FD/exp2_site_directionality_per_gene.csv; then
   fig "figs 9a/9b: leave-human vs platypus choice" $PY $S/strat/site_directionality_figures.py \
     --run "$R" --from-figure-data --layers 27 --site-set both --pub
   collect "$R/figures_27/pub/18_leave_human_vs_platypus_choice" \
@@ -176,8 +176,8 @@ if need "figs 9a/9b: leave-human vs platypus choice" \
 fi
 
 if need "fig 10: GC by codon position" \
-        $FD/exp3_generation_composition.csv $FD/exp3_generation_reference_windows.csv \
-        $FD/exp3_codon_substitutions.csv; then
+        $FD/exp2_generation_composition.csv $FD/exp2_generation_reference_windows.csv \
+        $FD/exp2_codon_substitutions.csv; then
   fig "fig 10: GC by codon position" $PY $S/strat/gc_codon_figures.py \
     --run "$R" --from-figure-data --layer 27 --pub
   collect "$R/figures_27/pub/14_gc_codon_position" fig10_gc_by_codon_position

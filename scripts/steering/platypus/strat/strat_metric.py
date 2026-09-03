@@ -88,7 +88,7 @@ def add_metric_args(ap) -> None:
     ap.add_argument(
         "--from-figure-data",
         action="store_true",
-        help="read figure_data/exp3_steering_outcomes.csv (one row per gene and condition) "
+        help="read figure_data/exp2_steering_outcomes.csv (one row per gene and condition) "
         "instead of the per-sample score table in a run directory",
     )
     ap.add_argument(
@@ -106,7 +106,7 @@ def resolve_scores_path(
 ) -> Path:
     """Prefer the rescored table, so a figure picks up the nt-alignment fix without a flag."""
     if from_figure_data:
-        return figure_data.path("exp3_steering_outcomes")
+        return figure_data.path("exp2_steering_outcomes")
     d = Path(run) / arm_dir
     if scores:
         return d / scores

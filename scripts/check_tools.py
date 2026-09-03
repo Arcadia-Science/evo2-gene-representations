@@ -1,7 +1,7 @@
 """External (non-PyPI) tools a full `--run` needs, and whether this machine has them.
 
-    uv run python scripts/check_tools.py            # every tool
-    uv run python scripts/check_tools.py --exp exp3 # only what experiment 3 needs
+    uv run python scripts/check_tools.py             # every tool
+    uv run python scripts/check_tools.py --exp exp2  # only what experiment 2 needs
 
 `--figures` needs none of these; it reads `figure_data/` and renders. They are only reached by
 `--run`, which is why a missing one used to surface hours in, as a bare FileNotFoundError from a
@@ -48,8 +48,8 @@ class Tool:
 TOOLS: tuple[Tool, ...] = (
     Tool(
         "mafft",
-        ("exp1", "exp3"),
-        "protein alignment for the patristic baseline (exp1 B2) and stage-5 gene trees (exp3 E2)",
+        ("exp1", "exp2"),
+        "protein alignment for the patristic baseline (exp1 B2) and stage-5 gene trees (exp2 E2)",
         "apt install mafft   |   conda install -c bioconda mafft",
         "v7.505",
         version_cmd=("mafft", "--version"),
@@ -64,16 +64,16 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "mmseqs",
-        ("exp3",),
-        "homology-block clustering for the candidate pool (exp3 A1)",
+        ("exp2",),
+        "homology-block clustering for the candidate pool (exp2 A1)",
         "apt install mmseqs2   |   conda install -c bioconda mmseqs2",
         "15-6f452",
         version_cmd=("mmseqs", "version"),
     ),
     Tool(
         "iqtree2",
-        ("exp3",),
-        "branch lengths on the fixed species topology (exp3 E2)",
+        ("exp2",),
+        "branch lengths on the fixed species topology (exp2 E2)",
         "download a release from https://github.com/iqtree/iqtree2/releases into data/tools/",
         "2.3.6",
         on_path=False,
@@ -81,8 +81,8 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "trimal",
-        ("exp3",),
-        "alignment trimming before the trees and codeml (exp3 E2, E3)",
+        ("exp2",),
+        "alignment trimming before the trees and codeml (exp2 E2, E3)",
         "build from https://github.com/inab/trimal into data/tools/",
         "1.5.rev0",
         on_path=False,
@@ -90,8 +90,8 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "codeml",
-        ("exp3",),
-        "dN, dS and omega under PAML's codon models (exp3 E3)",
+        ("exp2",),
+        "dN, dS and omega under PAML's codon models (exp2 E3)",
         "build PAML 4.10.10 and copy src/codeml into data/tools/ "
         "(http://abacus.gene.ucl.ac.uk/software/paml.html)",
         "4.10.10",
@@ -99,8 +99,8 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "yn00",
-        ("exp3",),
-        "pairwise dN/dS (Yang & Nielsen) alongside codeml (exp3 E3)",
+        ("exp2",),
+        "pairwise dN/dS (Yang & Nielsen) alongside codeml (exp2 E3)",
         "build PAML 4.10.10 and copy src/yn00 into data/tools/ "
         "(http://abacus.gene.ucl.ac.uk/software/paml.html)",
         "4.10.10",
@@ -148,7 +148,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--exp", choices=["exp1", "exp2", "exp3"], help="only this experiment's tools")
+    ap.add_argument(
+        "--exp",
+        choices=["exp1", "exp2", "controls"],
+        help="only this experiment's tools ('controls' is the composition-controls analysis)",
+    )
     ap.add_argument("--quiet", action="store_true", help="print only what is missing")
     args = ap.parse_args()
 

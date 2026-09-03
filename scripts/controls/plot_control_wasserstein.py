@@ -66,7 +66,7 @@ def main() -> None:
         pub.enable()
 
     # One tidy table carries both axes; the within-family panel plots the mean over families.
-    prep = figure_data.table("exp2_control_preservation").rename(columns={"condition": "rung"})
+    prep = figure_data.table("control_preservation").rename(columns={"condition": "rung"})
     d = prep[prep.axis == "between_family"].dropna(subset=["rho"])
     d = d.rename(columns={"rho": "rho_wasserstein"})
     wdf = (

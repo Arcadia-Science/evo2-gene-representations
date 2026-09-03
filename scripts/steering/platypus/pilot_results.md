@@ -1,7 +1,7 @@
 # Pilot results — conservation-stratified platypus panel (n = 100)
 
 **Document status:** historical pilot record. Use `results_n400.md` for production conclusions and
-`experiments/exp3_platypus_steering.sh` for the active workflow.
+`experiments/exp2_platypus_steering.sh` for the active workflow.
 
 Everything measured to date. The method these runs implement is in `conservation_stratified_design.md`,
 which is kept free of results on purpose. Where a design choice was made *because* of a number below,

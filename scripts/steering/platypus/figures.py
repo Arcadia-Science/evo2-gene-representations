@@ -102,9 +102,9 @@ def main() -> None:
     if args.from_figure_data:
         # One panel per table since 2026-09-01 (the n=400 stratified panel); the `panel` column is
         # carried for provenance, so read it rather than assuming which run built the table.
-        st = figure_data.table("exp3_direction_layer_stats")
-        pg = figure_data.table("exp3_direction_per_gene_by_layer")
-        nd = np.load(figure_data.path("exp3_direction_nulls.npz"))
+        st = figure_data.table("exp2_direction_layer_stats")
+        pg = figure_data.table("exp2_direction_per_gene_by_layer")
+        nd = np.load(figure_data.path("exp2_direction_nulls.npz"))
         panels = set(st.panel) | set(pg.panel)
         if len(panels) != 1:
             raise SystemExit(f"expected one panel in the direction tables, found {sorted(panels)}")
