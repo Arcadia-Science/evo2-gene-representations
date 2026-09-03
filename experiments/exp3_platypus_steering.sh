@@ -8,6 +8,11 @@
 #
 # Uses 400 human/platypus ortholog pairs stratified by protein identity. Held-out mean directions
 # are injected at block 27 across the configured dose ladder.
+#
+# REQUIRES EXPERIMENT 1 for --run: stages E1 and E2 read
+# data/mammalian_orthologs/tree/species_tree.nwk, written by exp1 stage A6
+# (build_species_tree.py). Run exp1 --run first, or at least that stage. --figures needs nothing
+# but the tracked figure_data/ tables.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -22,9 +27,6 @@ esac
 
 PY="uv run --no-sync python"
 R=results/2026-08-08_platypus-strat-400
-PAIR_RUN=results/2026-07-28_evo2-platypus-paired
-PAIR_EMBED=$PAIR_RUN/stage6_representation
-PAIRED=$PAIR_RUN/stage2_cds_mean
 S=scripts/steering/platypus
 ARM=stage4_cds_mean_blocks27
 OUT=pub/figures
@@ -37,17 +39,6 @@ echo "Experiment 3 — platypus steering (figures 5-11)"
 [ "$MODE" = figures ] && echo "FIGURES ONLY — re-rendering from artifacts on disk."
 
 if [ "$MODE" != figures ]; then
-say "Paired-panel direction geometry (figure 6)"
-
-stage "~15 min, CPU" "P1. build the paired 103-gene human/platypus panel" \
-  $PY $S/dataset.py --out-dir $PAIR_RUN/stage1
-stage "~2 h, GPU"   "P2. full-CDS mean pooling across 32 blocks" \
-  $PY $S/strat/stage2_embed.py --stage1 $PAIR_RUN/stage1 --out $PAIR_EMBED
-stage "~20 min"     "P3. paired-panel leave-one-out and magnitude statistics" \
-  $PY $S/delta_stats.py --stage1-dir $PAIR_RUN/stage1 --pooled \
-     --pooled-npz $PAIR_EMBED/pooled_representations.npz --representation cds_mean \
-     --out-dir $PAIRED
-
 say "Panel and reference data"
 
 stage "~1 h, CPU"   "A1. block-disjoint, conservation-stratified candidate pool" \

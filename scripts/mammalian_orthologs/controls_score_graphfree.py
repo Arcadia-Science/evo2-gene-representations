@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "baselines"))
 
+import paths  # noqa: E402
 from controls.make_control_sequences import ORDINARY_CONTROLS  # noqa: E402
 from ot_between_family import angular_distance, compute_ot_matrices, l2_normalize  # noqa: E402
 
@@ -52,6 +53,12 @@ def load_stack(cond: str, keys: list[str]) -> np.ndarray:
 # ── between-family: Wasserstein
 def score_between(keys: list[str], meta: pd.DataFrame) -> Path:
     OT_CACHE.mkdir(parents=True, exist_ok=True)
+    paths.require(
+        RUN / "blocks15" / "betweenfam_ot_metadata.json",
+        "the W2 family order (an EXPERIMENT 1 output)",
+        "run experiment 1 stage B3 (baselines/ot_between_family_sweep.py)",
+        "GLM_SCRATCH",
+    )
     fam_order = json.loads((RUN / "blocks15" / "betweenfam_ot_metadata.json").read_text())[
         "fam_order"
     ]

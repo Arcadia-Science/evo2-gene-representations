@@ -16,9 +16,11 @@ from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "evo2"))
+sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(
     0, str(ROOT / "scripts" / "controls")
 )  # composition-shuffle fns (make_control_sequences)
+import paths  # noqa: E402
 from evo2_embedding import (  # noqa: E402
     LAYER_NAMES,
     N_BLOCKS,
@@ -201,6 +203,12 @@ def main() -> None:
     )
     args = ap.parse_args()
 
+    paths.require(
+        CDS_POS,
+        "the per-locus CDS position cache (an EXPERIMENT 1 output)",
+        "run experiment 1 stage A7 (mammalian_orthologs/build_cds_masks_mammal.py)",
+        "GLM_SCRATCH",
+    )
     rows = load_target_loci(args.families, args.keys_from)
     cache = CACHE.with_name(f"{CACHE.name}_{args.control}") if args.control else CACHE
     cache.mkdir(parents=True, exist_ok=True)

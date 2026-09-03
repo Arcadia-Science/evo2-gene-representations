@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "steering"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import check_tools  # noqa: E402
+import paths  # noqa: E402
 from alignment_metrics import read_fasta  # noqa: E402
 
 IQTREE = ROOT / "data" / "tools" / "iqtree2"
@@ -185,6 +186,13 @@ def main() -> None:
     # so a clone without them raised FileNotFoundError after MAFFT had already done its work.
     for tool in ("mafft", "iqtree2", "trimal"):
         check_tools.require(tool)
+    paths.require(
+        SPECIES_TREE,
+        "the mammalian species tree (an EXPERIMENT 1 output)",
+        "run experiment 1 stage A6 (mammalian_orthologs/build_species_tree.py); it needs "
+        "the VertLife download -- see REPRODUCING.md",
+        "GLM_SCRATCH",
+    )
     s5 = args.run / "stage5"
     outdir = args.outdir or (s5 / "trees")
     outdir.mkdir(parents=True, exist_ok=True)

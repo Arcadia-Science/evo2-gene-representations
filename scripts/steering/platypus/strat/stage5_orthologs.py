@@ -105,6 +105,13 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
     paths.require(
+        TREE,
+        "the mammalian species tree (an EXPERIMENT 1 output)",
+        "run experiment 1 stage A6 (mammalian_orthologs/build_species_tree.py); it needs "
+        "the VertLife download -- see REPRODUCING.md",
+        "GLM_SCRATCH",
+    )
+    paths.require(
         MAMMAL_CDS,
         "per-species CDS FASTAs for the 24-mammal rate analysis",
         "download the release-116 human/platypus CDS, peptide and GTF files from "
