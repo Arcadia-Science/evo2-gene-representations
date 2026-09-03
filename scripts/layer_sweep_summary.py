@@ -137,8 +137,9 @@ def _resolve_col(df: pd.DataFrame, stem: str) -> str | None:
 
     A table names the distance in its column, so the same baseline is `spearman_angular_<stem>` in
     an `_angular` table and `spearman_geodesic_<stem>` in a graph table. Both are accepted because
-    `_angular` tables written before the header fix still carry the geodesic name -- migrate those
-    with scripts/mammalian_orthologs/migrate_angular_column_names.py.
+    `_angular` tables written before the header fix still carry the geodesic name. Every run
+    directory here has been migrated; the one-shot migration is archived under
+    deprecated/spent-migrations-2026-09-03/ should a pre-rename table ever turn up.
 
     None is an ordinary outcome, not an error: axisB_within_family_correlations.csv is read once
     per baseline it holds, so every other baseline's stem legitimately misses.
