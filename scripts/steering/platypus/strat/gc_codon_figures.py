@@ -80,8 +80,6 @@ def cache_dir(run: Path) -> Path:
     return d
 
 
-
-
 def complete_conditions(
     table: pd.DataFrame, wanted: list[str], what: str, min_frac: float = 0.95
 ) -> list[str]:
@@ -436,8 +434,6 @@ def panel_gc(
     ax.set_xlim(-0.6, len(conditions) + 1.5)
 
 
-
-
 def panel_gc_by_position(
     ax,
     C: pd.DataFrame,
@@ -465,12 +461,6 @@ def panel_gc_by_position(
         fontsize=8.5,
     )
     ax.legend(fontsize=7, frameon=False)
-
-
-
-
-
-
 
 
 # codon-level substitution stats (row 2 of figure 13)
@@ -557,8 +547,6 @@ def codon_stats(
     return g
 
 
-
-
 # figures 14 and 15 -- two-panel regroupings of panels already defined above
 def fig14(
     run: Path,
@@ -596,17 +584,10 @@ def fig14(
     plt.close(fig)
 
 
-
-
 # Figures 16 and 17 compare steering layers at their shared alpha=1 dose.
 # Include random arms and pair both layers against the same unsteered cells.
 CMP_CONDITIONS = ["unsteered", "random_a1.0_L24", "add_a1.0_L24", "random_a1.0", "add_a1.0"]
 CMP_LABELS = ["unsteered", "random", "add", "random", "add"]
-
-
-
-
-
 
 
 def main() -> None:

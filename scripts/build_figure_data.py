@@ -258,8 +258,7 @@ def steering_outcomes() -> pd.DataFrame:
         )
     if dropped:
         print(
-            f"  steering_outcomes: dropped {len(dropped)} non-{STEER_LAYER} "
-            f"conditions: {dropped}"
+            f"  steering_outcomes: dropped {len(dropped)} non-{STEER_LAYER} conditions: {dropped}"
         )
     keys = ["gene", "condition"]
     g = d.groupby(keys, sort=False)
