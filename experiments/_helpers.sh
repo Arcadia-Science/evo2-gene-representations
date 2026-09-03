@@ -15,6 +15,17 @@ init_experiment() {
 
 say() { echo; echo "══ $*"; }
 
+# Check this experiment's external (non-PyPI) tools before spending GPU- or CPU-hours. Only for
+# --run: --figures renders from figure_data/ and needs none of them. A missing tool used to
+# surface hours in, as a FileNotFoundError from a subprocess whose stderr was discarded.
+preflight_tools() {
+  local exp="$1"
+  [ "$MODE" = run ] || return 0
+  echo; echo "── preflight: external tools for $exp"
+  uv run --no-sync python scripts/check_tools.py --exp "$exp" \
+    || { echo "   FAILED — install the tools above, then re-run"; exit 1; }
+}
+
 stage() {
   local cost="$1" desc="$2"; shift 2
   echo; echo "── $desc   [$cost]"; echo "   $*"

@@ -28,6 +28,7 @@ GF=results/layer_sweep_summaries/mammalian-orthologs-cdsmask-48fam
 OUT=pub/figures
 source experiments/_helpers.sh
 init_experiment exp1
+preflight_tools exp1
 
 echo "Experiment 1 — gene-family geometry (figures 1-3)"
 [ "$MODE" = plan ]    && echo "DRY RUN — nothing will execute."
@@ -81,8 +82,8 @@ stage "~20 min, CPU" "B4. angular within-family bootstrap/Wilcoxon inference, al
 
 # Everything above writes into the dated run dirs, which stay local. This collapses them into the
 # tracked tidy tables the figures actually read.
-stage "~1 min, CPU" "B5. build the tracked figure_data/ tables" \
-  $PY scripts/build_figure_data.py
+stage "~1 min, CPU" "B5. build this experiment's figure_data/ tables" \
+  $PY scripts/build_figure_data.py --experiments exp1
 fi
 
 say "Figures 1-3"
