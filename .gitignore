@@ -114,3 +114,15 @@ tree_of_life_reproduction_goodfire/
 
 # Frozen pre-refactor output snapshots (validation baselines)
 .frozen/
+
+# Publication figures and manuscript drafts — build outputs / drafts, kept local only
+pub/
+
+# Audit / refactoring working docs
+AUDIT_CLAUDE.md
+AUDIT_CODEX.md
+PAPER_NUMBER_AUDIT.md
+PAPER_NUMBER_AUDIT.csv
+REFACTORING_PLAN.md
+REFACTORING_PLAN_DETAILS.md
+paper_quantitative_audit.md
