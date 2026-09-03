@@ -13,8 +13,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # Published angular file and column for each baseline. Both name the metric: the column used to
 # say `spearman_geodesic_*` in these angular tables, which read as the wrong metric to anyone
-# opening the CSV. Older run directories still carry the old header -- migrate them with
-# scripts/mammalian_orthologs/migrate_angular_column_names.py.
+# opening the CSV. Older run directories would carry the old header; every one here has been
+# migrated, and the one-shot migration is archived under deprecated/spent-migrations-2026-09-03/.
 BASELINE_FILES = {
     "speciestree": ("within_family_speciestree_angular.csv", "spearman_angular_speciestree"),
     "patristic": ("within_family_patristic_angular.csv", "spearman_angular_patristic"),
