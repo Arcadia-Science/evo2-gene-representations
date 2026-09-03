@@ -11,13 +11,15 @@ from scipy.stats import wilcoxon
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# Published angular file + legacy-named column for each baseline. The column names predate the
-# metric correction, so the filename is the authoritative provenance marker.
+# Published angular file and column for each baseline. Both name the metric: the column used to
+# say `spearman_geodesic_*` in these angular tables, which read as the wrong metric to anyone
+# opening the CSV. Older run directories still carry the old header -- migrate them with
+# scripts/mammalian_orthologs/migrate_angular_column_names.py.
 BASELINE_FILES = {
-    "speciestree": ("within_family_speciestree_angular.csv", "spearman_geodesic_speciestree"),
-    "patristic": ("within_family_patristic_angular.csv", "spearman_geodesic_patristic"),
-    "kmer": ("kmer_within_family_correlations_angular.csv", "spearman_geodesic_kmer"),
-    "gc": ("within_family_gc_angular.csv", "spearman_geodesic_gc"),
+    "speciestree": ("within_family_speciestree_angular.csv", "spearman_angular_speciestree"),
+    "patristic": ("within_family_patristic_angular.csv", "spearman_angular_patristic"),
+    "kmer": ("kmer_within_family_correlations_angular.csv", "spearman_angular_kmer"),
+    "gc": ("within_family_gc_angular.csv", "spearman_angular_gc"),
 }
 MIN_GROUPS_CI = 3  # below this a percentile bootstrap over groups is not interpretable
 MIN_GROUPS_TEST = 6  # Wilcoxon signed-rank cannot reach p < 0.05 below ~6 pairs
