@@ -13,6 +13,7 @@ from scipy.stats import spearmanr
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "baselines"))
+import paths  # noqa: E402
 from geodesic_utils import compute_geodesic, find_min_connected_k  # noqa: E402
 from kmer_sequence_divergence import kmer_distance_matrix  # noqa: E402
 from protein_alignment_patristic import (  # noqa: E402
@@ -93,7 +94,9 @@ def group_ground_truths(meta: pd.DataFrame, cds: dict, pat: pd.DataFrame) -> dic
             "kmer": kmer_distance_matrix([cds[m] for m in members], k=6),
             "gc": gc_distance_matrix([cds[m] for m in members]),
         }
-        with tempfile.TemporaryDirectory() as tmp:
+        # One MAFFT + FastTree scratch dir per group, over a ~3 h stage. $GLM_TMPDIR (or TMPDIR)
+        # moves it off a small /tmp; tmp_dir() returns None for the system default.
+        with tempfile.TemporaryDirectory(dir=paths.tmp_dir()) as tmp:
             res = align_members(members, {m: cds[m] for m in members}, Path(tmp))
             if res:
                 tp = tree_patristic(res, members, Path(tmp))
