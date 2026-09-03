@@ -125,12 +125,13 @@ def shuffle_coding_in_place(
         from make_control_sequences import paired_p3  # noqa: E402 (lazy)
 
         arm = "synonymous" if control == "paired_p3_syn" else "missense"
-        if arm == "synonymous" and (fam_usage is None or fam is None):
+        if fam_usage is None or fam is None:
             raise ValueError(f"{control} needs fam + fam_usage (see build_family_usage)")
-        # Eligibility fixes the edited sites; the arm-specific seed selects alternatives.
+        # Eligibility fixes the edited sites; the arm-specific seed selects alternatives. Both
+        # arms get the SAME usage table so they differ in protein outcome, not in weighting.
         shuffled = paired_p3(
             coding,
-            fam_usage[fam] if arm == "synonymous" else {},
+            fam_usage[fam],
             random.Random(zlib.crc32(f"{control}:{key}".encode())),
             arm,
         )

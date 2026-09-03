@@ -14,7 +14,13 @@ ORDINARY_CONTROLS = [
 ]
 PAIRED_P3_CONTROLS = ["paired_p3_syn", "paired_p3_missense"]
 CDSMASK_CONTROLS = ORDINARY_CONTROLS + ["missense_subset"] + PAIRED_P3_CONTROLS
-FAMILY_USAGE_CONTROLS = {"synonymous_recode", "missense_subset", "paired_p3_syn"}
+# Both paired-p3 arms now draw from the family codon table, so both need it.
+FAMILY_USAGE_CONTROLS = {
+    "synonymous_recode",
+    "missense_subset",
+    "paired_p3_syn",
+    "paired_p3_missense",
+}
 SEED = 1234
 
 # Standard genetic code (frame-0 translation for amino-acid grouping).
@@ -237,11 +243,30 @@ def _p3_alternatives(cod: str) -> tuple[list[str], list[str]]:
     return syn, mis
 
 
+def codon_counts(fam_usage: dict) -> dict[str, int]:
+    """Flatten a {aa: (codons, weights)} usage table into {codon: count}.
+
+    Both paired-p3 arms weight their alternatives from this one distribution, so they differ in
+    the protein outcome rather than in how the replacement codon was drawn.
+    """
+    return {c: w for _aa, (cods, ws) in fam_usage.items() for c, w in zip(cods, ws, strict=False)}
+
+
 def paired_p3(seq: str, fam_usage: dict, rng: random.Random, arm: str) -> str:
-    """One arm of the matched pair. `arm` is 'synonymous' or 'missense'."""
+    """One arm of the matched pair. `arm` is 'synonymous' or 'missense'.
+
+    Both arms edit the same eligible position-3 sites at the same rate and draw the replacement
+    from the SAME empirical codon distribution, restricted to the synonymous alternatives in one
+    arm and the missense alternatives in the other. Note that matching the weighting does not make
+    the arms composition-matched: at a two-fold site the synonymous alternative stays inside the
+    transition pair and the missense alternatives are the other pair, so a purine/pyrimidine and a
+    GC3 difference between the arms is fixed by the genetic code. Report it; it cannot be sampled
+    away. See `control_metrics_guide.md`.
+    """
     if arm not in ("synonymous", "missense"):
         raise ValueError(f"arm must be 'synonymous' or 'missense', got {arm!r}")
     s = seq.upper()
+    counts = codon_counts(fam_usage)
     ncod = len(s) // 3
     out = []
     for i in range(ncod):
@@ -250,16 +275,9 @@ def paired_p3(seq: str, fam_usage: dict, rng: random.Random, arm: str) -> str:
         if not syn or not mis:  # 4-fold (no missense) or 1-fold (no synonym): skip
             out.append(cod)
             continue
-        if arm == "missense":
-            out.append(rng.choice(mis))
-        else:
-            usage = fam_usage.get(_CODON[cod])
-            if usage is None:
-                out.append(rng.choice(syn))
-            else:
-                codons, weights = usage
-                w = [dict(zip(codons, weights, strict=False)).get(c, 0) for c in syn]
-                out.append(rng.choices(syn, weights=w, k=1)[0] if sum(w) > 0 else rng.choice(syn))
+        alts = syn if arm == "synonymous" else mis
+        w = [counts.get(c, 0) for c in alts]
+        out.append(rng.choices(alts, weights=w, k=1)[0] if sum(w) > 0 else rng.choice(alts))
     return "".join(out) + s[ncod * 3 :]
 
 
