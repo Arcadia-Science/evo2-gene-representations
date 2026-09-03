@@ -30,6 +30,7 @@ ARM=stage4_cds_mean_blocks27
 OUT=pub/figures
 source experiments/_helpers.sh
 init_experiment exp3
+preflight_tools exp3
 
 echo "Experiment 3 — platypus steering (figures 5-11)"
 [ "$MODE" = plan ]    && echo "DRY RUN — nothing will execute."
@@ -49,14 +50,17 @@ stage "~20 min"     "P3. paired-panel leave-one-out and magnitude statistics" \
 
 say "Panel and reference data"
 
-# The 24-mammal ortholog CDS that defines which platypus bases count as "private". Figures 7-10 are
-# scored against it, so it must exist before stage 4 is rescored.
-stage "~2 h, API"   "A1. 24-mammal ortholog CDS for the private-base reference" \
-  $PY $S/strat/autapomorphy_orthologs.py --run $R
-stage "~1 h, CPU"   "A2. block-disjoint, conservation-stratified candidate pool" \
+stage "~1 h, CPU"   "A1. block-disjoint, conservation-stratified candidate pool" \
   $PY $S/strat/stage0_pool.py --out $R/stage0
-stage "~30 min"     "A3. QC, shifted-window prompt rule, 80 pairs per stratum" \
+stage "~30 min"     "A2. QC, shifted-window prompt rule, 80 pairs per stratum" \
   $PY $S/strat/stage1_qc.py --stage0 $R/stage0 --out $R/stage1 --per-stratum 80 --max-start-codon 30
+
+# The 24-mammal ortholog CDS that defines which platypus bases count as "private". Figures 7-10 are
+# scored against it, so it must exist before stage 4 is rescored (C6). It reads the panel and the
+# platypus CDS that A2 writes, so it cannot run before A2 -- it used to be ordered first, which
+# made a full --run fail on its very first data stage.
+stage "~2 h, API"   "A3. 24-mammal ortholog CDS for the private-base reference" \
+  $PY $S/strat/private_site_orthologs.py --run $R
 
 say "Direction geometry"
 
@@ -87,15 +91,19 @@ stage "~13 h, GPU"  "C1. primary arms at alpha 1" \
   "${BASE[@]}" --arms unsteered add add_own random --alphas 1.0
 stage "~7 h, GPU"   "C2. dose ladder, alpha 0.5 and 2" \
   "${BASE[@]}" --arms add random --alphas 0.5 2.0
-stage "~7 h, GPU"   "C3. dose extension, alpha 3 and 4 (no matched null at these doses)" \
-  "${BASE[@]}" --arms add --alphas 3.0 4.0
+stage "~7 h, GPU"   "C3. dose extension, alpha 3 and 4, with their matched random nulls" \
+  "${BASE[@]}" --arms add random --alphas 3.0 4.0
 stage "~10 h, GPU"  "C4. confound arms: cone-removed, GC-removed, cross-gene" \
   "${BASE[@]}" --arms cone_removed gc_removed cross_gene --alphas 1.0
 
-stage "~20 min"     "C5. stage-4 analysis" \
-  $PY $S/strat/stage4_analysis.py --run $R --dir $ARM
-stage "~1 h, CPU"   "C6. rescore on the nucleotide alignment (private-base metric)" \
+# The rescore comes first: it writes the private-base and platy-bp columns, and every analysis
+# below defaults to the private-base metric. Ordered the other way, C6 exits on the missing column
+# and _helpers.sh stops the chain -- and no --metric setting avoids it, since the platy-bp column
+# is written by this same rescore. Only the deprecated `legacy` metric exists beforehand.
+stage "~1 h, CPU"   "C5. rescore on the nucleotide alignment (private-base metric)" \
   $PY $S/strat/stage4_rescore_nt.py --run $R --dir $ARM
+stage "~20 min"     "C6. stage-4 analysis" \
+  $PY $S/strat/stage4_analysis.py --run $R --dir $ARM
 stage "~2 h, CPU"   "C7. leave-human vs platypus-choice decomposition at private sites" \
   $PY $S/strat/site_directionality.py --run $R --dir $ARM
 
@@ -114,9 +122,15 @@ stage "~10 min"     "E5. does evolutionary rate predict steering gain?" \
 
 say "Tracked figure inputs"
 
+# Figure 10's two source tables are built here, not as a side effect of rendering. They used to
+# appear only when the now-archived cross-layer figures were run by hand, so a clean --run reached
+# F2 with them missing.
+stage "~5 min, CPU"  "F1. composition and codon tables for figure 10" \
+  $PY $S/strat/gc_codon_figures.py --run $R --dir $ARM --emit-tables
+
 # Collapses the run dirs above into figure_data/, which is what every figure below reads.
-stage "~1 min, CPU"  "F1. build the tracked figure_data/ tables" \
-  $PY scripts/build_figure_data.py
+stage "~1 min, CPU"  "F2. build this experiment's figure_data/ tables" \
+  $PY scripts/build_figure_data.py --experiments exp3
 fi
 
 say "Figures 5-11"
@@ -132,15 +146,18 @@ if need "figs 5 + 11: strata composition, rate matrix" \
   collect "$R/figures/pub/5_rate_outcome_matrix"       fig11_rate_predictor_outcome_matrix
 fi
 
-# Figures 6a/6b come from the ~100-gene paired panel, not the n=400 one.
+# Figures 6a/6b came from the ~100-gene paired panel until 2026-09-01; they now use the same
+# n=400 stratified panel as every other exp3 figure. The retired renders are kept as "... (OLD)".
 if need "figs 6a/6b: LOO cosine, magnitude spread" \
         $FD/exp3_direction_layer_stats.csv $FD/exp3_direction_per_gene_by_layer.csv \
         $FD/exp3_direction_nulls.npz; then
   fig "figs 6a/6b: LOO cosine, magnitude spread" $PY $S/figures.py \
-    --from-figure-data --out-dir "$PAIRED/figures" --structure-suffix _cds_mean \
+    --from-figure-data --out-dir "$R/geom_cds_mean/figures" --structure-suffix _cds_mean \
     --label 'CDS mean' --pub
-  collect "$PAIRED/figures/pub/1_loo_median_by_layer" fig06a_leave_one_out_cosine_by_block
-  collect "$PAIRED/figures/pub/8b_magnitude_spread"   fig06b_delta_magnitude_spread_by_block
+  collect "$R/geom_cds_mean/figures/pub/1_loo_median_by_layer" \
+          fig06a_leave_one_out_cosine_by_block
+  collect "$R/geom_cds_mean/figures/pub/8b_magnitude_spread" \
+          fig06b_delta_magnitude_spread_by_block
 fi
 
 if need "fig 7: steering delta by stratum" $FD/exp3_steering_outcomes.csv; then
@@ -171,7 +188,7 @@ if need "fig 10: GC by codon position" \
         $FD/exp3_generation_composition.csv $FD/exp3_generation_reference_windows.csv \
         $FD/exp3_codon_substitutions.csv; then
   fig "fig 10: GC by codon position" $PY $S/strat/gc_codon_figures.py \
-    --run "$R" --from-figure-data --layer 27 --only 14 --pub
+    --run "$R" --from-figure-data --layer 27 --pub
   collect "$R/figures_27/pub/14_gc_codon_position" fig10_gc_by_codon_position
 fi
 

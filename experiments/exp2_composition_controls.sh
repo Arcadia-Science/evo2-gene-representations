@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Experiment 2 — can composition-matched controls reproduce the gene-family geometry?
-# Produces publication figures 4 and 12.
+# Produces publication figures 4, 12 and 13.
 #
 #   bash experiments/exp2_composition_controls.sh            # print the plan, run nothing
-#   bash experiments/exp2_composition_controls.sh --figures  # re-render figures 4, 12  (~3 min, CPU)
+#   bash experiments/exp2_composition_controls.sh --figures  # re-render figs 4, 12, 13 (~3 min, CPU)
 #   bash experiments/exp2_composition_controls.sh --run      # full pipeline           (~135 h, GPU)
 #
 # Uses the experiment-1 mammal panel. Controls replace coding positions in place, preserving the
@@ -25,8 +25,9 @@ RUN=results/2026-07-16_mammalian-orthologs-transcript_cdsmask
 OUT=pub/figures
 source experiments/_helpers.sh
 init_experiment exp2
+preflight_tools exp2
 
-echo "Experiment 2 — composition controls (figures 4, 12)"
+echo "Experiment 2 — composition controls (figures 4, 12, 13)"
 [ "$MODE" = plan ]    && echo "DRY RUN — nothing will execute."
 [ "$MODE" = figures ] && echo "FIGURES ONLY — re-rendering from artifacts on disk."
 
@@ -69,11 +70,16 @@ stage "~2 h, CPU"   "D1. W2/angular control preservation and Figure 12 source ta
 stage "~2 h, CPU"   "D2. control preservation, graph-free — the input to figure 4" \
   $PY scripts/mammalian_orthologs/controls_score_graphfree.py --axis both
 
-stage "~1 min, CPU"  "D3. refresh the tracked figure_data/ tables" \
-  $PY scripts/build_figure_data.py
+# Figure 13's question is whether the rho above is just retained source nucleotides, so it reads
+# the same tables and is measured on the same loci. No model, no GPU.
+stage "~15 min, CPU" "D3. nucleotide identity of each control to its source gene" \
+  $PY scripts/controls/control_sequence_identity.py --stage identity
+
+stage "~1 min, CPU"  "D4. refresh this experiment's figure_data/ tables" \
+  $PY scripts/build_figure_data.py --experiments exp2
 fi
 
-say "Figures 4 and 12"
+say "Figures 4, 12 and 13"
 
 if need "fig 4: controls vs natural by layer" figure_data/exp2_control_preservation.csv; then
   fig "fig 4: controls vs natural by layer" $PY scripts/controls/plot_control_wasserstein.py --pub
@@ -87,6 +93,13 @@ if need "fig 12: paired p3, protein vs nucleotide" figure_data/exp2_control_pres
   collect "$RUN/pub/paired_p3_protein_vs_nucleotide" fig12_paired_p3_protein_vs_nucleotide
 fi
 
+if need "fig 13: control identity vs rho" figure_data/exp2_control_identity.csv \
+                                          figure_data/exp2_control_identity_by_family.csv; then
+  fig "fig 13: control identity vs rho" \
+    $PY scripts/controls/control_sequence_identity.py --stage figure --pub
+  collect "$RUN/pub/control_identity_vs_rho" fig13_control_identity_vs_rho
+fi
+
 if [ "$MODE" = plan ]; then
   echo; echo "══ dry run complete. --figures to re-render, --run for the whole experiment."
   exit 0
@@ -94,4 +107,5 @@ fi
 
 finish_figures \
   fig04_controls_vs_natural_by_layer \
-  fig12_paired_p3_protein_vs_nucleotide
+  fig12_paired_p3_protein_vs_nucleotide \
+  fig13_control_identity_vs_rho
