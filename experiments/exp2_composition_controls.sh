@@ -4,7 +4,7 @@
 #
 #   bash experiments/exp2_composition_controls.sh            # print the plan, run nothing
 #   bash experiments/exp2_composition_controls.sh --figures  # re-render figs 4, 12, 13 (~3 min, CPU)
-#   bash experiments/exp2_composition_controls.sh --run      # full pipeline           (~135 h, GPU)
+#   bash experiments/exp2_composition_controls.sh --run      # full pipeline           (~160 h, GPU)
 #
 # Uses the experiment-1 mammal panel. Controls replace coding positions in place, preserving the
 # transcript span and CDS mask; the ladder ranges from GC matching to protein-preserving recoding.
@@ -43,8 +43,12 @@ fi
 
 # synonymous_recode runs first because it is the rung that separates "coding composition" from
 # "protein" as the carrier of the geometry — the other four destroy the protein, so on their own
-# they cannot. Each rung is resumable; scoring upserts, so it can be run against a partial chain.
-for C in synonymous_recode gc_match dinuc_shuffle kmer4_shuffle kmer6_shuffle; do
+# they cannot. missense_subset follows it as its nested partner: it edits ONLY bases the recode
+# edited, so the two differ in whether the protein survives and not in how much sequence moved.
+# It needs no ordering (the recode it nests inside is recreated deterministically per locus, not
+# read from disk), but figure 13 cannot be built without it — the identity ladder has six rungs.
+# Each rung is resumable; scoring upserts, so it can be run against a partial chain.
+for C in synonymous_recode missense_subset gc_match dinuc_shuffle kmer4_shuffle kmer6_shuffle; do
   stage "~16-27 h, GPU" "C1. embed control rung: $C" \
     env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONUNBUFFERED=1 \
     $PY scripts/mammalian_orthologs/embed_cds_masked_mammal.py \
