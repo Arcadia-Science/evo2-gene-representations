@@ -1,0 +1,19 @@
+family,metric_a,metric_b,n_layers,spearman_across_layers
+adrenoceptor,"k-mer composition (CDS, k=6)",patristic tree,32,0.8020164986251147
+adrenoceptor,"k-mer composition (CDS, k=6)",species tree (mammal),32,0.8727772685609534
+adrenoceptor,"k-mer composition (CDS, k=6)",GC content (control),32,0.5879010082493127
+adrenoceptor,patristic tree,species tree (mammal),32,0.8284142988084329
+adrenoceptor,patristic tree,GC content (control),32,0.33748854262144823
+adrenoceptor,species tree (mammal),GC content (control),32,0.4038496791934006
+glutathione_peroxidase,"k-mer composition (CDS, k=6)",patristic tree,32,0.8856095325389552
+glutathione_peroxidase,"k-mer composition (CDS, k=6)",species tree (mammal),32,0.9519706691109076
+glutathione_peroxidase,"k-mer composition (CDS, k=6)",GC content (control),32,0.6887259395050412
+glutathione_peroxidase,patristic tree,species tree (mammal),32,0.8353803849679196
+glutathione_peroxidase,patristic tree,GC content (control),32,0.8830430797433548
+glutathione_peroxidase,species tree (mammal),GC content (control),32,0.6329972502291478
+peroxidase,"k-mer composition (CDS, k=6)",patristic tree,32,0.964069660861595
+peroxidase,"k-mer composition (CDS, k=6)",species tree (mammal),32,0.9750687442713107
+peroxidase,"k-mer composition (CDS, k=6)",GC content (control),32,0.951237396883593
+peroxidase,patristic tree,species tree (mammal),32,0.9824014665444548
+peroxidase,patristic tree,GC content (control),32,0.9024747937671863
+peroxidase,species tree (mammal),GC content (control),32,0.9076076993583869
