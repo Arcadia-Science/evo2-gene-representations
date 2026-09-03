@@ -16,6 +16,48 @@ DEFAULT_ALPHAS: tuple[float, ...] = (0.25, 0.50, 0.75)
 # the metadata (not dropped) so downstream reporting can caveat those comparisons.
 TINY_FAMILY_MAX = 3
 
+# Bumped whenever the W2 definition or the family-order contract changes in a way that makes a
+# previously written matrix or a cached reduction incomparable with a fresh one. Consumers that
+# cache reductions keyed on this metric must store it and refuse a cache that disagrees.
+W2_CONTRACT_VERSION = "w2-2026-09-02"
+
+# A family needs at least this many embedded loci for its distribution to be worth transporting.
+MIN_MEMBERS = 8
+
+
+def family_order(labels, min_members: int = MIN_MEMBERS) -> list[str]:
+    """The canonical family order for a between-family run, derived from the ACTIVE panel.
+
+    `labels` is the per-locus family column of the manifest that was embedded. A family is kept
+    when the panel embeds at least `min_members` of its loci, and the surviving families are
+    returned in the curated panel order from gene_families.HUMAN_FAMILY_ORDER.
+
+    This is the whole contract, and it deliberately depends on nothing but the manifest and the
+    curated definition. It used to be read out of `evo2_mammal_centroid_distances.csv`, an output
+    of the legacy centroid-geodesic analysis, which made a centroid artifact an undeclared
+    prerequisite for a method that otherwise computes W2 straight from the manifest and the
+    embeddings -- so a clean W2 run could fail with every W2 input present.
+
+    Ordering is a labelling choice, not a result: a Spearman rho over the upper triangle is
+    unchanged by any permutation applied consistently to W2 and to the baselines. It matters for
+    provenance and for cache validity, which is why it is pinned here rather than inherited.
+    """
+    import sys
+    from collections import Counter
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from gene_families import HUMAN_FAMILY_ORDER  # noqa: PLC0415
+
+    counts = Counter(labels)
+    unknown = sorted(set(counts) - set(HUMAN_FAMILY_ORDER))
+    if unknown:
+        raise ValueError(
+            f"manifest holds {len(unknown)} families absent from the curated panel: {unknown}\n"
+            "  the manifest and gene_families.HUMAN_FAMILY_ORDER have drifted apart"
+        )
+    return [f for f in HUMAN_FAMILY_ORDER if counts[f] >= min_members]
+
 
 def _alpha_key(alpha: float) -> str:
     """Stable matrix key for an alpha value: fgw_alpha0.25, fgw_alpha0.50, ..."""
@@ -263,6 +305,7 @@ def compute_ot_matrices(
     tiny = [f for f in fam_order if sizes[f] <= TINY_FAMILY_MAX]
     meta = {
         "metric": "ot_between_family",
+        "w2_contract": W2_CONTRACT_VERSION,
         "pot_version": ot.__version__,
         "fam_order": list(fam_order),
         "family_sizes": sizes,
