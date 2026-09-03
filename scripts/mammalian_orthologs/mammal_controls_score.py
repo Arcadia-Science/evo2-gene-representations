@@ -25,10 +25,16 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "baselines"))
 from controls.make_control_sequences import CDSMASK_CONTROLS  # noqa: E402
 from ot_between_family import (  # noqa: E402
+    W2_CONTRACT_VERSION,
     angular_distance,
     compute_ot_matrices,
     l2_normalize,
 )
+
+# Bump when the cache payload's meaning or layout changes. Entries written by an older schema are
+# not reused: a reduced triangle carries no self-description, so an incompatible one is silently
+# plausible rather than obviously broken.
+CACHE_SCHEMA = "controls-cache-v2"
 
 # Blocks whose cached activations are numerically degenerate: mean L2 norm runs 1.13e1 at block 27
 # to 2.41e12 at 30-31, and blocks 30/31 are byte-identical (the tap writes the last block twice), so
@@ -140,7 +146,7 @@ def write_control_summary(sweep_root: Path) -> Path:
             natural = pd.read_csv(natural_path)
             families = set(scores["family"])
             natural_recovery = natural.loc[
-                natural["family"].isin(families), "spearman_geodesic_speciestree"
+                natural["family"].isin(families), "spearman_angular_speciestree"
             ].mean()
         layer_rows = [row for row in rows if row["layer"] == layer]
         natural_row = next((row for row in layer_rows if row["condition"] == "natural"), None)
@@ -231,21 +237,92 @@ def main() -> None:
     score_cache.mkdir(parents=True, exist_ok=True)
     iu_fam = np.triu_indices(len(fams), 1)
 
+    # ── cache provenance contract ───────────────────────────────────────────────────────────────
+    # A reduced triangle is a bare vector of numbers: it stays numerically plausible when the
+    # family coordinate system underneath it changes, so nothing about a wrong cache LOOKS wrong.
+    # Every field below must match before an entry is reused, and a mismatch names itself rather
+    # than reporting a generic "panel changed".
+    expected_group_lens = [
+        len(group_indices[g]) * (len(group_indices[g]) - 1) // 2 for g in grp_order
+    ]
+    contract = {
+        "cache_schema": CACHE_SCHEMA,
+        "w2_contract": W2_CONTRACT_VERSION,
+        "panel_id": panel_id,
+        "metric": "angular+wasserstein",
+        "between_metric": "wasserstein",
+        "fam_order": np.asarray(fams, dtype=object).astype(str),
+        "group_order": np.asarray(grp_order, dtype=object).astype(str),
+        "offsets": np.cumsum([0] + expected_group_lens),
+        "between_len": len(iu_fam[0]),
+    }
+
+    NEW_FIELDS = ("cache_schema", "w2_contract", "metric", "fam_order", "group_order")
+
+    def _shape_ok(z) -> str | None:
+        """Payload checks that apply to any schema: the vectors must be the panel's shape."""
+        if str(z["panel_id"]) != panel_id:
+            return f"panel_id {str(z['panel_id'])!r} != {panel_id!r}"
+        if str(z["between_metric"]) != "wasserstein":
+            return f"between_metric {str(z['between_metric'])!r} != 'wasserstein'"
+        if not np.array_equal(z["offsets"], contract["offsets"]):
+            return "offsets differ (group structure changed)"
+        if "between_ut" not in z.files or len(z["between_ut"]) != contract["between_len"]:
+            got = len(z["between_ut"]) if "between_ut" in z.files else "absent"
+            return f"between_ut length {got} != {contract['between_len']}"
+        if len(z["groups_flat"]) != int(contract["offsets"][-1]):
+            return f"groups_flat length {len(z['groups_flat'])} != {int(contract['offsets'][-1])}"
+        return None
+
+    def cache_status(z) -> tuple[str, str | None]:
+        """('ok', None) reusable, ('upgrade', None) pre-schema but compatible, ('stale', why).
+
+        The pre-schema entries carry panel_id, which already hashes the ordered locus keys, the
+        group structure AND the ordered family labels. So a matching panel_id plus the right
+        vector lengths does establish that the payload belongs to this panel; what those entries
+        lack is the ability to SAY so. Upgrading rewrites the provenance around an unchanged
+        payload rather than discarding ~2.4 h of exact-EMD compute. Anything else recomputes.
+        """
+        if any(f not in z.files for f in ("panel_id", "between_metric", "offsets", "groups_flat")):
+            return "stale", "pre-panel_id entry"
+        if (why := _shape_ok(z)) is not None:
+            return "stale", why
+        legacy = [f for f in NEW_FIELDS if f not in z.files]
+        if legacy:
+            # Partially-written entries are not upgradeable: absence must be all-or-nothing.
+            if len(legacy) != len(NEW_FIELDS):
+                return "stale", f"half-written provenance, missing {legacy}"
+            return "upgrade", None
+        for field_ in ("cache_schema", "w2_contract", "metric"):
+            if str(z[field_]) != str(contract[field_]):
+                return "stale", f"{field_} {str(z[field_])!r} != {str(contract[field_])!r}"
+        for field_ in ("fam_order", "group_order"):
+            if not np.array_equal(z[field_], contract[field_]):
+                return "stale", f"{field_} differs (family or group coordinate system changed)"
+        return "ok", None
+
+    def _write_entry(path: Path, vecs: list[np.ndarray], between: np.ndarray) -> None:
+        tmp = path.with_suffix(".tmp.npz")
+        np.savez_compressed(tmp, **contract, groups_flat=np.concatenate(vecs), between_ut=between)
+        tmp.replace(path)
+
     def reduce_condition(cond: str, emb: np.ndarray | None, layer: int):
         """Return per-group angular triangles and the between-family W2 triangle."""
         p = score_cache / f"{cond}_L{layer}.npz"
         vecs = between = None
         if p.exists():
             z = np.load(p, allow_pickle=False)
-            if str(z["panel_id"]) == panel_id:
+            status, reason = cache_status(z)
+            if status in ("ok", "upgrade"):
                 off = z["offsets"]
                 vecs = [z["groups_flat"][off[i] : off[i + 1]] for i in range(len(grp_order))]
-                if "between_metric" in z.files and str(z["between_metric"]) == "wasserstein":
-                    between = z["between_ut"]
+                between = z["between_ut"]
+                if status == "upgrade":
+                    z.close()
+                    _write_entry(p, vecs, between)
+                    print(f"    cache provenance upgraded for {cond} L{layer}", flush=True)
             else:
-                print(
-                    f"    cache stale for {cond} L{layer} (panel changed) — recomputing", flush=True
-                )
+                print(f"    cache stale for {cond} L{layer}: {reason} — recomputing", flush=True)
         if vecs is not None and between is not None:
             return {g: v for g, v in zip(grp_order, vecs, strict=False)}, between
         if emb is None:
@@ -260,16 +337,12 @@ def main() -> None:
         if between is None:
             between = between_ut_w2(emb, fam_arr, fams, iu_fam)
         offsets = np.cumsum([0] + [len(v) for v in vecs])
-        tmp = p.with_suffix(".tmp.npz")
-        np.savez_compressed(
-            tmp,
-            panel_id=panel_id,
-            between_metric="wasserstein",
-            offsets=offsets,
-            groups_flat=np.concatenate(vecs),
-            between_ut=between,
-        )
-        tmp.replace(p)
+        if not np.array_equal(offsets, contract["offsets"]):
+            raise SystemExit(
+                f"{cond} L{layer}: reduced group sizes {offsets.tolist()} do not match the "
+                f"panel contract {contract['offsets'].tolist()}"
+            )
+        _write_entry(p, vecs, between)
         return {g: v for g, v in zip(grp_order, vecs, strict=False)}, between
 
     def chunk_needs(cond: str, chunk: list[int]) -> bool:
