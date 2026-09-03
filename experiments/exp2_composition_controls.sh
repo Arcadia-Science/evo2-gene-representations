@@ -6,8 +6,13 @@
 #   bash experiments/exp2_composition_controls.sh --figures  # re-render figs 4, 12, 13 (~3 min, CPU)
 #   bash experiments/exp2_composition_controls.sh --run      # full pipeline           (~160 h, GPU)
 #
-# Uses the experiment-1 mammal panel. Controls replace coding positions in place, preserving the
-# transcript span and CDS mask; the ladder ranges from GC matching to protein-preserving recoding.
+# Controls replace coding positions in place, preserving the transcript span and CDS mask; the
+# ladder ranges from GC matching to protein-preserving recoding.
+#
+# REQUIRES EXPERIMENT 1 for --run: this reuses exp1's mammal panel. Stage C1 reads
+# data/cache/mammal_cds_positions.json (exp1 A7, build_cds_masks_mammal.py) and stage D2 reads
+# blocks15/betweenfam_ot_metadata.json (exp1 B3). Run exp1 --run first. --figures needs nothing
+# but the tracked figure_data/ tables.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -71,7 +76,9 @@ say "Scoring"
 # embedding cache is complete; partial rungs are skipped rather than scored on a subset.
 stage "~2 h, CPU"   "D1. W2/angular control preservation and Figure 12 source tables" \
   $PY scripts/mammalian_orthologs/mammal_controls_score.py --arm transcript_cdsmask
-stage "~2 h, CPU"   "D2. control preservation, graph-free — the input to figure 4" \
+# OPTIONAL: an independent graph-free recomputation kept as a cross-check. Nothing reads its
+# output; figure 4 comes from D1. Skipping D2 changes no figure.
+stage "~2 h, CPU"   "D2. control preservation, graph-free (optional cross-check)" \
   $PY scripts/mammalian_orthologs/controls_score_graphfree.py --axis both
 
 # Figure 13's question is whether the rho above is just retained source nucleotides, so it reads

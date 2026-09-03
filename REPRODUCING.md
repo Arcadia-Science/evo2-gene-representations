@@ -14,6 +14,24 @@ needs nothing but the tracked `figure_data/`. Full runs are resumable, and addit
 Evo2-7B, many GPU-hours, the reference downloads and the external tools listed under
 [Required inputs](#required-inputs) — each runner checks the tools before it starts work.
 
+## Run order
+
+`--figures` reads only the tracked `figure_data/` tables, so the three runners are independent in
+that mode and can be run in any order.
+
+**`--run` is not.** Experiments 2 and 3 consume experiment 1's outputs, so experiment 1 must
+complete first:
+
+| Consumer | Reads | Written by |
+|---|---|---|
+| exp 2, stage C1 | `data/cache/mammal_cds_positions.json` | exp 1, A7 `build_cds_masks_mammal.py` |
+| exp 2, stage D2 | `blocks15/betweenfam_ot_metadata.json` | exp 1, B3 `ot_between_family_sweep.py` |
+| exp 3, stages E1–E2 | `data/mammalian_orthologs/tree/species_tree.nwk` | exp 1, A6 `build_species_tree.py` |
+
+Experiments 2 and 3 do not depend on each other and can run in either order once experiment 1 is
+done. Each of these reads is guarded: a missing input stops the stage naming the file *and the
+experiment stage that writes it*, rather than raising a bare `FileNotFoundError`.
+
 ## Publication scope
 
 | Experiment | Analysis | Figures |
@@ -55,7 +73,7 @@ example at a copy that already exists on a fast local disk:
 | `GLM_MAMMAL_GENOMES` | `$GLM_SCRATCH/mammal_genomes` | Ensembl genome FASTA + GTF, 24 species | exp 1, A2–A3 |
 | `GLM_STRAT_SEQS` | `$GLM_SCRATCH/strat_seqs` | human + platypus CDS, peptide and GTF | exp 3, A1–A2 |
 | `GLM_STRAT_MAMMAL_CDS` | `$GLM_STRAT_SEQS/mammals` | per-species CDS FASTA, 24 mammals | exp 3, E1 |
-| `GLM_TMPDIR` | system temp (`TMPDIR`) | MAFFT scratch during alignment | exp 1, B2 |
+| `GLM_TMPDIR` | system temp (`TMPDIR`) | MAFFT/FastTree scratch during alignment | exp 1, B2 |
 
 ```bash
 export GLM_SCRATCH=/mnt/fast/glm        # move all of them at once
@@ -163,9 +181,16 @@ noncoding positions unchanged. The full runner embeds:
 - dinucleotide, 4-mer, and 6-mer shuffles;
 - the paired third-codon-position synonymous and missense arms used by Figure 12.
 
-`mammal_controls_score.py` writes graph-based preservation scores and the consolidated
-`control_rho_by_layer.csv`. `controls_score_graphfree.py --axis both` writes the direct-angular
-and Wasserstein preservation tables used by Figure 4.
+`mammal_controls_score.py` (stage D1) writes the per-block
+`controls/control_{between,within}_scores.csv` that `build_figure_data.control_preservation()`
+collapses into `figure_data/exp2_control_preservation.csv` — **this is what Figure 4 reads**.
+
+`controls_score_graphfree.py` (stage D2, ~2 h CPU) writes
+`results/_{ot,angular}_control_preservation_*.csv`. Nothing in the repository reads those files:
+they are an independent graph-free recomputation of the same quantities, kept as a cross-check.
+**Stage D2 is optional** — skipping it changes no figure. An earlier version of this document
+said it wrote the tables used by Figure 4, which was wrong and would have led a reproducer to skip
+D1, the stage that actually matters.
 
 | Figure | Generator |
 |---|---|
@@ -181,11 +206,15 @@ bash experiments/exp3_platypus_steering.sh --run
 bash experiments/exp3_platypus_steering.sh --figures
 ```
 
-Experiment 3 has two connected panels:
+Experiment 3 uses one panel: a conservation-stratified set of 400 human–platypus ortholog pairs,
+used for generation, site-directionality, evolutionary-rate analyses, and every published figure it
+produces (5–11).
 
-- a 103-gene paired panel used for the all-block direction-geometry plots in Figures 6a–6b;
-- a conservation-stratified panel of 400 human–platypus ortholog pairs used for generation,
-  site-directionality, evolutionary-rate analyses, and Figures 5 and 7–11.
+A second 103-gene paired panel supplied Figures 6a–6b until 2026-09-01, when they moved to the
+n=400 panel so the direction geometry and the steering results it explains come from the same gene
+set. The stages that built it are archived under
+`deprecated/paired103-panel-stages-2026-09-03/`; removing them saved ~2.5 h per run (2 h of it GPU)
+producing output nothing read.
 
 The production steering stages are:
 
@@ -201,6 +230,19 @@ The runner generates at block 27. The stage-4 directory may also hold explorator
 other layers (named with an `_L<n>` suffix) and arms that were generated but not reported;
 `build_figure_data.py` admits only rows whose recorded layer is `blocks.27`, plus the hook-free
 `unsteered` baseline, and names any condition it excludes.
+
+### Known gap: the tracked steering table
+
+`figure_data/exp3_steering_outcomes.csv` predates the driver's C3 fix. Its dose ladder runs to
+alpha 4 while the norm-matched random null stops at alpha 2, because C3 used to request
+`--arms add` alone. C3 now requests `--arms add random`, and `build_figure_data.STEER_CONDITIONS`
+requires `random_a3.0` and `random_a4.0`.
+
+So a full `--run` produces a table with **two more conditions** than the one figures 7 and 8 were
+rendered from. Neither figure plots the random ladder — figure 8 derives its doses from the `add_a*`
+arms — so the panels are not expected to change, but the artifact and a fresh run differ until the
+table is regenerated. `build_figure_data.py --experiments exp3` fails against a stage-4 directory
+that lacks the two conditions, naming them. No missing measurement has been synthesized.
 
 ### Reproducibility of the generations
 
