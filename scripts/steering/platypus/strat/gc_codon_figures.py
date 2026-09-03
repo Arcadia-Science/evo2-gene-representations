@@ -1,5 +1,18 @@
-"""Composition figures: where the generations sit relative to each species, and how much of the
-steering vector is GC. CPU only, built from artefacts the run already has.
+"""Figure 10: GC by codon position, beside overall GC against both species' reference lines.
+
+CPU only, built from artefacts the run already has. Two modes:
+
+    --emit-tables   compute <run>/figures/{12b_composition_gene_means,12c_reference_windows,
+                    13b_codon_substitution_stats}.csv and exit. build_figure_data.py reads the
+                    first and third, so a full --run must do this BEFORE building figure_data/.
+    (default)       render the figure, from the tracked tables with --from-figure-data or from
+                    the cached tables above without it.
+
+Five further diagnostic figures (this script's internal numbering 12, 13, 15, 16, 17) lived here
+until 2026-09-03. None was in the pub, and figures 16/17 -- the block-24 vs block-27 comparison --
+were the reason the shared cache spanned two intervention layers, which leaked block-24 rows into
+the tracked Figure 10 tables. They are archived, not deleted, under
+deprecated/gc-codon-diagnostics-2026-09-03/.
 """
 
 from __future__ import annotations
@@ -36,6 +49,10 @@ PLAT_C, HUM_C = acs.STEER_COLORS["target"], acs.STEER_COLORS["source"]
 BASES = set("ACGT")
 STOPS = {"TAA", "TAG", "TGA"}
 # The dose ladder, in the order it is plotted. `unsteered` is alpha = 0.
+# The reported intervention layer. Conditions from it carry no suffix; every other layer's carry
+# `_L<n>` (see layer_suffix), which is how a row's provenance is recovered from its condition name.
+STEER_LAYER = 27
+
 DOSE = ["unsteered", "add_a0.5", "add_a1.0", "add_a2.0", "add_a3.0", "add_a4.0"]
 EXTRA = ["random_a1.0", "add_gc_removed_a1.0"]
 # Tick labels for the rungs of DOSE, in the same order.
@@ -63,9 +80,6 @@ def cache_dir(run: Path) -> Path:
     return d
 
 
-def _layer_note(layer: int) -> str:
-    """Return a title suffix identifying the steering layer."""
-    return f"  —  steering at blocks.{layer}"
 
 
 def complete_conditions(
@@ -105,13 +119,27 @@ def extra_arms(suffix: str = "") -> list[str]:
     return [c + suffix for c in EXTRA]
 
 
-# Every condition the cached tables should cover. Conditions that do not exist yet simply do not
-# appear; nothing downstream assumes they are there.
-KEEP = list(
-    dict.fromkeys(
-        DOSE + EXTRA + dose_ladder("_L24") + extra_arms("_L24") + ["add_own", "add_own_L24"]
-    )
-)
+# Every condition the cached tables should cover: the reported block-27 arm and nothing else.
+# It used to include the `_L24` ladder as well, because the archived cross-layer figures 16/17
+# compared the two layers -- but these tables are also build_figure_data's source for Figure 10,
+# so the tracked publication artifact inherited block-24 rows that no figure plots. Conditions
+# that do not exist yet simply do not appear; nothing downstream assumes they are there.
+KEEP = list(dict.fromkeys(DOSE + EXTRA + ["add_own"]))
+
+
+def _only_kept(df: pd.DataFrame, src: Path) -> pd.DataFrame:
+    """Drop conditions outside KEEP from a table read back off disk.
+
+    The build path already filters, but a cache written before KEEP narrowed to the reported layer
+    still holds `_L24` rows and the read path handed them through unchanged -- which is how block-24
+    conditions reached the tracked Figure 10 tables. Filtering here makes a stale cache self-correct
+    instead of silently widening the artifact.
+    """
+    extra = sorted(set(df.condition) - set(KEEP))
+    if extra:
+        print(f"  ({src.name}: dropping {len(extra)} conditions outside this layer: {extra})")
+        df = df[df.condition.isin(KEEP)].reset_index(drop=True)
+    return df
 
 
 def gc_stats(seq: str) -> tuple[float, float]:
@@ -180,7 +208,17 @@ def gc_by_position(seq: str) -> tuple[float, float, float]:
     return tuple(out)
 
 
-def codon_diff_stats(gen: str, target: str) -> dict:
+# Fewest scorable codons a generation must contribute before its pN/pS is estimable at all. The
+# ratio is a proportion over S and N sites, so a handful of codons gives a value that swings on a
+# single substitution. Was 20 until 2026-09-02, which excluded COX17 entirely: its 54 bp of
+# continuation is 18 codons. Lowered to keep the gene, a deliberate precision-for-coverage trade
+# rather than a free win -- COX17's pN/pS is the least reliable point in the codon table, and
+# `n_codons` is carried per cell so it can be weighted or filtered. Verified surgical: at 15 the
+# only cells that appear are COX17's 17, and every pre-existing cell is bit-identical.
+MIN_CODONS = 15
+
+
+def codon_diff_stats(gen: str, target: str, min_codons: int = MIN_CODONS) -> dict:
     """Synonymous / nonsynonymous differences between a generation and the platypus target."""
     from alignment_metrics import nt_aligner
 
@@ -219,7 +257,7 @@ def codon_diff_stats(gen: str, target: str) -> dict:
                 Sd += 1
             else:
                 Nd += 1
-    if n_cod < 20:
+    if n_cod < min_codons:
         return {}
     pS = Sd / S if S > 0 else np.nan
     pN = Nd / N if N > 0 else np.nan
@@ -263,7 +301,7 @@ def composition_table(
     gc_cache, ref_cache = out / "12b_composition_gene_means.csv", out / "12c_reference_windows.csv"
     if gc_cache.exists() and ref_cache.exists() and not refresh:
         print(f"  (reusing {gc_cache.name}; pass --refresh-composition to recompute)")
-        return pd.read_csv(gc_cache), pd.read_csv(ref_cache).set_index("gene")
+        return _only_kept(pd.read_csv(gc_cache), gc_cache), pd.read_csv(ref_cache).set_index("gene")
 
     ch = read_fasta(run / "stage1" / "cds_human.fasta", uppercase=False)
     cp = read_fasta(run / "stage1" / "cds_platypus.fasta", uppercase=False)
@@ -398,40 +436,6 @@ def panel_gc(
     ax.set_xlim(-0.6, len(conditions) + 1.5)
 
 
-def panel_codon_usage(
-    ax,
-    g: pd.DataFrame,
-    labels: list[str] = DOSE_LABELS,
-    conditions: list[str] | None = None,
-    xlabel: str = "α",
-    connect: bool = True,
-) -> None:
-    """Codon-usage JSD to each species."""
-    conditions = DOSE if conditions is None else conditions
-    for key, c, nm, mk in (
-        ("jsd_plat", PLAT_C, "to platypus", "o"),
-        ("jsd_hum", HUM_C, "to human", "s"),
-    ):
-        m = [g.loc[g.condition == cc, key].mean() for cc in conditions]
-        e = [g.loc[g.condition == cc, key].sem() for cc in conditions]
-        ax.errorbar(
-            range(len(conditions)),
-            m,
-            yerr=e,
-            color=c,
-            lw=2.0,
-            ls="-" if connect else "none",
-            marker=mk,
-            ms=5,
-            capsize=2,
-            label=nm,
-        )
-    _dose_axis(ax, len(conditions), labels, xlabel)
-    ax.set_ylabel("codon-usage JSD (bits)")
-    ax.set_title(
-        "Codon usage: distance to each species\n(lower = more like that species)", fontsize=8.5
-    )
-    ax.legend(fontsize=7, frameon=False)
 
 
 def panel_gc_by_position(
@@ -463,133 +467,10 @@ def panel_gc_by_position(
     ax.legend(fontsize=7, frameon=False)
 
 
-def panel_frac_synonymous(
-    ax,
-    C: pd.DataFrame,
-    present: list[str],
-    labels: list[str] = DOSE_LABELS,
-    ylabel: str = "% of codon differences that are synonymous",
-    xlabel: str = "α",
-    connect: bool = True,
-) -> None:
-    """Synonymous share of the single-position codon differences vs the platypus target."""
-    xs = range(len(present))
-    m = [100 * C.loc[C.condition == cc, "frac_diff_syn"].mean() for cc in present]
-    e = [100 * C.loc[C.condition == cc, "frac_diff_syn"].sem() for cc in present]
-    ax.errorbar(
-        xs,
-        m,
-        yerr=e,
-        color=PLUM,
-        lw=2.0,
-        ls="-" if connect else "none",
-        marker="o",
-        ms=4.5,
-        capsize=2,
-    )
-    _dose_axis(ax, len(present), labels, xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title("Is the change silent?\n(higher = codons preserved)", fontsize=8.5)
 
 
-def panel_pn_ps(
-    ax,
-    C: pd.DataFrame,
-    present: list[str],
-    labels: list[str] = DOSE_LABELS,
-    title: str = "Per-site rate ratio vs the target\n(>1 = protein-changing in excess)",
-    xlabel: str = "α",
-    connect: bool = True,
-) -> None:
-    """pN/pS against the platypus target over the dose ladder."""
-    xs = range(len(present))
-    m = [C.loc[C.condition == cc, "pN_over_pS"].mean() for cc in present]
-    e = [C.loc[C.condition == cc, "pN_over_pS"].sem() for cc in present]
-    ax.errorbar(
-        xs,
-        m,
-        yerr=e,
-        color=INK,
-        lw=2.0,
-        ls="-" if connect else "none",
-        marker="o",
-        ms=4.5,
-        capsize=2,
-    )
-    ax.axhline(1.0, color=GREY, ls="--", lw=1.3)
-    # Below the line, not above it: 1.0 is at the very top of the autoscaled range, so a label
-    # sitting on top of it is clipped by the axes frame.
-    ax.text(len(present) - 1, 1.0, " pN = pS", color=GREY, fontsize=6.5, va="top", ha="right")
-    _dose_axis(ax, len(present), labels, xlabel)
-    ax.set_ylabel("pN / pS")
-    ax.set_title(title, fontsize=8.5)
 
 
-# figure 12
-def fig12(run: Path, arm: str, out: Path, refresh: bool = False, layer: int = 27) -> pd.DataFrame:
-    suffix = layer_suffix(layer)
-    g, R = composition_table(run, arm, cache_dir(run), refresh=refresh)
-    ladder, lab = ladder_and_labels(g, suffix, "fig12")
-
-    set_pub_style(title_size=9, tick_size=7)
-    fig, axes = plt.subplots(1, 4, figsize=(16.2, 4.3))
-
-    panel_gc(axes[0], g, R, "gc", lab, conditions=ladder)
-    panel_gc(axes[1], g, R, "gc3", lab, conditions=ladder)
-    panel_codon_usage(axes[2], g, lab, conditions=ladder)
-
-    # The directional test: toward platypus and away from human are different claims, so plot both
-    # changes per gene. The diagonal is "no differential preference"; only points below it are
-    # specifically platypus-ward.
-    ax = axes[3]
-    u = g[g.condition == "unsteered"].set_index("gene")
-    s = g[g.condition == f"add_a1.0{suffix}"].set_index("gene")
-    ix = s.index.intersection(u.index)
-    dh = (s.loc[ix, "jsd_hum"] - u.loc[ix, "jsd_hum"]).to_numpy()
-    dp = (s.loc[ix, "jsd_plat"] - u.loc[ix, "jsd_plat"]).to_numpy()
-    ax.scatter(dh, dp, s=9, color=INK, alpha=0.45, lw=0)
-    lim = float(np.nanmax(np.abs(np.concatenate([dh, dp])))) * 1.05
-    ax.plot([-lim, lim], [-lim, lim], color=GREY, ls=":", lw=1.2)
-    ax.axhline(0, color=GREY, lw=0.8)
-    ax.axvline(0, color=GREY, lw=0.8)
-    ax.set_xlim(-lim, lim)
-    ax.set_ylim(-lim, lim)
-    n_spec = int(np.sum(dp < dh))
-    ax.set_xlabel("Δ JSD to human  (α=1 − unsteered)")
-    ax.set_ylabel("Δ JSD to platypus")
-    ax.set_title(
-        f"Toward platypus, or away from human?\n{n_spec}/{len(ix)} genes below the diagonal",
-        fontsize=8.5,
-    )
-
-    fig.suptitle(
-        "Composition of the generations against both species' actual CDS  "
-        f"(same scored window; gene means, not sample means){_layer_note(layer)}",
-        y=1.02,
-        fontsize=10,
-    )
-    fig.tight_layout()
-    for ext in ("png", "pdf"):
-        fig.savefig(out / f"12_composition_vs_platypus.{ext}", dpi=300, bbox_inches="tight")
-    plt.close(fig)
-
-    tab = (
-        g.groupby("condition")
-        .agg(
-            gc=("gc", "mean"),
-            gc3=("gc3", "mean"),
-            jsd_to_platypus=("jsd_plat", "mean"),
-            jsd_to_human=("jsd_hum", "mean"),
-            n_genes=("gene", "nunique"),
-        )
-        .round(4)
-    )
-    for key in ("gc", "gc3"):
-        tab.loc["REFERENCE_platypus_CDS", key] = round(float(R[f"{key}_platypus"].mean()), 4)
-        tab.loc["REFERENCE_human_CDS", key] = round(float(R[f"{key}_human"].mean()), 4)
-    tab.to_csv(out / "12_composition_vs_platypus.csv")
-    print(f"[wrote] {out}/12_composition_vs_platypus.png")
-    return tab
 
 
 # codon-level substitution stats (row 2 of figure 13)
@@ -605,7 +486,7 @@ def _cs_one_gene(gene: str) -> list[dict]:
     out = []
     for rec in _CS["gens"].get(gene, []):
         g1, g2, g3 = gc_by_position(rec["seq"])
-        st = codon_diff_stats(rec["seq"], tgt)
+        st = codon_diff_stats(rec["seq"], tgt, _CS.get("min_codons", MIN_CODONS))
         if not st:
             continue
         out.append(
@@ -631,7 +512,7 @@ def codon_stats(
     cache = out / "13b_codon_substitution_stats.csv"
     if cache.exists() and not refresh:
         print(f"  (reusing {cache.name}; pass --refresh-codons to recompute)")
-        return pd.read_csv(cache)
+        return _only_kept(pd.read_csv(cache), cache)
 
     cp = read_fasta(run / "stage1" / "cds_platypus.fasta", uppercase=False)
     plan = pd.read_csv(run / arm / "scoring_plan.csv")
@@ -660,7 +541,11 @@ def codon_stats(
     from multiprocessing import Pool
 
     rows = []
-    with Pool(workers, initializer=_cs_init, initargs=({"target": target, "gens": gens},)) as pool:
+    with Pool(
+        workers,
+        initializer=_cs_init,
+        initargs=({"target": target, "gens": gens, "min_codons": MIN_CODONS},),
+    ) as pool:
         for i, res in enumerate(pool.imap_unordered(_cs_one_gene, genes, chunksize=1), 1):
             rows.extend(res)
             if i % 50 == 0:
@@ -672,226 +557,6 @@ def codon_stats(
     return g
 
 
-# figure 13
-def fig13(
-    run: Path,
-    arm: str,
-    out: Path,
-    rep_dir: str,
-    layer: int,
-    workers: int = 8,
-    refresh_codons: bool = False,
-) -> pd.DataFrame:
-    suffix = layer_suffix(layer)
-    npz = run / rep_dir / "loo_vectors.npz"
-    if not npz.exists():
-        sys.exit(f"no {npz}; pass --rep-dir (stage3_cds_mean or stage3_aligned_mean)")
-    d = np.load(npz, allow_pickle=True)
-    if "gc_axis_L0" not in d:
-        sys.exit("loo_vectors.npz has no gc_axis_L* -- re-run stage3_select.py (added 2026-08-07)")
-    layers = [int(x) for x in d["layers"]]
-
-    pooled = np.load(run / "stage2" / "pooled_representations.npz", allow_pickle=True)
-    key = "cds_mean" if "cds_mean" in rep_dir else "aligned_mean"
-    X = pooled[key]  # (genes, 2, layers, dim); species order = pooled["species"]
-    sp = [str(x) for x in pooled["species"]]
-    ip = next(
-        i for i, s in enumerate(sp) if s.lower().startswith("plat") or s.lower().startswith("orn")
-    )
-    ih = 1 - ip
-
-    def unit(v):
-        n = np.linalg.norm(v)
-        return v / n if n else v
-
-    rows = []
-    for li in layers:
-        v = d[f"v_pooled_L{li}"].astype(np.float64)
-        gc = d[f"gc_axis_L{li}"].astype(np.float64)
-        mu = d[f"muhat_L{li}"].astype(np.float64)
-        D = (X[:, ip, li, :] - X[:, ih, li, :]).astype(np.float64)  # per-gene delta cloud
-        Dc = D - D.mean(axis=0, keepdims=True)
-        # PC1 of the MEAN-CENTRED cloud via SVD (no 4096x4096 covariance matrix needed)
-        _U, S, Vt = np.linalg.svd(Dc, full_matrices=False)
-        pc1 = Vt[0]
-        rows.append(
-            {
-                "layer": li,
-                "cos_v_gc": abs(float(unit(v) @ unit(gc))),
-                "cos_v_mu": abs(float(unit(v) @ unit(mu))),
-                "cos_pc1_gc": abs(float(pc1 @ unit(gc))),
-                "cos_pc1_mu": abs(float(pc1 @ unit(mu))),
-                "cos_pc1_v": abs(float(pc1 @ unit(v))),
-                "pc1_var_frac": float(S[0] ** 2 / np.sum(S**2)),
-            }
-        )
-    T = pd.DataFrame(rows).set_index("layer")
-    T["share_of_v2_along_gc"] = T.cos_v_gc**2
-    T.to_csv(out / "13_gc_in_steering_vector.csv")
-    at = T.loc[layer]
-
-    # ---- the causal side: what the gc_removed arm did to the gain ----------------------------
-    summ = run / arm / "analysis_summary.csv"
-    causal = {}
-    if summ.exists():
-        s = pd.read_csv(summ)
-        col = next((c for c in s.columns if c.endswith("_delta") and "correct" in c), None)
-        if col:
-            for cond in (f"add_a1.0{suffix}", f"add_gc_removed_a1.0{suffix}"):
-                q = s[s.condition == cond]
-                if len(q):
-                    causal[cond] = float(q.iloc[0][col])
-            causal["metric"] = col.replace("_delta", "")
-
-    C = codon_stats(run, arm, cache_dir(run), workers=workers, refresh=refresh_codons)
-
-    set_pub_style(title_size=9, tick_size=7)
-    fig, axall = plt.subplots(2, 4, figsize=(16.2, 8.6))
-    axes = axall[0]
-
-    ax = axes[0]
-    ax.plot(T.index, T.cos_v_gc, color=INK, lw=2.0, marker="o", ms=3.5, label="|cos(v, GC axis)|")
-    ax.plot(
-        T.index,
-        T.cos_v_mu,
-        color=GREY,
-        lw=1.6,
-        ls="--",
-        marker="s",
-        ms=3,
-        label="|cos(v, μ̂)| — cone",
-    )
-    ax.axvline(layer, color=WARM, ls=":", lw=1.4)
-    ax.text(layer, ax.get_ylim()[1], f" L{layer}", color=WARM, fontsize=7, va="top")
-    ax.set_xlabel("layer (block)")
-    ax.set_ylabel("|cosine|")
-    ax.set_title("How much of the steering direction\nis the GC axis, by layer", fontsize=8.5)
-    ax.legend(fontsize=6.8, frameon=False)
-
-    ax = axes[1]
-    ax.plot(T.index, 100 * T.pc1_var_frac, color=PLUM, lw=2.0, marker="o", ms=3.5)
-    ax.axvline(layer, color=WARM, ls=":", lw=1.4)
-    ax.set_xlabel("layer (block)")
-    ax.set_ylabel("PC1 variance explained (%)")
-    ax.set_title("PC1 of the difference-vector cloud\n(fit across genes, per layer)", fontsize=8.5)
-
-    ax = axes[2]
-    bars = [
-        ("|cos(PC1, GC axis)|", at.cos_pc1_gc, PLAT_C),
-        ("|cos(v, GC axis)|", at.cos_v_gc, INK),
-        ("|cos(PC1, v)|", at.cos_pc1_v, PLUM),
-        ("|cos(PC1, μ̂)|", at.cos_pc1_mu, GREY),
-        ("|cos(v, μ̂)|", at.cos_v_mu, GREY),
-    ]
-    ax.barh(
-        [b[0] for b in bars][::-1],
-        [b[1] for b in bars][::-1],
-        color=[b[2] for b in bars][::-1],
-        height=0.62,
-    )
-    for i, b in enumerate(bars[::-1]):
-        ax.text(b[1] + 0.015, i, f"{b[1]:.3f}", va="center", fontsize=7.5)
-    ax.set_xlim(0, 1.05)
-    ax.set_xlabel("|cosine|")
-    ax.set_title(f"At L{layer}: PC1 IS the GC axis,\nbut v is only partly on it", fontsize=8.5)
-    ax.tick_params(labelsize=7)
-
-    # ---- geometry vs effect ------------------------------------------------------------------
-    ax = axes[3]
-    geo = 100 * float(at.share_of_v2_along_gc)
-    if f"add_a1.0{suffix}" in causal and f"add_gc_removed_a1.0{suffix}" in causal:
-        kill = 100 * (1 - causal[f"add_gc_removed_a1.0{suffix}"] / causal[f"add_a1.0{suffix}"])
-        vals = [
-            ("share of ‖v‖²\nalong the GC axis", geo, INK),
-            ("share of the GAIN\nlost when GC is\nprojected out", kill, WARM),
-        ]
-        ax.bar([v[0] for v in vals], [v[1] for v in vals], color=[v[2] for v in vals], width=0.55)
-        for i, v in enumerate(vals):
-            ax.text(
-                i,
-                v[1] + 1.5,
-                f"{v[1]:.0f}%",
-                ha="center",
-                fontsize=10,
-                fontweight="bold",
-                color=v[2],
-            )
-        ax.set_ylim(0, max(geo, kill) * 1.28)
-        ax.set_ylabel("%")
-        ax.set_title(
-            f"Geometry vs effect — the dissociation\n({causal.get('metric', 'metric')}, α=1)",
-            fontsize=8.5,
-        )
-        ax.tick_params(axis="x", labelsize=7)
-    else:
-        ax.axis("off")
-        ax.text(
-            0.5,
-            0.5,
-            "no analysis_summary.csv with a\n`gc_removed` arm in this dir",
-            ha="center",
-            va="center",
-            fontsize=8,
-            color=GREY,
-            transform=ax.transAxes,
-        )
-
-    # ---- row 2: does the perturbation respect the reading frame? -----------------------------
-    present, xlab = ladder_and_labels(C, suffix, "codon table")
-    xs = range(len(present))
-
-    panel_gc_by_position(axall[1, 0], C, present, xlab)
-
-    ax = axall[1, 1]
-    for col, c, nm, mk in (
-        ("syn_per_100", PLAT_C, "synonymous", "o"),
-        ("nonsyn_per_100", WARM, "nonsynonymous", "s"),
-    ):
-        m = [C.loc[C.condition == cc, col].mean() for cc in present]
-        e = [C.loc[C.condition == cc, col].sem() for cc in present]
-        ax.errorbar(xs, m, yerr=e, color=c, lw=2.0, marker=mk, ms=4.5, capsize=2, label=nm)
-    ax.set_xticks(list(xs), xlab, fontsize=7)
-    ax.set_xlabel("α")
-    ax.set_ylabel("differences per 100 codons")
-    ax.set_title(
-        "Substitutions vs the platypus target\n(single-position codon differences)", fontsize=8.5
-    )
-    ax.legend(fontsize=7, frameon=False)
-
-    panel_frac_synonymous(axall[1, 2], C, present, xlab)
-
-    panel_pn_ps(axall[1, 3], C, present, xlab)
-
-    fig.suptitle(
-        "Is the steering vector just GC?  Geometry says it is a minority of the direction, "
-        "the causal ablation says it carries most of the effect (top);\n"
-        "and the perturbation it applies is not confined to the wobble position (bottom)",
-        y=1.005,
-        fontsize=10,
-    )
-    fig.tight_layout()
-    for ext in ("png", "pdf"):
-        fig.savefig(out / f"13_gc_in_steering_vector.{ext}", dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"[wrote] {out}/13_gc_in_steering_vector.png")
-
-    print(f"\n  at L{layer}:")
-    for k in (
-        "cos_pc1_gc",
-        "cos_v_gc",
-        "cos_pc1_v",
-        "cos_pc1_mu",
-        "cos_v_mu",
-        "pc1_var_frac",
-        "share_of_v2_along_gc",
-    ):
-        print(f"    {k:24s} {float(at[k]):.4f}")
-    if causal:
-        print(
-            f"    causal: add {causal.get(f'add_a1.0{suffix}', float('nan')):+.3f} pp -> "
-            f"gc_removed {causal.get(f'add_gc_removed_a1.0{suffix}', float('nan')):+.3f} pp"
-        )
-    return T
 
 
 # figures 14 and 15 -- two-panel regroupings of panels already defined above
@@ -931,38 +596,6 @@ def fig14(
     plt.close(fig)
 
 
-def fig15(
-    run: Path,
-    arm: str,
-    out: Path,
-    workers: int = 8,
-    refresh_codons: bool = False,
-    refresh_composition: bool = False,
-    layer: int = 27,
-) -> None:
-    suffix = layer_suffix(layer)
-    """Codon-usage divergence to each species (from 12) beside the synonymous share (from 13)."""
-    C = codon_stats(run, arm, cache_dir(run), workers=workers, refresh=refresh_codons)
-    g, _R = composition_table(run, arm, cache_dir(run), refresh=refresh_composition)
-    present, xlab = ladder_and_labels(C, suffix, "codon table")
-    ladder, lab = ladder_and_labels(g, suffix, "composition table")
-
-    set_pub_style(title_size=9, tick_size=7)
-    fig, axes = plt.subplots(1, 2, figsize=(8.4, 4.3))
-    panel_codon_usage(axes[0], g, lab, conditions=ladder)
-    # pN/pS provides a site-normalized measure with a neutral reference of 1.
-    panel_pn_ps(
-        axes[1],
-        C,
-        present,
-        xlab,
-        title="Is the change silent?\n(pN / pS; >1 = protein-changing in excess)",
-    )
-    fig.tight_layout()
-    for ext in ("png", "pdf"):
-        fig.savefig(out / f"15_codon_usage_and_silence.{ext}", dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"[wrote] {out}/15_codon_usage_and_silence.png")
 
 
 # Figures 16 and 17 compare steering layers at their shared alpha=1 dose.
@@ -971,112 +604,30 @@ CMP_CONDITIONS = ["unsteered", "random_a1.0_L24", "add_a1.0_L24", "random_a1.0",
 CMP_LABELS = ["unsteered", "random", "add", "random", "add"]
 
 
-def _layer_brackets(ax) -> None:
-    """Write the layer under the two pairs of arms, so the tick labels can stay short."""
-    for x, nm in ((1.5, "blocks.24"), (3.5, "blocks.27")):
-        ax.annotate(
-            nm,
-            xy=(x, -0.115),
-            xycoords=("data", "axes fraction"),
-            ha="center",
-            va="top",
-            fontsize=7.5,
-            color=INK,
-            annotation_clip=False,
-        )
 
 
-def fig16(
-    run: Path,
-    arm: str,
-    out: Path,
-    workers: int = 8,
-    refresh_codons: bool = False,
-    refresh_composition: bool = False,
-) -> None:
-    """GC by codon position and overall GC, at alpha = 1 in both steering layers."""
-    C = codon_stats(run, arm, cache_dir(run), workers=workers, refresh=refresh_codons)
-    g, R = composition_table(run, arm, cache_dir(run), refresh=refresh_composition)
-    present = [c for c in CMP_CONDITIONS if c in set(C.condition)]
-    missing = [c for c in CMP_CONDITIONS if c not in set(C.condition)]
-    if missing:
-        print(f"  NOTE conditions absent from the codon table, dropped: {missing}")
 
-    set_pub_style(title_size=9, tick_size=7)
-    fig, axes = plt.subplots(1, 2, figsize=(8.4, 4.5))
-    panel_gc_by_position(
-        axes[0],
-        C,
-        present,
-        CMP_LABELS[: len(present)],
-        annotate_wobble=False,
-        xlabel="",
-        connect=False,
-    )
-    panel_gc(axes[1], g, R, "gc", CMP_LABELS, conditions=CMP_CONDITIONS, xlabel="")
-    for ax in axes:
-        _layer_brackets(ax)
-    fig.tight_layout()
-    for ext in ("png", "pdf"):
-        fig.savefig(out / f"16_gc_codon_position_L24_vs_L27.{ext}", dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"[wrote] {out}/16_gc_codon_position_L24_vs_L27.png")
-
-
-def fig17(
-    run: Path,
-    arm: str,
-    out: Path,
-    workers: int = 8,
-    refresh_codons: bool = False,
-    refresh_composition: bool = False,
-) -> None:
-    """Codon-usage divergence and pN/pS, at alpha = 1 in both steering layers."""
-    C = codon_stats(run, arm, cache_dir(run), workers=workers, refresh=refresh_codons)
-    g, _R = composition_table(run, arm, cache_dir(run), refresh=refresh_composition)
-    present = [c for c in CMP_CONDITIONS if c in set(C.condition)]
-
-    set_pub_style(title_size=9, tick_size=7)
-    fig, axes = plt.subplots(1, 2, figsize=(8.4, 4.5))
-    panel_codon_usage(axes[0], g, CMP_LABELS, conditions=CMP_CONDITIONS, xlabel="", connect=False)
-    panel_pn_ps(
-        axes[1],
-        C,
-        present,
-        CMP_LABELS[: len(present)],
-        title="Is the change silent?\n(pN / pS; >1 = protein-changing in excess)",
-        xlabel="",
-        connect=False,
-    )
-    for ax in axes:
-        _layer_brackets(ax)
-    fig.tight_layout()
-    for ext in ("png", "pdf"):
-        fig.savefig(
-            out / f"17_codon_usage_and_silence_L24_vs_L27.{ext}", dpi=300, bbox_inches="tight"
-        )
-    plt.close(fig)
-    print(f"[wrote] {out}/17_codon_usage_and_silence_L24_vs_L27.png")
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
+    global FROM_FIGURE_DATA, MIN_CODONS
+    ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run", type=Path, required=True)
     ap.add_argument("--dir", default="stage4_cds_mean_blocks27")
-    ap.add_argument("--rep-dir", default="stage3_cds_mean")
-    ap.add_argument("--layer", type=int, default=27)
+    ap.add_argument("--layer", type=int, default=STEER_LAYER)
+    ap.add_argument(
+        "--emit-tables",
+        action="store_true",
+        help="compute the composition and codon tables into <run>/figures/ and exit without "
+        "rendering. build_figure_data.py reads those two tables, so a full --run must "
+        "materialise them BEFORE it builds figure_data/ -- they used to appear only as a side "
+        "effect of rendering the now-archived cross-layer figures.",
+    )
     ap.add_argument(
         "--from-figure-data",
         action="store_true",
         help="read the tracked composition and codon tables in figure_data/ instead of "
         "recomputing them from the saved generations",
-    )
-    ap.add_argument(
-        "--only",
-        nargs="+",
-        type=int,
-        choices=[12, 13, 14, 15, 16, 17],
-        default=[12, 13, 14, 15, 16, 17],
     )
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument(
@@ -1085,95 +636,65 @@ def main() -> None:
         help="recompute the cached codon-substitution table (a few minutes of alignment)",
     )
     ap.add_argument(
-        "--pub",
-        action="store_true",
-        help="render the PUBLICATION figure (14 only): an exact 1,000 pt panel, the "
-        "style guide's 15 pt type with monospaced numerals, and no tight-bbox "
-        "crop. Writes into <figures>/pub/.",
-    )
-    ap.add_argument(
         "--refresh-composition",
         action="store_true",
         help="recompute the cached generation-composition table (re-reads the generation dump)",
     )
+    ap.add_argument(
+        "--min-codons",
+        type=int,
+        default=MIN_CODONS,
+        help=f"fewest scorable codons a generation must contribute to enter the codon table "
+        f"(default {MIN_CODONS}). Lowering it trades pN/pS precision for gene coverage: at 15 "
+        f"COX17's 18-codon window is admitted. Only takes effect with --refresh-codons.",
+    )
+    ap.add_argument(
+        "--pub",
+        action="store_true",
+        help="render the PUBLICATION figure: an exact 1,000 pt panel, the style guide's 15 pt "
+        "type with monospaced numerals, and no tight-bbox crop. Writes into <figures>/pub/.",
+    )
     args = ap.parse_args()
 
-    global FROM_FIGURE_DATA
     FROM_FIGURE_DATA = args.from_figure_data
+    MIN_CODONS = args.min_codons
     if args.pub:
         pub.enable()
-    # `--layer` is the ONLY layer switch: it picks the stage-4 condition suffix (blocks.27 has
-    # none, later layers carry _L<n>) and the output directory. Figures 12-15 go to the per-layer
-    # <run>/figures_<layer>; the shared caches and the cross-layer figures 16-17 go to
+
+    if args.emit_tables:
+        if args.from_figure_data:
+            sys.exit("--emit-tables computes the tables; it cannot also read them back")
+        shared = cache_dir(args.run)
+        g, _ = composition_table(args.run, args.dir, shared, refresh=args.refresh_composition)
+        c = codon_stats(
+            args.run, args.dir, shared, workers=args.workers, refresh=args.refresh_codons
+        )
+        # Write back unconditionally. build_figure_data reads these CSVs directly rather than
+        # through this module, so filtering a stale cache in memory would not reach it -- the file
+        # on disk has to be the corrected one.
+        g.to_csv(shared / "12b_composition_gene_means.csv", index=False)
+        c.to_csv(shared / "13b_codon_substitution_stats.csv", index=False)
+        print(
+            f"[tables] composition {len(g):,} rows, codon {len(c):,} rows -> {shared}\n"
+            f"[tables] conditions: {sorted(set(g.condition))}"
+        )
+        return
+
+    # `--layer` picks the stage-4 condition suffix (blocks.27 has none, other layers carry _L<n>)
+    # and the output directory <run>/figures_<layer>; the cached tables are shared, in
     # <run>/figures.
     out = figures_dir(args.run, args.layer)
     out.mkdir(parents=True, exist_ok=True)
-    shared = cache_dir(args.run)
-    # The --refresh-* flags are ONE-SHOT: the first figure that touches a cache rebuilds it, and the
-    # figures after it read the freshly written table instead of recomputing the same thing again.
-    rc, rk = args.refresh_codons, args.refresh_composition
-    if 12 in args.only:
-        print(f"building 12_composition_vs_platypus (blocks.{args.layer}) ...")
-        t = fig12(args.run, args.dir, out, refresh=rk, layer=args.layer)
-        rk = False
-        print(t.to_string())
-    if 13 in args.only:
-        print(f"\nbuilding 13_gc_in_steering_vector (blocks.{args.layer}) ...")
-        fig13(
-            args.run,
-            args.dir,
-            out,
-            args.rep_dir,
-            args.layer,
-            workers=args.workers,
-            refresh_codons=rc,
-        )
-        rc = False
-    if 14 in args.only:
-        print(f"\nbuilding 14_gc_codon_position (blocks.{args.layer}) ...")
-        fig14(
-            args.run,
-            args.dir,
-            out,
-            workers=args.workers,
-            refresh_codons=rc,
-            refresh_composition=rk,
-            layer=args.layer,
-        )
-        rc = rk = False
-    if 15 in args.only:
-        print(f"\nbuilding 15_codon_usage_and_silence (blocks.{args.layer}) ...")
-        fig15(
-            args.run,
-            args.dir,
-            out,
-            workers=args.workers,
-            refresh_codons=rc,
-            refresh_composition=rk,
-            layer=args.layer,
-        )
-        rc = rk = False
-    if 16 in args.only:
-        print("\nbuilding 16_gc_codon_position_L24_vs_L27 ...")
-        fig16(
-            args.run,
-            args.dir,
-            shared,
-            workers=args.workers,
-            refresh_codons=rc,
-            refresh_composition=rk,
-        )
-        rc = rk = False
-    if 17 in args.only:
-        print("\nbuilding 17_codon_usage_and_silence_L24_vs_L27 ...")
-        fig17(
-            args.run,
-            args.dir,
-            shared,
-            workers=args.workers,
-            refresh_codons=rc,
-            refresh_composition=rk,
-        )
+    print(f"building 14_gc_codon_position (blocks.{args.layer}) ...")
+    fig14(
+        args.run,
+        args.dir,
+        out,
+        workers=args.workers,
+        refresh_codons=args.refresh_codons,
+        refresh_composition=args.refresh_composition,
+        layer=args.layer,
+    )
 
 
 if __name__ == "__main__":
