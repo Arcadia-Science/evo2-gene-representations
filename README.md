@@ -79,7 +79,7 @@ only input `--figures` needs, so figure rendering works on a fresh clone with no
 GPU. `scripts/build_figure_data.py` writes it from a completed `--run`.
 
 Everything a full `--run` produces is local and ignored by Git: `data/` (sequences, manifests, Evo2
-embedding caches), the dated run directories under `results/`, and `deprecated/`. It also reads
+embedding caches) and the dated run directories under `results/`. It also reads
 reference downloads that are neither tracked nor produced by the pipeline — Ensembl genomes, GTFs
 and CDS FASTAs — which resolve under `data/external/` by default and are relocatable with the
 environment variables in [REPRODUCING.md](REPRODUCING.md#reference-downloads-and-where-they-live).
