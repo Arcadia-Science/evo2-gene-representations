@@ -65,8 +65,8 @@ def _floor(ax, y, label):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    base = ROOT / "results" / "2026-07-28_evo2-platypus-paired"
-    ap.add_argument("--stage2-dir", type=Path, default=base / "stage2")
+    base = ROOT / "results" / "2026-08-08_platypus-strat-400"
+    ap.add_argument("--stage2-dir", type=Path, default=base / "geom_cds_mean")
     ap.add_argument(
         "--from-figure-data",
         action="store_true",
@@ -100,9 +100,14 @@ def main() -> None:
     set_pub_style(title_size=9, tick_size=7)
 
     if args.from_figure_data:
-        st = figure_data.table("exp3_direction_layer_stats").query("panel == 'paired103'")
-        pg = figure_data.table("exp3_direction_per_gene_by_layer").query("panel == 'paired103'")
+        # One panel per table since 2026-09-01 (the n=400 stratified panel); the `panel` column is
+        # carried for provenance, so read it rather than assuming which run built the table.
+        st = figure_data.table("exp3_direction_layer_stats")
+        pg = figure_data.table("exp3_direction_per_gene_by_layer")
         nd = np.load(figure_data.path("exp3_direction_nulls.npz"))
+        panels = set(st.panel) | set(pg.panel)
+        if len(panels) != 1:
+            raise SystemExit(f"expected one panel in the direction tables, found {sorted(panels)}")
     else:
         st = pd.read_csv(d2 / "layer_stats.csv")
         pg = pd.read_csv(d2 / "per_gene_by_layer.csv")
@@ -167,10 +172,27 @@ def main() -> None:
         save(fig, out, stem)
 
     # 5-6 : real vs nulls ------------------------------------------------------
+    # float32 storage leaves ~1e-7 jitter on a constant draw, while a live null's spread is 1e-2
+    # to 1e-1, so anything under this is a null that never actually permuted anything.
+    FLAT = 1e-6
+
+    def degenerate(key: str) -> bool:
+        """A within-family permutation of singleton families is the identity, so on a panel with
+        one gene per family the null collapses onto the observed statistic: no variance and p = 1
+        by construction. Plotting it would lay the null band on top of the data line."""
+        return all(np.nanstd(nd[f"{key}_{li}"]) < FLAT for li in x)
+
     for nullkey, nullname, stem in (
         ("sf", "sign-flip null", "5_real_vs_signflip_null"),
         ("mm", "mismatched-pair null (within family)", "6_real_vs_mismatch_null"),
     ):
+        if degenerate(f"{nullkey}_loo"):
+            print(
+                f"  skipped {stem}: the {nullname} is degenerate here "
+                f"({pg.family.nunique()} families over {pg.gene.nunique()} genes) -- "
+                "the pooled mismatch null is the test to quote"
+            )
+            continue
         fig, axes = plt.subplots(1, 2, figsize=(9.0, 3.1))
         for ax, (col, key, ylab) in zip(
             axes,
