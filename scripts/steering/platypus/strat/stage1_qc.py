@@ -15,7 +15,9 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
 sys.path.insert(0, str(ROOT / "scripts" / "steering"))
 sys.path.insert(0, str(ROOT / "scripts" / "steering" / "platypus"))
+sys.path.insert(0, str(ROOT / "scripts"))
 
+import paths  # noqa: E402
 from dataset import PREFIX_BP, check_cds, qc_pair  # noqa: E402
 from steer_lib import codon_blocks  # noqa: E402
 
@@ -73,7 +75,7 @@ def qc_pair_window(
     return f"window_starts_too_late(h{first_ok}>{max_start_codon})", meta
 
 
-SEQS = Path("/opt/dlami/nvme/strat_seqs")
+SEQS = paths.STRAT_SEQS
 CDS = {
     "human": SEQS / "Homo_sapiens.GRCh38.cds.all.fa.gz",
     "platypus": SEQS / "Ornithorhynchus_anatinus.mOrnAna1.p.v1.cds.all.fa.gz",
@@ -186,6 +188,14 @@ def main() -> None:
     # ---- transcript choice + CDS, both species ------------------------------------------------
     seqs: dict[str, dict[str, tuple[str, str, str]]] = {}
     for sp in ("human", "platypus"):
+        for kind, table in (("CDS FASTA", CDS), ("GTF", GTF)):
+            paths.require(
+                table[sp],
+                f"the {sp} {kind} (Ensembl release 116)",
+                "download the release-116 human/platypus CDS, peptide and GTF files from "
+                "https://ftp.ensembl.org/pub/release-116/ -- see REPRODUCING.md",
+                "GLM_STRAT_SEQS",
+            )
         canon, t2g = canonical_transcripts(GTF[sp])
         ids = set(order.gene_id) if sp == "human" else set(order.plat_gene_id)
         want_tx = {t for t, g in t2g.items() if g in ids}

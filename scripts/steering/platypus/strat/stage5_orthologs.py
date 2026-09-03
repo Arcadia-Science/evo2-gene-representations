@@ -17,12 +17,14 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts" / "steering"))
+sys.path.insert(0, str(ROOT / "scripts"))
 
+import paths  # noqa: E402
 from alignment_metrics import read_fasta  # noqa: E402
 
 REST = "https://rest.ensembl.org"
 CACHE = ROOT / "data" / "cache" / "strat_homology"
-MAMMAL_CDS = Path("/opt/dlami/nvme/strat_seqs/mammals")
+MAMMAL_CDS = paths.STRAT_MAMMAL_CDS
 PANEL_CDS = {"homo_sapiens": "cds_human.fasta", "ornithorhynchus_anatinus": "cds_platypus.fasta"}
 TREE = ROOT / "data" / "mammalian_orthologs" / "tree" / "species_tree.nwk"
 HUMAN, PLATYPUS = "homo_sapiens", "ornithorhynchus_anatinus"
@@ -102,6 +104,13 @@ def main() -> None:
     ap.add_argument("--run", type=Path, required=True)
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
+    paths.require(
+        MAMMAL_CDS,
+        "per-species CDS FASTAs for the 24-mammal rate analysis",
+        "download the release-116 human/platypus CDS, peptide and GTF files from "
+        "https://ftp.ensembl.org/pub/release-116/ -- see REPRODUCING.md",
+        "GLM_STRAT_MAMMAL_CDS",
+    )
     out = args.out or (args.run / "stage5")
     (out / "seqs").mkdir(parents=True, exist_ok=True)
 

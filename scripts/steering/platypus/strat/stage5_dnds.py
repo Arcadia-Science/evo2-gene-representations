@@ -15,7 +15,9 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts" / "steering"))
+sys.path.insert(0, str(ROOT / "scripts"))
 
+import check_tools  # noqa: E402
 from alignment_metrics import read_fasta  # noqa: E402
 
 CODEML = ROOT / "data" / "tools" / "codeml"
@@ -458,9 +460,11 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    for tool in (CODEML, YN00, TRIMAL):
-        if not tool.exists():
-            sys.exit(f"missing tool: {tool} (yn00: make -C data/tools/paml_src/paml-4.10.10/src)")
+    # One wording for every external tool, and one place that knows how to install each. The
+    # message this replaced pointed at data/tools/paml_src/paml-4.10.10/src -- a build tree that
+    # `data/` being git-ignored means a clone never has.
+    for tool in ("codeml", "yn00", "trimal"):
+        check_tools.require(tool)
 
     stage5 = args.run / "stage5"
     ts = pd.read_csv(stage5 / "tree_stats.csv")

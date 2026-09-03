@@ -11,11 +11,15 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import paths  # noqa: E402
 from resolve_orthologs import SPECIES  # noqa: E402  the 24-species panel
 
 REL = "release-116"  # MUST match the release the REST Compara orthology used (info/data -> 116)
 BASE = f"https://ftp.ensembl.org/pub/{REL}"
-DEST = Path("/opt/dlami/nvme/mammal_genomes")
+# ~3.3 GB of Ensembl FASTA + GTF. Override with $GLM_MAMMAL_GENOMES or $GLM_SCRATCH to reuse a
+# copy that already exists rather than downloading it again.
+DEST = paths.MAMMAL_GENOMES
 
 
 def _listing(url: str, tries: int = 4) -> str:
