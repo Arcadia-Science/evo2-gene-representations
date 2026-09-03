@@ -30,8 +30,16 @@ These summaries are written by
   richer nucleotide composition without preserving the encoded protein.
 - `synonymous_recode` preserves the protein while resampling synonymous codons.
 - `paired_p3_syn` and `paired_p3_missense` edit matched third-codon-position sites at the same
-  rate and differ in whether the protein is preserved. Compare these two arms directly; Figure 12
-  reports that contrast.
+  rate, draw the replacement codon from the same family codon table, and differ in whether the
+  protein is preserved. Compare these two arms directly; Figure 12 reports that contrast.
+
+  The arms are not composition-matched, and cannot be made so. At a two-fold degenerate site the
+  synonymous alternative stays inside the transition pair and the missense alternatives are the
+  other pair, so the synonymous arm has a free GC choice at only 5% of eligible sites against 83%
+  for the missense arm. Measured over the panel: GC3 is 0.657 natural, 0.537 synonymous, 0.689
+  missense, and no weighting scheme closes that gap. The difference runs against the reported
+  effect — the synonymous arm is further from natural in composition yet preserves the geometry
+  better — so report it rather than trying to sample it away.
 
 Do not compare a preservation rho with the baseline-recovery correlations from Experiment 1. The
 former compares control geometry with natural geometry; the latter compares model geometry with an

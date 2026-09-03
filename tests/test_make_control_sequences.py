@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "controls"))
 from make_control_sequences import (  # noqa: E402
     _CODON,
     build_family_codon_usage,
+    codon_counts,
     codon_shuffle,
     dinuc_shuffle,
     gc_match,
@@ -220,7 +221,7 @@ def _pair(seq, seed=5):
     usage = build_family_codon_usage({"f": [seq]})["f"]
     return (
         paired_p3(seq, usage, random.Random(seed), "synonymous"),
-        paired_p3(seq, {}, random.Random(seed + 1), "missense"),
+        paired_p3(seq, usage, random.Random(seed + 1), "missense"),
     )
 
 
@@ -267,3 +268,52 @@ def test_paired_missense_introduces_no_stop(seq):
 def test_paired_arms_are_length_preserving(seq):
     syn, mis = _pair(seq)
     assert len(syn) == len(mis) == len(seq)
+
+
+@pytest.mark.parametrize("seq", SEQS)
+def test_paired_arms_draw_from_the_same_codon_distribution(seq):
+    """Both arms weight their alternatives from one table, so they differ in protein outcome
+    rather than in how the replacement was drawn. An arm sampling uniformly while the other
+    sampled by usage would confound the contrast with a composition shift."""
+    usage = build_family_codon_usage({"f": [seq]})["f"]
+    counts = codon_counts(usage)
+    for aa, (cods, weights) in usage.items():
+        if aa == "*":
+            continue
+        for codon, weight in zip(cods, weights, strict=False):
+            assert counts[codon] == weight
+
+
+def test_paired_missense_follows_the_usage_table():
+    """Give the missense arm a real choice and zero out one option: it must never be drawn.
+    Under the old uniform sampling it would come up about half the time."""
+    # From TTT (F) the p3 missense alternatives are TTA and TTG, both L. A table containing TTA
+    # but not TTG must send every edit to TTA.
+    seq = "TTT" * 60
+    usage = build_family_codon_usage({"f": ["TTA" * 60]})["f"]
+    counts = codon_counts(usage)
+    assert counts.get("TTA") and "TTG" not in counts
+    out = paired_p3(seq, usage, random.Random(0), "missense")
+    codons = {out[i * 3 : i * 3 + 3] for i in range(len(out) // 3)}
+    assert codons == {"TTA"}, codons
+
+
+def test_paired_arm_still_edits_when_the_table_has_no_weight():
+    """If the table gives every alternative zero weight the site must still be rewritten, chosen
+    uniformly. Skipping it instead would silently break the arms' matched edit rate."""
+    # From ATT the only p3 missense alternative is ATG, which this table does not contain.
+    seq = "ATT" * 30
+    usage = build_family_codon_usage({"f": ["ATT" * 30]})["f"]
+    assert "ATG" not in codon_counts(usage)
+    out = paired_p3(seq, usage, random.Random(0), "missense")
+    assert all(out[i * 3 : i * 3 + 3] == "ATG" for i in range(len(out) // 3))
+
+
+@pytest.mark.parametrize("seq", SEQS)
+def test_paired_arms_keep_the_same_edit_rate(seq):
+    """Eligibility is a property of the source codon, so matching the weighting must not change
+    how many codons each arm rewrites."""
+    syn, mis = _pair(seq)
+    n = len(seq) // 3
+    edited = lambda a: sum(seq[i * 3 : i * 3 + 3] != a[i * 3 : i * 3 + 3] for i in range(n))
+    assert edited(syn) == edited(mis)
