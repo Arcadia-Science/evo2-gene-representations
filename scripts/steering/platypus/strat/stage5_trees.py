@@ -14,7 +14,9 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts" / "steering"))
+sys.path.insert(0, str(ROOT / "scripts"))
 
+import check_tools  # noqa: E402
 from alignment_metrics import read_fasta  # noqa: E402
 
 IQTREE = ROOT / "data" / "tools" / "iqtree2"
@@ -179,6 +181,10 @@ def main() -> None:
     ap.add_argument("--jobs", type=int, default=14)
     ap.add_argument("--outdir", type=Path, default=None)
     args = ap.parse_args()
+    # Pre-flight rather than discovering it per gene: these were invoked straight from subprocess,
+    # so a clone without them raised FileNotFoundError after MAFFT had already done its work.
+    for tool in ("mafft", "iqtree2", "trimal"):
+        check_tools.require(tool)
     s5 = args.run / "stage5"
     outdir = args.outdir or (s5 / "trees")
     outdir.mkdir(parents=True, exist_ok=True)

@@ -14,6 +14,9 @@ from scipy.stats import spearmanr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/
 
+import check_tools  # noqa: E402
+import paths  # noqa: E402
+
 HUMAN_CDS_JSON = Path("data/cache/cds_sequences.json")
 MIN_MEMBERS = 4  # below this a within-family rank correlation is meaningless
 
@@ -188,6 +191,10 @@ def main() -> None:
     )
     ap.add_argument("--run-dir", required=True)
     args = ap.parse_args()
+    # Both are invoked through subprocess with stderr discarded, so without this a machine lacking
+    # them got an unexplained FileNotFoundError rather than an instruction.
+    for tool in ("mafft", "FastTree"):
+        check_tools.require(tool)
     run_dir = Path(args.run_dir)
 
     geo_files = list(run_dir.glob("*_geodesic_labeled.csv"))
@@ -209,7 +216,9 @@ def main() -> None:
     families = sorted(set(meta["family"]))
     pat_rows = []
     print(f"{'family':<26} {'n':>4} {'ρ_patristic':>12}  src")
-    with tempfile.TemporaryDirectory(dir="/opt/dlami/nvme/uv/tmp") as td:
+    # MAFFT scratch for every family in turn. The system temp is fine; $GLM_TMPDIR (or TMPDIR)
+    # moves it when that is a small tmpfs.
+    with tempfile.TemporaryDirectory(dir=paths.tmp_dir()) as td:
         for fam in families:
             members = [g for g in ids_all if fam_of.get(g) == fam and g in seqs]
             if len(members) < MIN_MEMBERS:

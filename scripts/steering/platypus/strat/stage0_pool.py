@@ -14,9 +14,13 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "scripts"))
+import check_tools  # noqa: E402
+import paths  # noqa: E402
+
 BIOMART = "https://www.ensembl.org/biomart/martservice"
 REST = "https://rest.ensembl.org"
-SEQS = Path("/opt/dlami/nvme/strat_seqs")
+SEQS = paths.STRAT_SEQS
 HUMAN_PEP = SEQS / "Homo_sapiens.GRCh38.pep.all.fa.gz"
 
 # Homolog attributes live on their own BioMart attribute page, so they cannot be mixed with
@@ -117,10 +121,8 @@ def mmseqs_version() -> str:
             ["mmseqs", "version"], check=True, capture_output=True, text=True
         ).stdout
     except FileNotFoundError:
-        raise SystemExit(
-            "mmseqs not on PATH -- clustering is required here; install mmseqs2 "
-            "(apt install mmseqs2, or conda install -c bioconda mmseqs2)"
-        ) from None
+        # This message was already the good one; it is now shared with every other tool.
+        raise SystemExit(check_tools.missing_message("mmseqs")) from None
     return out.strip().splitlines()[-1].strip()
 
 
@@ -197,8 +199,13 @@ def main() -> None:
     log(f"one2one + high-confidence + unique: {len(keep)} genes (from {n_all})")
 
     # ---- 2. homology blocks -------------------------------------------------------------------
-    if not HUMAN_PEP.exists():
-        raise SystemExit(f"missing {HUMAN_PEP} -- wait for the download to finish")
+    paths.require(
+        HUMAN_PEP,
+        "the human peptide FASTA (Ensembl release 116)",
+        "download the release-116 human/platypus CDS, peptide and GTF files from "
+        "https://ftp.ensembl.org/pub/release-116/ -- see REPRODUCING.md",
+        "GLM_STRAT_SEQS",
+    )
     pep = read_pep(HUMAN_PEP)
     log(f"human proteome: {len(pep)} genes with a protein")
     keep = keep[keep.gene_id.isin(pep)].copy()

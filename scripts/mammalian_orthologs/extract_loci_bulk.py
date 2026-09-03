@@ -12,9 +12,11 @@ from Bio.Seq import Seq
 from pyfaidx import Fasta
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import paths  # noqa: E402
 from assemble_datasets import LOCI_CACHE, OUT_DIR, build_manifest  # noqa: E402
 
-GENOMES = Path("/opt/dlami/nvme/mammal_genomes")
+GENOMES = paths.MAMMAL_GENOMES
 
 
 def _attrs(field: str) -> dict:
@@ -212,6 +214,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--families", nargs="*", default=None)
     args = ap.parse_args()
+    paths.require(
+        GENOMES / "provenance.json",
+        "the Ensembl genome set for the 24-mammal panel",
+        "run scripts/mammalian_orthologs/download_bulk.py (experiment 1, stage A2)",
+        "GLM_MAMMAL_GENOMES",
+    )
     prov = json.loads((GENOMES / "provenance.json").read_text())
     res = pd.read_csv(OUT_DIR / "ortholog_resolution.csv")
     if args.families:
