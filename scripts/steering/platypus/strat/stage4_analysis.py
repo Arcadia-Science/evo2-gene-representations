@@ -76,7 +76,7 @@ def main() -> None:
         for r in READOUTS:
             delta = (sub.loc[common, r] - base.loc[common, r]).to_numpy(float)
             # Per-readout n, because `n` above counts genes PRESENT in the cell while the mean and
-            # the CI are taken over the finite values only. For the autapomorphic site set those two
+            # the CI are taken over the finite values only. For the private-bp site set those two
             # differ by every gene with no ortholog evidence, and reporting the larger number beside
             # an estimate built from the smaller one overstates the evidence.
             line[f"{r}_n"] = int(np.isfinite(delta).sum())

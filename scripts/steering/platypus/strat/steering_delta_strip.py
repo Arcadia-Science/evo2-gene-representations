@@ -909,7 +909,7 @@ def main() -> None:
             rec.append(row)
     tab = pd.DataFrame(rec)
     # Spell the site set out in the saved table: `metric` is an internal alias, and a CSV row
-    # labelled "metric" does not say whether it is the autapomorphic or the diagnostic site set.
+    # labelled "metric" does not say whether it is the private-bp or the platy-bp site set.
     tab["metric"] = tab["metric"].replace({SITE_KEY: mspec["col"]})
     tab.to_csv(out / f"{stem}.csv", index=False)
     print(tab[tab.stratum == "all"].to_string(index=False))

@@ -75,7 +75,7 @@ A fourth check: the 1000-permutation shuffle null agrees with its closed-form ex
 
 ## 3. Reconciliation against the published number
 
-`A_all` reproduces `pct_autapomorphy_correct` exactly, to the reported digit, on every arm the
+`A_all` reproduces `pct_private_bp_correct` exactly, to the reported digit, on every arm the
 published table covers:
 
 | arm | published | A_all here |

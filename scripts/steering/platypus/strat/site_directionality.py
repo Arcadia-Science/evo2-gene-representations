@@ -31,7 +31,7 @@ def _load(name: str):
 _sn = _load("sites_nt")
 diagnostic_sites_nt, site_pairs_nt = _sn.diagnostic_sites_nt, _sn.site_pairs_nt
 _rs = _load("stage4_rescore_nt")
-autapomorphic_subset = _rs.autapomorphic_subset
+private_bp_subset = _rs.private_bp_subset
 ORTHO_DIR, PLATYPUS = _rs.ORTHO_DIR, _rs.PLATYPUS
 
 BASELINE = "unsteered"
@@ -267,7 +267,7 @@ def build_sites(gene: str, human: str, target: str, cp: str, cont_offset: int) -
 
     f = ORTHO_DIR / f"{gene}.fasta"
     orthologs = read_fasta(f, header_field=1, uppercase=False) if f.exists() else {}
-    auta, voters = autapomorphic_subset(cp, cont_offset, diag, orthologs)
+    auta, voters = private_bp_subset(cp, cont_offset, diag, orthologs)
     votes, voters_v = ortholog_votes(cp, cont_offset, pairs, orthologs)
 
     # The private set derived from the per-species votes must be the SAME set the published scorer
@@ -277,7 +277,7 @@ def build_sites(gene: str, human: str, target: str, cp: str, cont_offset: int) -
     if priv_from_votes != set(auta) or voters_v != voters:
         raise AssertionError(
             f"{gene}: private set from ortholog votes ({len(priv_from_votes)} sites, {voters_v} "
-            f"voters) disagrees with autapomorphic_subset ({len(auta)}, {voters})"
+            f"voters) disagrees with private_bp_subset ({len(auta)}, {voters})"
         )
 
     idx_all = np.array(sorted(pairs), dtype=np.int32)
