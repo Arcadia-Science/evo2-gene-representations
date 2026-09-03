@@ -7,10 +7,12 @@ import json
 import math
 import sys
 import time
+import zlib
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import torch
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
@@ -67,25 +69,7 @@ def main() -> None:
         nargs="+",
         default=["unsteered", "add", "add_own", "random"],
         help="unsteered|add|add_own|random|cross_gene|cone_removed|gc_removed|"
-        "cluster_panel|replace|blend|blendnorm  (tier D is --per-gene-layers)",
-    )
-    ap.add_argument(
-        "--clusters",
-        type=Path,
-        default=None,
-        help="TIER C: h1c_clusters/assignments.csv. Enables the `cluster_panel` arm, "
-        "which contrasts a same-cluster panel direction against an other-cluster "
-        "one at matched k and matched norm. Only run it if stage3_gates.py "
-        "licensed tier C -- panel means converge mechanically as k grows, so an "
-        "unlicensed run is near-guaranteed to be null for the wrong reason.",
-    )
-    ap.add_argument(
-        "--panel-k",
-        type=int,
-        default=5,
-        help="TIER C: genes averaged into each panel direction. Must stay small (3-8): "
-        "by k=16 any two panels sit >0.94 from each other regardless of how they "
-        "were chosen, and the contrast the arm exists to test is gone.",
+        "replace|blend|blendnorm  (tier D is --per-gene-layers)",
     )
     ap.add_argument(
         "--per-gene-layers",
@@ -187,15 +171,6 @@ def main() -> None:
         )
     gidx = {g: i for i, g in enumerate(genes_all)}
 
-    # TIER C: cluster labels for the same-cluster vs other-cluster panel arm.
-    clusters: np.ndarray | None = None
-    if args.clusters:
-        asg = pd.read_csv(args.clusters).set_index("gene").reindex(genes_all)
-        if asg.cluster.isna().any():
-            raise SystemExit("cluster assignments do not cover every gene in loo_vectors.npz")
-        clusters = asg.cluster.to_numpy(int)
-    if "cluster_panel" in args.arms and clusters is None:
-        raise SystemExit("cluster_panel needs --clusters h1c_clusters/assignments.csv")
 
     genes = args.genes or stratum_interleaved(pairs)
     genes = [g for g in genes if g in gidx and g in ch and g in cp]
@@ -376,32 +351,6 @@ def main() -> None:
                 w = v[li] - (v[li] @ GCAX[li]) * GCAX[li]
                 cv[li] = w / np.linalg.norm(w) * vn[li]
             conditions.append(("add_gc_removed_a1.0", scaled(cv, {li: 1.0 for li in g_lis}), None))
-        if "cluster_panel" in args.arms:
-            # TIER C / H2c. Two k-gene panel directions for the SAME gene: k drawn from gene i's own
-            # H1c cluster, k from the other clusters. Both exclude gene i, both are norm-matched to
-            # ||v_-i||, so the arms differ only in WHICH genes defined the direction.
-            rs = np.random.default_rng(args.seed + 7919 * i)
-            own = np.where((clusters == clusters[i]) & (np.arange(len(genes_all)) != i))[0]
-            oth = np.where(clusters != clusters[i])[0]
-            if len(own) >= args.panel_k and len(oth) >= args.panel_k:
-                for tag, pool in (("same", own), ("other", oth)):
-                    pick = rs.choice(pool, args.panel_k, replace=False)
-                    pv = {}
-                    for li in g_lis:
-                        u = DALL[li][pick].mean(0)
-                        pv[li] = u / np.linalg.norm(u) * vn[li]
-                    conditions.append(
-                        (
-                            f"panel_{tag}_k{args.panel_k}",
-                            scaled(pv, {li: 1.0 for li in g_lis}),
-                            None,
-                        )
-                    )
-            else:
-                log(
-                    f"  {gene}: cluster too small for k={args.panel_k} "
-                    f"(own {len(own)}, other {len(oth)}) -- cluster_panel skipped"
-                )
 
         # --- operator variants: the residual stream is REPLACED or INTERPOLATED, not added to ---
         # Vectors are passed UNSCALED (alpha lives in the hook). h <- alpha*v for `replace`;
@@ -436,6 +385,12 @@ def main() -> None:
                         model, layer_vecs, alpha=op[0], keep_h=op[1], preserve_norm=op[2]
                     )
                 )
+                # Sampling draw for THIS cell, keyed on the cell rather than on how far into the
+                # loop we are. A single seed at the top of the run would look like a fix and not
+                # be one: --resume skips a different set of cells each invocation, so the global
+                # RNG stream diverges and the same cell gets a different draw. Keying on
+                # (gene, condition) makes a cell reproducible however the run was assembled.
+                torch.manual_seed(args.seed + zlib.crc32(f"{gene}:{cond}".encode()))
                 with ctx:
                     o = model.generate(
                         prompt_seqs=[prompt] * p["n_samples"],
@@ -521,6 +476,15 @@ def main() -> None:
                     else f"top-{args.top_k} truncation then temperature {args.temperature}"
                 ),
                 "seed": args.seed,
+                # What the seed covers, so a reader cannot assume more than it delivers.
+                "seeding": (
+                    "torch.manual_seed(seed + crc32('<gene>:<condition>')) before each generate "
+                    "call, so a cell's draw does not depend on which cells the invocation ran; "
+                    "numpy draws (random directions) are seeded per gene and layer. CUDA kernel "
+                    "non-determinism is NOT controlled -- torch.use_deterministic_algorithms is "
+                    "not enabled -- so bitwise reproducibility is not claimed, only that the "
+                    "sampling stream is fixed per cell."
+                ),
             },
             indent=2,
         )

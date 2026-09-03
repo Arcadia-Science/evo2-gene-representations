@@ -671,7 +671,9 @@ def fig6_arms(
         ("primary", ["add_a1.0", "add_own", "random_a1.0"]),
         ("dose", ["add_a0.5", "add_a2.0", "random_a0.5", "random_a2.0"]),
         ("confounds", ["add_cone_removed_a1.0", "add_gc_removed_a1.0", "cross_gene_a1.0"]),
-        ("H2c", ["panel_same_k5", "panel_other_k5"]),
+        # The H2c block (panel_same_k5 / panel_other_k5) was removed on 2026-09-03: stage3_gates
+        # recorded tier C as NOT licensed, so the arm answered nothing, and no published figure
+        # read it. See deprecated/cluster-panel-h2c-2026-09-03/.
     ]
 
     fig = plt.figure(figsize=(13.6, 7.4))

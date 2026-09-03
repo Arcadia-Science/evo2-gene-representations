@@ -197,9 +197,27 @@ The production steering stages are:
 6. Estimate fixed-topology branch lengths, dN, dS, and omega, then merge them with steering
    outcomes.
 
-The clean runner generates at block 27. Its analysis commands read every saved condition in
-`stage4_cds_mean_blocks27/`; therefore an existing directory may also contribute retained
-`_L24` conditions to descriptive analyses.
+The runner generates at block 27. The stage-4 directory may also hold exploratory conditions from
+other layers (named with an `_L<n>` suffix) and arms that were generated but not reported;
+`build_figure_data.py` admits only rows whose recorded layer is `blocks.27`, plus the hook-free
+`unsteered` baseline, and names any condition it excludes.
+
+### Reproducibility of the generations
+
+Sampling is seeded per cell: `torch.manual_seed(seed + crc32("<gene>:<condition>"))` runs before
+each `generate` call, so a cell's draw does not depend on which cells that invocation happened to
+run — which matters because `--resume` skips a different set each time. Random steering directions
+are seeded per gene and layer.
+
+Two limits, stated rather than implied:
+
+- **CUDA kernel non-determinism is not controlled.** `torch.use_deterministic_algorithms` is not
+  enabled, so bitwise-identical output across machines or driver versions is not claimed; what is
+  fixed is the sampling stream for a given cell.
+- **The archived generations predate this seeding and cannot be reproduced.** Stage 4 ran with an
+  unseeded sampler, so re-running it yields statistically comparable but different sequences. The
+  archived per-sample scores and generated sequences are the record of that run; seeding makes
+  future runs reproducible, not past ones.
 
 | Figure | Generator |
 |---|---|
