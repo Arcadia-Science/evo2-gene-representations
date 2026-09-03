@@ -211,9 +211,18 @@ STEER_CONDITIONS = (
     "cross_gene_a1.0",
     "add_cone_removed_a1.0",
     "add_gc_removed_a1.0",
-    "panel_same_k5",
-    "panel_other_k5",
 )
+
+
+# Conditions the run generated that are deliberately NOT published. Excluded here rather than
+# deleted from the stage-4 tables, so the run directory stays a faithful record of what was
+# executed while the tracked artifact carries only what the manuscript reports. Anything that is
+# neither expected nor listed here still fails the panel check, so this cannot quietly absorb an
+# unrecognised arm.
+STEER_EXCLUDED = {
+    "panel_same_k5": "cluster-panel arm (H2c); stage3_gates recorded tier C as NOT licensed",
+    "panel_other_k5": "cluster-panel arm (H2c); stage3_gates recorded tier C as NOT licensed",
+}
 
 
 def steering_outcomes() -> pd.DataFrame:
@@ -237,6 +246,9 @@ def steering_outcomes() -> pd.DataFrame:
     if (bad := d.loc[hook_free & d["layer"].ne("none"), "condition"].unique()).size:
         raise BuildError(f"hook-free rows carry a layer: {sorted(bad)}")
     d = d[keep].reset_index(drop=True)
+    if excluded := sorted(set(d["condition"]) & set(STEER_EXCLUDED)):
+        print(f"  steering_outcomes: excluding {excluded} ({STEER_EXCLUDED[excluded[0]]})")
+        d = d[~d["condition"].isin(STEER_EXCLUDED)].reset_index(drop=True)
     if set(d["condition"]) != set(STEER_CONDITIONS):
         have = set(d["condition"])
         raise BuildError(
