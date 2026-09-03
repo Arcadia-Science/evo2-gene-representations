@@ -131,9 +131,9 @@ def _read(run_path: Path, table: str) -> pd.DataFrame:
 def per_gene_table(run: Path, layer: int, mode: str, with_pc1: bool = True) -> pd.DataFrame:
     """`with_pc1=False` skips the 754 MB npz load and the 400 leave-one-out PCAs behind
     `loo_cos_pc1` -- worth ~12 min when the requested figures do not need that column."""
-    pairs = _read(run / "stage1" / "pairs.csv", "exp3_panel")
-    tre = _read(run / "stage5" / "tree_stats.csv", "exp3_rates_tree_stats")
-    cov = _read(run / "stage2" / "aligned_coverage.csv", "exp3_panel_coverage")
+    pairs = _read(run / "stage1" / "pairs.csv", "exp2_panel")
+    tre = _read(run / "stage5" / "tree_stats.csv", "exp2_rates_tree_stats")
+    cov = _read(run / "stage2" / "aligned_coverage.csv", "exp2_panel_coverage")
     df = (
         pairs[["gene", "stratum", "perc_id_hp", "cds_len_human"]]
         .merge(tre[tre.status == "ok"], on="gene", how="inner")
@@ -145,13 +145,13 @@ def per_gene_table(run: Path, layer: int, mode: str, with_pc1: bool = True) -> p
     df["human_residual"] = resid(
         df.human_branch.to_numpy(float), df.background_rate.to_numpy(float)
     )
-    dn = _read(run / "stage5" / "dnds.csv", "exp3_rates_dnds")
+    dn = _read(run / "stage5" / "dnds.csv", "exp2_rates_dnds")
     dn = dn[dn.status == "ok"]
     keep = [c for c in dn.columns if c.startswith(("dN_", "dS_", "omega_", "tree_dS", "tree_dN"))]
     df = df.merge(dn[["gene", *keep]], on="gene", how="left")
 
     if FROM_FIGURE_DATA:
-        pg = figure_data.table("exp3_direction_per_gene_by_layer").query("panel == 'strat400'")
+        pg = figure_data.table("exp2_direction_per_gene_by_layer").query("panel == 'strat400'")
     else:
         pg = pd.read_csv(run / f"geom_{mode}" / "per_gene_by_layer.csv")
     pg = pg[pg.layer == layer][["gene", "loo_cos", "delta_norm"]]
@@ -527,8 +527,8 @@ def fig4_h1c(run: Path, out: Path) -> None:
 
 
 def fig5_matrix(run: Path, out: Path) -> None:
-    d = _read(run / "stage5" / "rate_vs_direction.csv", "exp3_rates_vs_direction")
-    g = _read(run / "stage5" / "rate_vs_gain.csv", "exp3_rates_vs_gain")
+    d = _read(run / "stage5" / "rate_vs_direction.csv", "exp2_rates_vs_direction")
+    g = _read(run / "stage5" / "rate_vs_gain.csv", "exp2_rates_vs_gain")
     geo = d.pivot_table(index="predictor", columns="outcome", values="rho")
     geo = geo[["delta_norm", "loo_cos", "loo_cos_pc1"]]
     gai = g.pivot_table(index="predictor", columns="condition", values="spearman_rho")
@@ -932,7 +932,7 @@ def fig8_strata(run: Path, out: Path, df: pd.DataFrame, scores: pd.DataFrame, sp
     """What is actually in each stratum: the defining axis, the covariates, the rate statistics, and
     the private-bp statistics of the readout.
     """
-    pairs = _read(run / "stage1" / "pairs.csv", "exp3_panel")
+    pairs = _read(run / "stage1" / "pairs.csv", "exp2_panel")
     m = pairs.merge(
         df.drop(columns=[c for c in df.columns if c in pairs.columns and c != "gene"]),
         on="gene",

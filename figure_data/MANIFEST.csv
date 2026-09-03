@@ -1,24 +1,21 @@
 file,rows,columns,bytes,description
 exp1_between_family_by_layer.csv,96,5,3866,Figure 1 — W2 family geometry vs baselines
 exp1_within_family_by_layer.csv,6112,4,378840,"Figures 2, 3 — within-group rho vs baselines"
-exp2_control_preservation.csv,14112,5,926700,"Figures 4, 12 — control vs natural geometry"
-exp2_control_identity.csv,6,25,3000,Figure 13 — control identity to source vs the rho it produces
-exp2_control_identity_by_family.csv,288,6,25992,Figure 13 — the same identity per family
-exp3_direction_layer_stats.csv,32,31,16283,"Figures 6a, 6b — per-layer direction statistics, both panels"
-exp3_direction_per_gene_by_layer.csv,12800,7,1249271,"Figures 6b, 11 — per-gene direction geometry"
-exp3_panel.csv,400,28,152243,Figure 5 — the 400 human/platypus pairs
-exp3_panel_attrition.csv,558,19,90471,Figure 5 — candidates dropped by QC
-exp3_panel_coverage.csv,400,5,19447,Figure 5 — aligned CDS coverage per pair
-exp3_steering_outcomes.csv,6000,26,1328148,"Figures 7, 8 — steering outcomes per gene and condition"
-exp3_site_directionality_summary.csv,66,122,122696,"Figures 9a, 9b — leave-human and platypus-choice rates"
-exp3_site_directionality_gc_class.csv,198,13,39393,"Figures 9a, 9b — the same, split by GC class"
-exp3_site_directionality_per_gene.csv,27600,22,8136821,"Figures 9a, 9b — per-gene spread"
-exp3_generation_composition.csv,6800,6,653525,Figure 10 — GC of the generations
-exp3_generation_reference_windows.csv,400,5,28385,Figure 10 — human and platypus reference GC
-exp3_codon_substitutions.csv,6800,14,1516533,Figure 10 — GC by codon position
-exp3_rates_tree_stats.csv,400,15,67919,Figure 11 — fixed-topology branch lengths
-exp3_rates_dnds.csv,399,51,165583,"Figure 11 — dN, dS and omega"
-exp3_rates_vs_direction.csv,57,10,5965,Figure 11 — rate vs direction geometry
-exp3_rates_vs_direction_shape.csv,12,15,2585,"Figure 11 — the same, shape tests"
-exp3_rates_vs_gain.csv,38,16,7234,Figure 11 — rate vs steering gain
-exp3_direction_nulls.npz,0,0,1035660,"Figures 6a, 6b — permutation nulls"
+exp2_direction_layer_stats.csv,32,31,16283,"Figures 6a, 6b — per-layer direction statistics"
+exp2_direction_per_gene_by_layer.csv,12800,7,1249271,"Figures 6b, 11 — per-gene direction geometry"
+exp2_panel.csv,400,28,152243,Figure 5 — the 400 human/platypus pairs
+exp2_panel_attrition.csv,558,19,90471,Figure 5 — candidates dropped by QC
+exp2_panel_coverage.csv,400,5,19447,Figure 5 — aligned CDS coverage per pair
+exp2_steering_outcomes.csv,5200,26,1127394,"Figures 7, 8 — steering outcomes per gene and condition"
+exp2_site_directionality_summary.csv,66,122,122696,"Figures 9a, 9b — leave-human and platypus-choice rates"
+exp2_site_directionality_gc_class.csv,198,13,39393,"Figures 9a, 9b — the same, split by GC class"
+exp2_site_directionality_per_gene.csv,27600,22,8136821,"Figures 9a, 9b — per-gene spread"
+exp2_generation_composition.csv,3600,6,338711,Figure 10 — GC of the generations
+exp2_generation_reference_windows.csv,400,5,28385,Figure 10 — human and platypus reference GC
+exp2_codon_substitutions.csv,3600,14,795427,Figure 10 — GC by codon position
+exp2_rates_tree_stats.csv,400,15,67919,Figure 11 — fixed-topology branch lengths
+exp2_rates_dnds.csv,399,51,165583,"Figure 11 — dN, dS and omega"
+exp2_rates_vs_direction.csv,57,10,5965,Figure 11 — rate vs direction geometry
+exp2_rates_vs_direction_shape.csv,12,15,2585,"Figure 11 — the same, shape tests"
+exp2_rates_vs_gain.csv,38,16,7234,Figure 11 — rate vs steering gain
+exp2_direction_nulls.npz,0,0,1035660,"Figures 6a, 6b — permutation nulls"

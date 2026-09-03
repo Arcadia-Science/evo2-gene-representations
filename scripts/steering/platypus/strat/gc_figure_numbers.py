@@ -61,9 +61,9 @@ def main() -> None:
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
-    comp = pd.read_csv(args.figure_data / "exp3_generation_composition.csv")
-    codon = pd.read_csv(args.figure_data / "exp3_codon_substitutions.csv")
-    ref = pd.read_csv(args.figure_data / "exp3_generation_reference_windows.csv").set_index("gene")
+    comp = pd.read_csv(args.figure_data / "exp2_generation_composition.csv")
+    codon = pd.read_csv(args.figure_data / "exp2_codon_substitutions.csv")
+    ref = pd.read_csv(args.figure_data / "exp2_generation_reference_windows.csv").set_index("gene")
 
     conds = [c for c in DOSE + EXTRA if c in set(comp.condition)]
     rows = []

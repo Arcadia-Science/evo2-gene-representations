@@ -5,8 +5,7 @@ nothing else, so a fresh clone can render the complete figure set with no downlo
 
 ```bash
 bash experiments/exp1_gene_family_geometry.sh --figures   # figures 1-3
-bash experiments/exp2_composition_controls.sh --figures   # figures 4, 12
-bash experiments/exp3_platypus_steering.sh --figures      # figures 5-11
+bash experiments/exp2_platypus_steering.sh --figures      # figures 5-11
 ```
 
 Panels are written to `pub/figures/`.
@@ -18,13 +17,14 @@ that reads the dated run directories under `results/`, so those stay local build
 directory is the tracked form of the numbers.
 
 Rebuild one experiment's tables — which is what each runner does, so re-running one experiment
-never touches the others' tables:
+never touches the other's tables:
 
 ```bash
-uv run python scripts/build_figure_data.py --experiments exp3
+uv run python scripts/build_figure_data.py --experiments exp2
 ```
 
-Without `--experiments` it builds all three, which requires the run directories of all three to be
+Without `--experiments` it also builds the composition-controls tables, which land in
+`analyses/controls/figure_data/` rather than here, and it then requires every run directory to be
 present. Every table is validated (columns, uniqueness, full 32-block coverage, expected category
 counts) and the whole set is staged in a temporary directory, then moved into place only once all
 of it passes. A run that fails part-way therefore leaves these tables exactly as they were, rather
@@ -40,43 +40,36 @@ Nothing in `--figures` writes here, so rendering a figure never modifies one of 
 |---|---|---|---|
 | `exp1_between_family_by_layer.csv` | 96 x 5 | 4 KB | Figure 1 — W2 family geometry vs baselines |
 | `exp1_within_family_by_layer.csv` | 6,112 x 4 | 370 KB | Figures 2, 3 — within-group rho vs baselines |
-| `exp2_control_preservation.csv` | 14,112 x 5 | 905 KB | Figures 4, 12 — control vs natural geometry |
-| `exp2_control_identity.csv` | 6 x 25 | 3 KB | Figure 13 — control identity to source vs the rho it produces |
-| `exp2_control_identity_by_family.csv` | 288 x 6 | 25 KB | Figure 13 — the same identity per family |
-| `exp3_direction_layer_stats.csv` | 32 x 31 | 16 KB | Figures 6a, 6b — per-layer direction statistics, both panels |
-| `exp3_direction_per_gene_by_layer.csv` | 12,800 x 7 | 1.2 MB | Figures 6b, 11 — per-gene direction geometry |
-| `exp3_panel.csv` | 400 x 28 | 149 KB | Figure 5 — the 400 human/platypus pairs |
-| `exp3_panel_attrition.csv` | 558 x 19 | 88 KB | Figure 5 — candidates dropped by QC |
-| `exp3_panel_coverage.csv` | 400 x 5 | 19 KB | Figure 5 — aligned CDS coverage per pair |
-| `exp3_steering_outcomes.csv` | 6,000 x 26 | 1.3 MB | Figures 7, 8 — steering outcomes per gene and condition |
-| `exp3_site_directionality_summary.csv` | 66 x 122 | 120 KB | Figures 9a, 9b — leave-human and platypus-choice rates |
-| `exp3_site_directionality_gc_class.csv` | 198 x 13 | 38 KB | Figures 9a, 9b — the same, split by GC class |
-| `exp3_site_directionality_per_gene.csv` | 27,600 x 22 | 7.8 MB | Figures 9a, 9b — per-gene spread |
-| `exp3_generation_composition.csv` | 6,800 x 6 | 638 KB | Figure 10 — GC of the generations |
-| `exp3_generation_reference_windows.csv` | 400 x 5 | 28 KB | Figure 10 — human and platypus reference GC |
-| `exp3_codon_substitutions.csv` | 6,800 x 14 | 1.4 MB | Figure 10 — GC by codon position |
-| `exp3_rates_tree_stats.csv` | 400 x 15 | 66 KB | Figure 11 — fixed-topology branch lengths |
-| `exp3_rates_dnds.csv` | 399 x 51 | 162 KB | Figure 11 — dN, dS and omega |
-| `exp3_rates_vs_direction.csv` | 57 x 10 | 6 KB | Figure 11 — rate vs direction geometry |
-| `exp3_rates_vs_direction_shape.csv` | 12 x 15 | 3 KB | Figure 11 — the same, shape tests |
-| `exp3_rates_vs_gain.csv` | 38 x 16 | 7 KB | Figure 11 — rate vs steering gain |
-| `exp3_direction_nulls.npz` | binary | 1011 KB | Figures 6a, 6b — permutation nulls |
+| `exp2_direction_layer_stats.csv` | 32 x 31 | 16 KB | Figures 6a, 6b — per-layer direction statistics |
+| `exp2_direction_per_gene_by_layer.csv` | 12,800 x 7 | 1.2 MB | Figures 6b, 11 — per-gene direction geometry |
+| `exp2_panel.csv` | 400 x 28 | 149 KB | Figure 5 — the 400 human/platypus pairs |
+| `exp2_panel_attrition.csv` | 558 x 19 | 88 KB | Figure 5 — candidates dropped by QC |
+| `exp2_panel_coverage.csv` | 400 x 5 | 19 KB | Figure 5 — aligned CDS coverage per pair |
+| `exp2_steering_outcomes.csv` | 5,200 x 26 | 1.1 MB | Figures 7, 8 — steering outcomes per gene and condition |
+| `exp2_site_directionality_summary.csv` | 66 x 122 | 120 KB | Figures 9a, 9b — leave-human and platypus-choice rates |
+| `exp2_site_directionality_gc_class.csv` | 198 x 13 | 38 KB | Figures 9a, 9b — the same, split by GC class |
+| `exp2_site_directionality_per_gene.csv` | 27,600 x 22 | 7.8 MB | Figures 9a, 9b — per-gene spread |
+| `exp2_generation_composition.csv` | 3,600 x 6 | 331 KB | Figure 10 — GC of the generations |
+| `exp2_generation_reference_windows.csv` | 400 x 5 | 28 KB | Figure 10 — human and platypus reference GC |
+| `exp2_codon_substitutions.csv` | 3,600 x 14 | 777 KB | Figure 10 — GC by codon position |
+| `exp2_rates_tree_stats.csv` | 400 x 15 | 66 KB | Figure 11 — fixed-topology branch lengths |
+| `exp2_rates_dnds.csv` | 399 x 51 | 162 KB | Figure 11 — dN, dS and omega |
+| `exp2_rates_vs_direction.csv` | 57 x 10 | 6 KB | Figure 11 — rate vs direction geometry |
+| `exp2_rates_vs_direction_shape.csv` | 12 x 15 | 3 KB | Figure 11 — the same, shape tests |
+| `exp2_rates_vs_gain.csv` | 38 x 16 | 7 KB | Figure 11 — rate vs steering gain |
+| `exp2_direction_nulls.npz` | binary | 1011 KB | Figures 6a, 6b — permutation nulls |
 <!-- /TABLE -->
 
 `MANIFEST.csv` repeats this table in machine-readable form.
 
 ## Grain
 
-Most tables are copied through unchanged from the analysis that wrote them. Three are reshaped:
+Most tables are copied through unchanged from the analysis that wrote them. Two are reshaped:
 
 * `exp1_between_family_by_layer` and `exp1_within_family_by_layer` are long-format roll-ups of the
   per-block score tables — one row per (layer, baseline) and per (layer, metric, family) rather than
   one file per block.
-* `exp2_control_preservation` merges the within-family and between-family control scores into one
-  long table. `family` is set on within-family rows and empty on between-family rows, whose geometry
-  is a single family x family matrix per block. Figure 4 plots the mean over families; figure 12
-  uses the per-family values.
-* `exp3_steering_outcomes` is one row per (gene, condition). The analysis writes one row per
+* `exp2_steering_outcomes` is one row per (gene, condition). The analysis writes one row per
   generated sample; figures 7 and 8 average over samples within a gene before plotting anything, so
   the aggregation is lossless for them.
 
@@ -89,7 +82,7 @@ Most tables are copied through unchanged from the analysis that wrote them. Thre
   the dose ladder, so the norm-matched null is required at every reported dose. The tracked table
   predates that fix: its ladder runs to alpha 4 while the null stops at alpha 2. The driver's C3
   stage now requests `--arms add random`, and the builder refuses to publish until
-  `random_a3.0` and `random_a4.0` exist, naming them. Re-run experiment 3's C3 stage (~7 h GPU)
+  `random_a3.0` and `random_a4.0` exist, naming them. Re-run experiment 2's C3 stage (~7 h GPU)
   and rebuild. No missing measurement has been synthesized.
 
 ## Not here

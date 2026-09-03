@@ -490,9 +490,9 @@ def main() -> None:
     if args.pub:
         pub.enable()
     if args.from_figure_data:
-        summ = figure_data.table("exp3_site_directionality_summary")
-        gc = figure_data.table("exp3_site_directionality_gc_class")
-        per = figure_data.table("exp3_site_directionality_per_gene")
+        summ = figure_data.table("exp2_site_directionality_summary")
+        gc = figure_data.table("exp2_site_directionality_gc_class")
+        per = figure_data.table("exp2_site_directionality_per_gene")
     else:
         d = args.run / args.data
         summ = pd.read_csv(d / "summary.csv")

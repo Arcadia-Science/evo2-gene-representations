@@ -1,7 +1,7 @@
 # Conservation-stratified species-direction geometry and steerability in Evo2 (human → platypus)
 
-**Document status:** production design record for Experiment 3. The canonical executable workflow
-is `experiments/exp3_platypus_steering.sh`; completed results are summarized in
+**Document status:** production design record for Experiment 2. The canonical executable workflow
+is `experiments/exp2_platypus_steering.sh`; completed results are summarized in
 `results_n400.md` and `results_site_directionality.md`. This record retains pre-run decisions
 and rationale, including exploratory arms that were not promoted to the publication.
 

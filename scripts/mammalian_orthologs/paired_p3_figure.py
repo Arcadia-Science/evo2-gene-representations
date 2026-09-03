@@ -39,7 +39,7 @@ def _style():
 
 def _preservation() -> pd.DataFrame:
     """The tidy control-preservation table, both axes, all blocks."""
-    return figure_data.table("exp2_control_preservation")
+    return figure_data.table("control_preservation")
 
 
 def load_within() -> pd.DataFrame:

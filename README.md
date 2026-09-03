@@ -1,22 +1,27 @@
 # glm-latent-mapping
 
 This repository tests how Evo2-7B organizes gene-family sequence representations and whether that
-structure can be explained by sequence composition. The publication analysis has three experiments:
+structure can be used to steer what the model generates. The publication analysis has two
+experiments:
 
 1. **Gene-family geometry:** compare between- and within-family representation distances with
    homology, phylogeny, k-mer composition, and GC content across 48 HGNC families and 24 mammals.
-2. **Composition controls:** replace coding positions with progressively stronger matched controls
-   and measure how well they preserve the natural representation geometry.
-3. **Platypus steering:** inject a human-to-platypus direction at block 27 and score whether
+2. **Platypus steering:** inject a human-to-platypus direction at block 27 and score whether
    generations move toward platypus-specific sequence features.
+
+A third analysis, [composition controls](analyses/controls/), sits alongside them: it rewrites the
+coding positions of experiment 1's panel under matched constraints and measures which of them are
+sufficient to reproduce the natural geometry. It is not part of the publication pipeline and is run
+on its own.
 
 ## Start here
 
 | Resource | Purpose |
 |---|---|
-| [REPRODUCING.md](REPRODUCING.md) | Commands, inputs, outputs, and inference settings for all three experiments |
+| [REPRODUCING.md](REPRODUCING.md) | Commands, inputs, outputs, and inference settings for both experiments |
 | [experiments/](experiments/) | Canonical end-to-end runners; plan mode is the default |
 | [figure_data/](figure_data/) | The tidy tables every figure reads; `--figures` needs nothing else |
+| [analyses/controls/](analyses/controls/) | Composition controls: a matched sufficiency test over experiment 1's panel |
 
 ## Requirements
 
@@ -45,12 +50,16 @@ Each runner supports three modes:
 
 ```bash
 bash experiments/exp1_gene_family_geometry.sh
-bash experiments/exp2_composition_controls.sh
-bash experiments/exp3_platypus_steering.sh
+bash experiments/exp2_platypus_steering.sh
 
 bash experiments/exp1_gene_family_geometry.sh --figures
-bash experiments/exp2_composition_controls.sh --figures
-bash experiments/exp3_platypus_steering.sh --figures
+bash experiments/exp2_platypus_steering.sh --figures
+```
+
+The composition-controls analysis has its own runner with the same three modes:
+
+```bash
+bash analyses/controls/run_composition_controls.sh --figures
 ```
 
 Full runs require large local datasets and many GPU-hours. See
@@ -60,10 +69,10 @@ Full runs require large local datasets and many GPU-hours. See
 
 | Path | Purpose |
 |---|---|
-| `scripts/mammalian_orthologs/` | Experiments 1–2 dataset construction, embedding, scoring, controls, and inference |
+| `scripts/mammalian_orthologs/` | Experiment 1 dataset construction, embedding, scoring, and inference |
 | `scripts/baselines/` | Pfam-HMM, patristic, k-mer, Wasserstein, and significance utilities |
-| `scripts/controls/` | Composition-control construction and plotting |
-| `scripts/steering/platypus/` | Experiment 3 paired-panel and steering analyses |
+| `scripts/steering/platypus/` | Experiment 2 paired-panel and steering analyses |
+| `analyses/controls/`, `scripts/controls/` | Composition controls: runner, tables, sequence operators, and plotting |
 | `scripts/evo2/evo2_embedding.py` | Shared Evo2 model loading and all-block position extraction |
 | `scripts/geodesic_utils.py` | Graph, geodesic, centroid, and Mantel utilities (Mantel and upper-triangle helpers are metric-agnostic and used by the Wasserstein path; the geodesic and centroid functions serve legacy analyses only) |
 | `scripts/arcadia_pub.py`, `scripts/arcadia_style.py` | Publication figure geometry and styling |
@@ -74,9 +83,10 @@ The canonical family definitions are in
 
 ## Local data and results
 
-[figure_data/](figure_data/) holds 21 tidy tables — one or two per figure, about 16 MB — and is the
+[figure_data/](figure_data/) holds 20 tidy tables — one or two per figure, about 14 MB — and is the
 only input `--figures` needs, so figure rendering works on a fresh clone with no downloads and no
-GPU. `scripts/build_figure_data.py` writes it from a completed `--run`.
+GPU. `scripts/build_figure_data.py` writes it from a completed `--run`; the composition-control
+tables it builds land in [analyses/controls/figure_data/](analyses/controls/figure_data/) instead.
 
 Everything a full `--run` produces is local and ignored by Git: `data/` (sequences, manifests, Evo2
 embedding caches) and the dated run directories under `results/`. It also reads

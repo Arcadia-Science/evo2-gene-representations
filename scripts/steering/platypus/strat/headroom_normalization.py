@@ -302,7 +302,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--scores", type=Path, default=ROOT / "figure_data/exp3_steering_outcomes.csv")
+    ap.add_argument("--scores", type=Path, default=ROOT / "figure_data/exp2_steering_outcomes.csv")
     ap.add_argument(
         "--out-dir",
         type=Path,

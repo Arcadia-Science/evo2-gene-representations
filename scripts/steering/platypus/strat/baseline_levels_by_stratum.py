@@ -178,7 +178,7 @@ def main() -> None:
     ap.add_argument(
         "--scores",
         type=Path,
-        default=ROOT / "figure_data" / "exp3_steering_outcomes.csv",
+        default=ROOT / "figure_data" / "exp2_steering_outcomes.csv",
         help="per-gene x condition outcomes (default: the tracked figure_data table)",
     )
     ap.add_argument(

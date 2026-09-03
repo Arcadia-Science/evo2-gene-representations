@@ -1,13 +1,16 @@
 # Reproducing the publication
 
-The publication is organized around three shell runners in [experiments/](experiments/). Run them
+The publication is organized around two shell runners in [experiments/](experiments/). Run them
 from the repository root. With no argument they print every stage and execute nothing:
 
 ```bash
 bash experiments/exp1_gene_family_geometry.sh
-bash experiments/exp2_composition_controls.sh
-bash experiments/exp3_platypus_steering.sh
+bash experiments/exp2_platypus_steering.sh
 ```
+
+A third runner, [`analyses/controls/run_composition_controls.sh`](analyses/controls/), drives the
+composition-controls analysis. It behaves identically but is not part of the publication pipeline;
+[analyses/controls/README.md](analyses/controls/README.md) covers it.
 
 Use `--figures` to render from existing artifacts or `--run` for an end-to-end run. `--figures`
 needs nothing but the tracked `figure_data/`. Full runs are resumable, and additionally need
@@ -16,32 +19,35 @@ Evo2-7B, many GPU-hours, the reference downloads and the external tools listed u
 
 ## Run order
 
-`--figures` reads only the tracked `figure_data/` tables, so the three runners are independent in
-that mode and can be run in any order.
+`--figures` reads only tracked tables, so the runners are independent in that mode and can be run in
+any order.
 
-**`--run` is not.** Experiments 2 and 3 consume experiment 1's outputs, so experiment 1 must
-complete first:
+**`--run` is not.** Experiment 2 consumes experiment 1's outputs, so experiment 1 must complete
+first:
 
 | Consumer | Reads | Written by |
 |---|---|---|
-| exp 2, stage C1 | `data/cache/mammal_cds_positions.json` | exp 1, A7 `build_cds_masks_mammal.py` |
-| exp 2, stage D2 | `blocks15/betweenfam_ot_metadata.json` | exp 1, B3 `ot_between_family_sweep.py` |
-| exp 3, stages E1–E2 | `data/mammalian_orthologs/tree/species_tree.nwk` | exp 1, A6 `build_species_tree.py` |
+| exp 2, stages E1–E2 | `data/mammalian_orthologs/tree/species_tree.nwk` | exp 1, A6 `build_species_tree.py` |
+| controls, stage C1 | `data/cache/mammal_cds_positions.json` | exp 1, A7 `build_cds_masks_mammal.py` |
+| controls, stage D2 | `blocks15/betweenfam_ot_metadata.json` | exp 1, B3 `ot_between_family_sweep.py` |
 
-Experiments 2 and 3 do not depend on each other and can run in either order once experiment 1 is
-done. Each of these reads is guarded: a missing input stops the stage naming the file *and the
-experiment stage that writes it*, rather than raising a bare `FileNotFoundError`.
+Experiment 2 and the composition controls do not depend on each other and can run in either order
+once experiment 1 is done. Each of these reads is guarded: a missing input stops the stage naming
+the file *and the stage that writes it*, rather than raising a bare `FileNotFoundError`.
 
 ## Publication scope
 
 | Experiment | Analysis | Figures |
 |---|---|---|
 | 1 | Between- and within-family geometry across 48 HGNC families and 24 mammals | 1–3 |
-| 2 | Composition controls and the matched protein-versus-nucleotide comparison | 4, 12 |
-| 3 | Conservation-stratified human-to-platypus steering at block 27 | 5–11 |
+| 2 | Conservation-stratified human-to-platypus steering at block 27 | 5–11 |
 
-Experiments 1–2 embed all 32 residual-stream blocks. Transcript spans are split into windows;
+Both experiments embed all 32 residual-stream blocks. Transcript spans are split into windows;
 hidden states are selected at CDS positions and mean-pooled over the second half of those positions.
+
+Figures 4, 12 and 13 belong to the composition-controls analysis in
+[analyses/controls/](analyses/controls/) and are rendered by its own runner; the publication figure
+numbers of experiments 1 and 2 are unaffected by whether it is run.
 
 ## Required inputs
 
@@ -50,14 +56,15 @@ hidden states are selected at CDS positions and mean-pooled over the second half
 | Table prefix | Figures |
 |---|---|
 | `figure_data/exp1_*` | 1–3 |
-| `figure_data/exp2_*` | 4, 12 |
-| `figure_data/exp3_*` | 5–11 |
+| `figure_data/exp2_*` | 5–11 |
 
 `figure_data/README.md` lists every table with its grain and size. `--run` additionally needs
 `data/` and writes the dated run directories under `results/`; the last stage of each runner calls
-`scripts/build_figure_data.py`, which collapses those into `figure_data/`.
+`scripts/build_figure_data.py`, which collapses those into `figure_data/`. The composition-controls
+tables are built by the same script into `analyses/controls/figure_data/`.
 
-Each runner copies its completed panels into `pub/figures/`.
+Each publication runner copies its completed panels into `pub/figures/`; the
+composition-controls runner writes its own into `analyses/controls/figures/`.
 
 ### Reference downloads and where they live
 
@@ -71,8 +78,8 @@ example at a copy that already exists on a fast local disk:
 |---|---|---|---|
 | `GLM_SCRATCH` | `data/external` | root for all of the below | — |
 | `GLM_MAMMAL_GENOMES` | `$GLM_SCRATCH/mammal_genomes` | Ensembl genome FASTA + GTF, 24 species | exp 1, A2–A3 |
-| `GLM_STRAT_SEQS` | `$GLM_SCRATCH/strat_seqs` | human + platypus CDS, peptide and GTF | exp 3, A1–A2 |
-| `GLM_STRAT_MAMMAL_CDS` | `$GLM_STRAT_SEQS/mammals` | per-species CDS FASTA, 24 mammals | exp 3, E1 |
+| `GLM_STRAT_SEQS` | `$GLM_SCRATCH/strat_seqs` | human + platypus CDS, peptide and GTF | exp 2, A1–A2 |
+| `GLM_STRAT_MAMMAL_CDS` | `$GLM_STRAT_SEQS/mammals` | per-species CDS FASTA, 24 mammals | exp 2, E1 |
 | `GLM_TMPDIR` | system temp (`TMPDIR`) | MAFFT/FastTree scratch during alignment | exp 1, B2 |
 
 ```bash
@@ -109,18 +116,18 @@ Beyond the Python dependencies, `--run` shells out to these. None is pip-install
 
 ```bash
 uv run python scripts/check_tools.py            # all of them, with versions
-uv run python scripts/check_tools.py --exp exp3 # just one experiment's
+uv run python scripts/check_tools.py --exp exp2 # just one experiment's
 ```
 
 | Tool | Version used | Found via | Needed by | Install |
 |---|---|---|---|---|
-| `mafft` | v7.505 | `PATH` | exp 1 B2, exp 3 E2 | `apt install mafft` or `conda install -c bioconda mafft` |
+| `mafft` | v7.505 | `PATH` | exp 1 B2, exp 2 E2 | `apt install mafft` or `conda install -c bioconda mafft` |
 | `FastTree` | 2.1.11 | `PATH` | exp 1 B2 | `apt install fasttree` or `conda install -c bioconda fasttree` |
-| `mmseqs` | 15-6f452 | `PATH` | exp 3 A1 | `apt install mmseqs2` or `conda install -c bioconda mmseqs2` |
-| `iqtree2` | 2.3.6 | `data/tools/` | exp 3 E2 | a release from <https://github.com/iqtree/iqtree2/releases> |
-| `trimal` | 1.5.rev0 | `data/tools/` | exp 3 E2, E3 | build from <https://github.com/inab/trimal> |
-| `codeml` | PAML 4.10.10 | `data/tools/` | exp 3 E3 | build PAML, copy `src/codeml` |
-| `yn00` | PAML 4.10.10 | `data/tools/` | exp 3 E3 | build PAML, copy `src/yn00` |
+| `mmseqs` | 15-6f452 | `PATH` | exp 2 A1 | `apt install mmseqs2` or `conda install -c bioconda mmseqs2` |
+| `iqtree2` | 2.3.6 | `data/tools/` | exp 2 E2 | a release from <https://github.com/iqtree/iqtree2/releases> |
+| `trimal` | 1.5.rev0 | `data/tools/` | exp 2 E2, E3 | build from <https://github.com/inab/trimal> |
+| `codeml` | PAML 4.10.10 | `data/tools/` | exp 2 E3 | build PAML, copy `src/codeml` |
+| `yn00` | PAML 4.10.10 | `data/tools/` | exp 2 E3 | build PAML, copy `src/yn00` |
 
 `data/tools/` is git-ignored, so the four binaries there do not survive a clone and must be
 rebuilt or re-downloaded. PAML is at <http://abacus.gene.ucl.ac.uk/software/paml.html>.
@@ -151,7 +158,8 @@ Important settings:
 
 - `mammal_score.py --distance angular` generates the direct-angular tables used by Figures 2–3.
 - `ot_between_family_sweep.py --n-perms 9999` retains optional W2 Mantel significance tests; the
-  publication driver passes `--n-perms 0` and skips them.
+  publication driver passes `--n-perms 0` and skips them. The composition-controls analysis reuses
+  the natural W2 matrices this stage writes.
 - `within_family_uncertainty.py` runs every available layer with 10,000 bootstrap replicates by
   default and Wilcoxon signed-rank inference. Geodesic-only within-family Mantel paths are archived.
 
@@ -166,47 +174,14 @@ Key active files:
 | Between-family scoring | `scripts/mammalian_orthologs/mammal_between.py`, `scripts/baselines/{ot_between_family,ot_between_family_sweep}.py` |
 | Figures 1–3 | `scripts/layer_sweep_summary.py`, `scripts/within_family_per_family_grid.py` |
 
-## Experiment 2: composition controls
+## Experiment 2: platypus steering
 
 ```bash
-bash experiments/exp2_composition_controls.sh --run
-bash experiments/exp2_composition_controls.sh --figures
+bash experiments/exp2_platypus_steering.sh --run
+bash experiments/exp2_platypus_steering.sh --figures
 ```
 
-The control ladder replaces coding positions in each natural transcript span while leaving
-noncoding positions unchanged. The full runner embeds:
-
-- synonymous recoding;
-- GC matching;
-- dinucleotide, 4-mer, and 6-mer shuffles;
-- the paired third-codon-position synonymous and missense arms used by Figure 12.
-
-`mammal_controls_score.py` (stage D1) writes the per-block
-`controls/control_{between,within}_scores.csv` that `build_figure_data.control_preservation()`
-collapses into `figure_data/exp2_control_preservation.csv` — **this is what Figure 4 reads**.
-
-`controls_score_graphfree.py` (stage D2, ~2 h CPU) writes
-`results/_{ot,angular}_control_preservation_*.csv`. Nothing in the repository reads those files:
-they are an independent graph-free recomputation of the same quantities, kept as a cross-check.
-**Stage D2 is optional** — skipping it changes no figure. An earlier version of this document
-said it wrote the tables used by Figure 4, which was wrong and would have led a reproducer to skip
-D1, the stage that actually matters.
-
-| Figure | Generator |
-|---|---|
-| 4 | `scripts/controls/plot_control_wasserstein.py --pub` |
-| 12 | `scripts/mammalian_orthologs/paired_p3_figure.py --pub` |
-
-The removed sequence-identity analysis is not part of the publication pipeline.
-
-## Experiment 3: platypus steering
-
-```bash
-bash experiments/exp3_platypus_steering.sh --run
-bash experiments/exp3_platypus_steering.sh --figures
-```
-
-Experiment 3 uses one panel: a conservation-stratified set of 400 human–platypus ortholog pairs,
+Experiment 2 uses one panel: a conservation-stratified set of 400 human–platypus ortholog pairs,
 used for generation, site-directionality, evolutionary-rate analyses, and every published figure it
 produces (5–11).
 
@@ -232,7 +207,7 @@ other layers (named with an `_L<n>` suffix) and arms that were generated but not
 
 ### Known gap: the tracked steering table
 
-`figure_data/exp3_steering_outcomes.csv` predates the driver's C3 fix. Its dose ladder runs to
+`figure_data/exp2_steering_outcomes.csv` predates the driver's C3 fix. Its dose ladder runs to
 alpha 4 while the norm-matched random null stops at alpha 2, because C3 used to request
 `--arms add` alone. C3 now requests `--arms add random`, and `build_figure_data.STEER_CONDITIONS`
 requires `random_a3.0` and `random_a4.0`.
@@ -240,7 +215,7 @@ requires `random_a3.0` and `random_a4.0`.
 So a full `--run` produces a table with **two more conditions** than the one figures 7 and 8 were
 rendered from. Neither figure plots the random ladder — figure 8 derives its doses from the `add_a*`
 arms — so the panels are not expected to change, but the artifact and a fresh run differ until the
-table is regenerated. `build_figure_data.py --experiments exp3` fails against a stage-4 directory
+table is regenerated. `build_figure_data.py --experiments exp2` fails against a stage-4 directory
 that lacks the two conditions, naming them. No missing measurement has been synthesized.
 
 ### Reproducibility of the generations
@@ -269,18 +244,36 @@ Two limits, stated rather than implied:
 | 9a, 9b | `scripts/steering/platypus/strat/site_directionality_figures.py` |
 | 10 | `scripts/steering/platypus/strat/gc_codon_figures.py` |
 
+## Composition controls
+
+An additional analysis over experiment 1's panel, with its own runner, tracked tables and figures:
+
+```bash
+bash analyses/controls/run_composition_controls.sh --run
+bash analyses/controls/run_composition_controls.sh --figures
+```
+
+It rewrites the coding positions of each natural transcript span under matched constraints — GC
+matching, dinucleotide and k-mer shuffles, family-conditioned synonymous recoding, a nested
+missense subset, and the paired third-codon-position arms — re-embeds the panel, and scores how
+much of the natural geometry each rung preserves. It needs experiment 1's CDS-position cache and W2
+family order, and no external tools.
+[analyses/controls/README.md](analyses/controls/README.md) covers what it measures, what it can be
+reused for, and which stages are optional.
+
 ## Validate a checkout
 
 ```bash
 uv run ruff format --check scripts
 uv run ruff check scripts
 uv run python -m compileall -q scripts
-bash -n experiments/*.sh
+bash -n experiments/*.sh analyses/controls/*.sh
 
 bash experiments/exp1_gene_family_geometry.sh
-bash experiments/exp2_composition_controls.sh
-bash experiments/exp3_platypus_steering.sh
+bash experiments/exp2_platypus_steering.sh
+bash analyses/controls/run_composition_controls.sh
 ```
 
-To validate the publication artifacts, run all three scripts with `--figures` and confirm that
-each reports zero failed panels and that every panel measures exactly 1,000 or 500 points wide.
+To validate the publication artifacts, run both experiment scripts with `--figures` and confirm that
+each reports zero failed panels and that every panel measures exactly 1,000 or 500 points wide. The
+composition-controls runner reports the same way for its own three panels.

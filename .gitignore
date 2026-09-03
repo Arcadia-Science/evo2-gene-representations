@@ -117,6 +117,8 @@ tree_of_life_reproduction_goodfire/
 
 # Publication figures and manuscript drafts — build outputs / drafts, kept local only
 pub/
+# Rendered panels of the composition-controls analysis (build outputs; its tables are tracked)
+analyses/controls/figures/
 
 # Audit / refactoring working docs
 AUDIT_CLAUDE.md

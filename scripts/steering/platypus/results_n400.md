@@ -1,7 +1,7 @@
 # Results — conservation-stratified platypus panel (n = 400)
 
-**Document status:** production result record for Experiment 3. Figure reproduction is maintained by
-`experiments/exp3_platypus_steering.sh`; this file preserves the detailed stage-level interpretation.
+**Document status:** production result record for Experiment 2. Figure reproduction is maintained by
+`experiments/exp2_platypus_steering.sh`; this file preserves the detailed stage-level interpretation.
 
 Everything measured on `results/2026-08-08_platypus-strat-400/`. Method: `conservation_stratified_design.md`
 (kept results-free). Each stage below ends with the hypotheses it feeds; § Hypothesis index is the map.
