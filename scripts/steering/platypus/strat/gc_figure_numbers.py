@@ -29,8 +29,14 @@ sys.path.insert(0, str(ROOT / "scripts"))
 DOSE = ["unsteered", "add_a0.5", "add_a1.0", "add_a2.0", "add_a3.0", "add_a4.0"]
 # Arms that are not rungs of the ladder but belong in a numbers table.
 EXTRA = ["add_own", "random_a1.0", "add_gc_removed_a1.0"]
-ALPHA = {"unsteered": 0.0, "add_a0.5": 0.5, "add_a1.0": 1.0, "add_a2.0": 2.0, "add_a3.0": 3.0,
-         "add_a4.0": 4.0}
+ALPHA = {
+    "unsteered": 0.0,
+    "add_a0.5": 0.5,
+    "add_a1.0": 1.0,
+    "add_a2.0": 2.0,
+    "add_a3.0": 3.0,
+    "add_a4.0": 4.0,
+}
 
 
 def summarise(s: pd.Series) -> dict:

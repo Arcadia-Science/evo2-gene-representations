@@ -71,9 +71,7 @@ def trend_figure(u, s, strata, readout, steered_label, out_dir, stem) -> pd.Data
         ):
             med = [float(frame.loc[frame.stratum == st, col].median()) for st in strata]
             mean = [float(frame.loc[frame.stratum == st, col].mean()) for st in strata]
-            cis = [
-                boot_ci(frame.loc[frame.stratum == st, col].to_numpy(float)) for st in strata
-            ]
+            cis = [boot_ci(frame.loc[frame.stratum == st, col].to_numpy(float)) for st in strata]
             ax.fill_between(
                 xs, [c[0] for c in cis], [c[1] for c in cis], color=color, alpha=0.18, lw=0
             )
@@ -287,9 +285,7 @@ def main() -> None:
     plt.close(fig)
     print(f"  {args.stem}  ->  {args.out_dir}")
 
-    trend = trend_figure(
-        u, s, strata, readout, args.steered, args.out_dir, f"{args.stem}_trend"
-    )
+    trend = trend_figure(u, s, strata, readout, args.steered, args.out_dir, f"{args.stem}_trend")
     trend.to_csv(args.out_dir / f"{args.stem}_trend.csv", index=False)
     print(trend.to_string(index=False))
 

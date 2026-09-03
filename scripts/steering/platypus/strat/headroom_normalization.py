@@ -155,9 +155,7 @@ def widen(tab: pd.DataFrame) -> pd.DataFrame:
 def dose_figure(g: pd.DataFrame, alphas: list[float], out: Path, stem: str) -> None:
     """Normalised analogue of figure 8: one panel per stratum, x = alpha, both readouts."""
     strata = sorted(g.stratum.unique())
-    fig, axes = plt.subplots(
-        1, len(strata), figsize=(2.6 * len(strata), 3.4), dpi=300, sharey=True
-    )
+    fig, axes = plt.subplots(1, len(strata), figsize=(2.6 * len(strata), 3.4), dpi=300, sharey=True)
     for ax, st in zip(np.atleast_1d(axes), strata, strict=True):
         sub = g[g.stratum == st]
         for col, label, color, mk in (

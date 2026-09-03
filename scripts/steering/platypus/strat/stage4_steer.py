@@ -171,7 +171,6 @@ def main() -> None:
         )
     gidx = {g: i for i, g in enumerate(genes_all)}
 
-
     genes = args.genes or stratum_interleaved(pairs)
     genes = [g for g in genes if g in gidx and g in ch and g in cp]
     if args.n_genes:
