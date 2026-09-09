@@ -1,0 +1,64 @@
+cff-version: 1.2.0
+message: If you use this software, please cite the associated publication.
+title: Simple sequence patterns support complex evolutionary representations in Evo2
+doi: 10.57844/arcadia-k8wc-efm5
+authors:
+- family-names: Bell
+  given-names: Audrey
+  affiliation: Arcadia Science
+  orcid: https://orcid.org/0009-0008-2270-1613
+- family-names: De-Kayne
+  given-names: Rishi
+  affiliation: Arcadia Science
+  orcid: https://orcid.org/0000-0001-5569-8061
+- family-names: DeVries
+  given-names: Rachael
+  affiliation: Arcadia Science
+  orcid: https://orcid.org/0009-0002-5395-7597
+- family-names: Golden
+  given-names: James R.
+  affiliation: Arcadia Science
+  orcid: https://orcid.org/0000-0002-9411-9680
+- family-names: Hochstrasser
+  given-names: Megan L.
+  affiliation: Arcadia Science
+  orcid: https://orcid.org/0000-0002-4404-078X
+- family-names: McGeever
+  given-names: Erin
+  affiliation: Arcadia Science
+  orcid: https://orcid.org/0000-0003-1596-207X
+- family-names: Roth
+  given-names: Robert
+  affiliation: Arcadia Science
+  orcid: https://orcid.org/0000-0003-2604-1866
+- family-names: York
+  given-names: Ryan
+  affiliation: Arcadia Science
+  orcid: https://orcid.org/0000-0002-1073-1494
+preferred-citation:
+  title: Simple sequence patterns support complex evolutionary representations in
+    Evo2
+  type: article
+  doi: 10.57844/arcadia-k8wc-efm5
+  authors:
+  - family-names: De-Kayne
+    given-names: Rishi
+    affiliation: Arcadia Science
+    orcid: https://orcid.org/0000-0001-5569-8061
+  - family-names: DeVries
+    given-names: Rachael
+    affiliation: Arcadia Science
+    orcid: https://orcid.org/0009-0002-5395-7597
+  - family-names: Golden
+    given-names: James R.
+    affiliation: Arcadia Science
+    orcid: https://orcid.org/0000-0002-9411-9680
+  - family-names: McGeever
+    given-names: Erin
+    affiliation: Arcadia Science
+    orcid: https://orcid.org/0000-0003-1596-207X
+  - family-names: York
+    given-names: Ryan
+    affiliation: Arcadia Science
+    orcid: https://orcid.org/0000-0002-1073-1494
+  year: 2026
