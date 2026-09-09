@@ -1,4 +1,4 @@
-# glm-latent-mapping
+# Evo2 Gene Representations
 
 This repository tests how Evo2-7B organizes gene-family sequence representations and whether that
 structure can be used to steer what the model generates. The publication analysis has two
